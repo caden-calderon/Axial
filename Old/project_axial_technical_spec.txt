@@ -1,0 +1,347 @@
+PROJECT AXIAL - TECHNICAL SPECIFICATION & IMPLEMENTATION PLAN
+
+
+## Architecture Overview
+
+### System Design
+```
+Unity (C#)                          Python Server (FastAPI)
+-----------                         ---------------------
+- Game State/Rules                  - MCTS Algorithm
+- AR Rendering                      - Neural Network Model
+- Hand Tracking (MediaPipe)  <----> - Board Evaluation
+- UI/Visual Effects                 - Move Generation
+- Basic Game Logic                  - Self-play Training
+```
+
+### Key Architectural Decision: Python as "AI Brain"
+Instead of porting complex AI logic to C#, Python serves as a dedicated AI server that Unity calls for move decisions. This approach:
+- Avoids complex C# reimplementation of MCTS
+- Eliminates Unity Barracuda/ONNX conversion issues
+- Leverages Python's ML ecosystem
+- Enables hot-reloading of AI logic
+- Saves weeks of development time
+
+---
+
+## AI Implementation Details
+
+### Algorithm Change: Minimax → MCTS
+**Original Plan**: Minimax with alpha-beta pruning
+**Updated Plan**: Monte Carlo Tree Search (MCTS) with Upper Confidence Bounds for Trees (UCT)
+
+**Reasoning for change:**
+- 3D Connect 4 has exponentially larger search space than 2D
+- MCTS better handles large branching factors
+- Natural integration with neural networks (AlphaZero approach)
+- More efficient selective sampling vs uniform depth exploration
+
+### MCTS Implementation Structure
+```python
+class MCTSNode:
+    def __init__(self, board_state):
+        self.board_state = board_state
+        self.wins = 0
+        self.visits = 0
+        self.children = []
+        self.untried_moves = board_state.get_legal_moves()
+    
+    def uct_value(self, c=1.414):
+        # UCT formula for balancing exploration vs exploitation
+        exploitation = self.wins / self.visits
+        exploration = c * sqrt(log(parent.visits) / self.visits)
+        return exploitation + exploration
+
+# Four phases of MCTS:
+# 1. Selection - Use UCT to traverse tree
+# 2. Expansion - Add new node
+# 3. Simulation - Random or NN-guided rollout
+# 4. Backpropagation - Update statistics
+```
+
+### Hybrid AI Architecture
+1. **MCTS (The Planner)**: Handles tactical tree search
+2. **Neural Network (The Judge)**: Evaluates board positions
+   - Trained via self-play
+   - Provides position evaluation for MCTS leaf nodes
+   - Similar to AlphaGo/AlphaZero approach
+
+---
+
+## Optimization Strategy: Bitboards
+
+### Implementation for 4×4×4 Board
+- 64 cells = perfect fit for uint64/64-bit integer
+- Each player's pieces represented as single 64-bit integer
+- Win checking via bitwise operations with precomputed masks
+
+```python
+# Example bitboard representation
+class BitBoard:
+    def __init__(self):
+        self.player1 = 0  # 64-bit integer
+        self.player2 = 0  # 64-bit integer
+    
+    def make_move(self, position, player):
+        if player == 1:
+            self.player1 |= (1 << position)
+        else:
+            self.player2 |= (1 << position)
+    
+    def check_win(self, player, win_mask):
+        board = self.player1 if player == 1 else self.player2
+        return (board & win_mask) == win_mask
+```
+
+### Scaling for Larger Boards
+For boards > 64 cells (5×5×5, 6×6×6):
+- Use Python's arbitrary precision integers
+- Or array of multiple uint64s
+- Precomputed win masks still applicable
+
+### Performance Optimizations
+- Numba JIT compilation for hot loops
+- Potential multithreading with Python 3.13+ (no GIL)
+- Bitwise operations ~100x faster than array loops
+
+---
+
+## Unity-Python Communication
+
+### Python AI Server (FastAPI)
+```python
+from fastapi import FastAPI
+import uvicorn
+
+app = FastAPI()
+
+class GameAI:
+    def __init__(self):
+        self.model = load_trained_model()
+        self.mcts = MCTS(self.model)
+    
+    def get_move(self, board_state):
+        return self.mcts.search(board_state, simulations=1000)
+
+ai = GameAI()
+
+@app.post("/move")
+async def get_ai_move(board: dict):
+    move = ai.get_move(board['state'])
+    return {"move": move, "confidence": 0.95}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=5000)
+```
+
+### Unity Client (C#)
+```csharp
+public class AIConnector : MonoBehaviour {
+    private HttpClient client = new HttpClient();
+    private string aiServerUrl = "http://127.0.0.1:5000";
+    
+    public async Task<int> GetAIMove(GameState currentState) {
+        var json = JsonUtility.ToJson(new {
+            state = currentState.ToBitboard(),
+            player = currentState.currentPlayer
+        });
+        
+        var content = new StringContent(json);
+        var response = await client.PostAsync($"{aiServerUrl}/move", content);
+        var result = await response.Content.ReadAsStringAsync();
+        
+        return JsonUtility.FromJson<MoveResponse>(result).move;
+    }
+}
+```
+
+### Communication Benefits
+- Network latency hidden behind piece drop animations
+- AI can "think" while human move animates
+- Easy testing with Postman/curl
+- No model conversion or deployment issues
+
+---
+
+## Game Implementation
+
+### Axial Game Rules
+- **Board**: 3D grid (4×4×4, 5×5×5, or custom dimensions)
+- **Objective**: Connect N pieces in a row (any dimension)
+- **Gravity**: Pieces fall to lowest available position in column
+- **Special pieces**: Limited disruption pieces for advanced strategy
+
+### Unity Components Required
+1. **Game State Management**
+   - Bitboard representation for efficiency
+   - Legal move validation
+   - Win condition checking
+   
+2. **Visual Components**
+   - Holographic grid rendering
+   - Piece drop animations
+   - Hand gesture visualization
+   
+3. **Input System**
+   - MediaPipe integration for hand tracking
+   - Gesture recognition (pinch to select/drop)
+   - Fallback mouse/keyboard controls
+
+---
+
+## MediaPipe Integration
+
+### Development Build (Unity Editor/Standalone)
+- Uses homuler's MediaPipe Unity plugin
+- Native C++ bindings for performance
+- Direct camera access in Unity
+
+### Web Build (If Time Permits)
+- Switches to JavaScript MediaPipe
+- Communicates via Unity's ExternalCall
+- Conditional compilation with preprocessor directives
+
+```csharp
+#if UNITY_WEBGL && !UNITY_EDITOR
+    // JavaScript MediaPipe bridge
+    Application.ExternalCall("startMediaPipeJS");
+#else
+    // Native MediaPipe plugin
+    handTrackingGraph.StartRun();
+#endif
+```
+
+---
+
+## Development Timeline & Priorities
+
+### Phase 1: Core AI Development (Weeks 1-3)
+1. Implement MCTS with random rollouts
+2. Create bitboard representation
+3. Add neural network training pipeline
+4. Self-play training loop
+5. Save trained model
+
+### Phase 2: Unity Game Development (Weeks 4-5)
+1. Create game board and rules
+2. Implement MediaPipe hand tracking
+3. Develop gesture recognition
+4. Add visual effects and UI
+
+### Phase 3: Integration (Week 6)
+1. Set up FastAPI server
+2. Implement Unity HTTP client
+3. Connect game to AI server
+4. Test end-to-end gameplay
+
+### Phase 4: Polish (Week 7)
+1. Optimize performance
+2. Add difficulty levels
+3. Improve animations
+4. Error handling
+
+### Phase 5: Demo Preparation (Week 8)
+1. Record gameplay footage
+2. Prepare presentation
+3. Create fallback demos
+
+---
+
+## Future Enhancements (Post-Semester)
+
+### Web Deployment
+1. Export Unity to WebGL
+2. Implement JavaScript MediaPipe bridge
+3. Deploy Python server to cloud (Heroku/AWS)
+4. Add progressive web app features
+
+### Deployment Architecture
+```
+Browser (WebGL)          Cloud Server
+---------------          ------------
+Unity WebGL Build  ----> Python AI (Heroku/AWS Lambda)
+MediaPipe JS            MCTS + Neural Network
+```
+
+---
+
+## Critical Implementation Notes
+
+### Python Development Environment
+- Use Python 3.11+ for performance
+- Key libraries: FastAPI, NumPy, PyTorch/TensorFlow, Numba
+- Consider Cython for performance-critical sections
+
+### Unity Configuration
+- Enable async/await support
+- Configure for AR if using custom hardware
+- Set up HTTP client for Python communication
+- Use conditional compilation for platform-specific code
+
+### Testing Strategy
+1. Unit tests for MCTS logic
+2. Integration tests for Unity-Python communication
+3. Gesture recognition accuracy testing
+4. AI strength evaluation through self-play
+
+### Performance Targets
+- AI move generation: <200ms for strong play
+- Hand tracking: 30+ FPS
+- Game render: 60+ FPS
+- Total round-trip (gesture→AI→animation): <1 second
+
+---
+
+## Risk Mitigation
+
+### Hardware Risks
+- Primary: Custom AR headset
+- Fallback: HoloLens from NUI Lab
+
+### AI Performance Risks
+- Primary: Full MCTS + NN
+- Fallback 1: MCTS with simple heuristic
+- Fallback 2: Reduced search depth
+
+### Integration Risks
+- Primary: Real-time Python server
+- Fallback: Embedded simple AI in Unity
+
+---
+
+## Key Technical Decisions Summary
+
+1. **MCTS over Minimax** - Better for large search spaces
+2. **Bitboards for state** - 100x performance improvement
+3. **Python AI server** - Avoid C# reimplementation complexity
+4. **HTTP communication** - Simple, reliable Unity-Python bridge
+5. **MediaPipe for gestures** - Proven hand tracking solution
+6. **Hybrid AI approach** - MCTS + NN like AlphaZero
+7. **Progressive deployment** - Core first, web later if time
+
+---
+
+## Success Criteria
+
+### Minimum Viable Product
+- [ ] Working MCTS AI that can play legally
+- [ ] Unity game with basic graphics
+- [ ] Hand gesture control via MediaPipe
+- [ ] Unity successfully calls Python for moves
+- [ ] Win/loss detection working
+
+### Stretch Goals
+- [ ] Neural network evaluation trained via self-play
+- [ ] Custom AR hardware integration
+- [ ] Multiple board sizes
+- [ ] Web deployment
+- [ ] Difficulty levels
+- [ ] Special pieces implemented
+
+---
+
+## Notes for Implementation
+
+This architecture prioritizes development speed and demonstration impact. The Python server approach allows for rapid AI iteration without dealing with Unity's compilation times or C# porting complexities. The system is designed to be impressive for demo day while remaining technically feasible within the semester timeline.
+
+The key insight is that for a turn-based game, the ~50ms network latency is completely hidden by animations, making the server architecture practical and elegant rather than a compromise.

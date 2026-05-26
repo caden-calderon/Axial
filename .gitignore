@@ -1,0 +1,55 @@
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local env and secrets
+.env
+.env.*
+!.env.example
+
+# Archives and local handoff bundles
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+
+# Node / SvelteKit / Playwright
+node_modules/
+.pnpm-store/
+.svelte-kit/
+dist/
+build/
+coverage/
+playwright-report/
+test-results/
+
+# Generated visual verification screenshots
+/axial-web/apps/web/*.png
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.nbc
+*.nbi
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# ML training outputs and binary datasets
+*.pt
+*.pth
+*.onnx
+*.pkl
+/Training/checkpoints*/
+
+# Legacy Unity project stays local for reference.
+/axial-unity/

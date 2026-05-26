@@ -1,0 +1,802 @@
+\documentclass[11pt]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{caption}
+
+% Code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+}
+
+\title{\textbf{Axial: A 3D Strategy Game with \\Gesture-Based Hand Tracking Controls}}
+\author{Caden Calderon}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+% ============================================================================
+% INTRODUCTION
+% ============================================================================
+\section{Introduction}
+
+\subsection{Game Overview}
+
+Axial is a three-dimensional strategy game that reimagines the classic Connect Four as a spatial challenge. Two players take turns dropping colored pieces into a transparent 3D grid, where gravity pulls each piece down to the lowest available position in its column. The first player to align four of their pieces in a row wins.
+
+What makes Axial unique is the playing field: instead of a flat 2D board, pieces exist in a $6 \times 6 \times 7$ volumetric grid containing 252 cells. Players must think in three dimensions, watching for winning lines that can form horizontally, vertically, diagonally, or through any of the 3D space diagonals. In total, there are 13 different directions a winning line can take.
+
+% [IMAGE PLACEHOLDER: Game screenshot overview]
+% INSERT FIGURE HERE: Screenshot showing the 3D grid with pieces from both players
+
+\subsection{Genre and Platform}
+
+\begin{itemize}
+    \item \textbf{Genre:} 3D Gravity-Based Strategy
+    \item \textbf{Players:} Single-player versus AI opponent
+    \item \textbf{Platform:} Desktop PC with standard webcam
+    \item \textbf{Input Method:} Hand tracking gestures (no keyboard or mouse required)
+    \item \textbf{Visual Style:} Minimalist aesthetic with glowing pieces and a transparent grid structure
+\end{itemize}
+
+% [IMAGE PLACEHOLDER: Visual style close-up]
+% INSERT FIGURE HERE: Close-up showing the glowing pieces and transparent grid aesthetic
+
+\subsection{The Hand Tracking Experience}
+
+Rather than clicking with a mouse, players interact with Axial using their hands in front of a webcam. The game tracks hand position and recognizes a pinch gesture (thumb and index finger touching) to grab, move, and drop game pieces. This creates a more tactile, intuitive experience where players feel like they are physically manipulating pieces in 3D space.
+
+Players can also rotate the entire game board by using both hands: one hand holds the board while the other hand's pinch-and-drag motion spins it. This allows players to examine the board from any angle to spot threats and opportunities hidden from the default view.
+
+% ============================================================================
+% GAMEPLAY AND CONTROLS
+% ============================================================================
+\section{How to Play}
+
+This section explains everything a player needs to know to start playing Axial.
+
+\subsection{Setup and Starting a Game}
+
+\begin{enumerate}
+    \item Ensure a webcam is connected and positioned to see your hands clearly
+    \item Launch the Axial application
+    \item Position yourself so your hands are visible in the camera frame (approximately arm's length from camera works well)
+    \item Select a difficulty level from the menu:
+    \begin{itemize}
+        \item \textbf{Easy:} Forgiving AI, good for learning
+        \item \textbf{Medium:} Balanced challenge
+        \item \textbf{Hard:} Strong AI, requires careful strategy
+        \item \textbf{Nightmare:} Expert-level AI
+    \end{itemize}
+    \item Press ``Start Game'' to begin
+\end{enumerate}
+
+% [IMAGE PLACEHOLDER: Start menu]
+% INSERT FIGURE HERE: Screenshot of the difficulty selection menu
+
+\subsection{Controls}
+
+All interaction happens through hand gestures captured by the webcam:
+
+\subsubsection{Grabbing a Piece}
+
+When it is your turn, a game piece spawns at a designated location. To pick it up:
+
+\begin{enumerate}
+    \item Move your hand near the piece. When you are close enough, the piece will \textbf{glow} to indicate it is within grab range.
+    \item Perform a \textbf{pinch gesture} by touching your thumb tip to your index finger tip.
+    \item The piece is now attached to your hand.
+\end{enumerate}
+
+% [IMAGE PLACEHOLDER: Pinch gesture photo]
+% INSERT FIGURE HERE: Photo showing the pinch gesture with thumb and index finger touching
+
+\subsubsection{Moving and Positioning}
+
+While holding a piece (maintaining the pinch):
+
+\begin{itemize}
+    \item Move your hand \textbf{left/right} to position over different columns
+    \item Move your hand \textbf{forward/back} (closer to or further from the camera) to reach different depth rows
+    \item The piece \textbf{snaps} to column centers as you move, making precise placement easy
+    \item A \textbf{ghost preview} shows where your piece will land in that column
+\end{itemize}
+
+% [IMAGE PLACEHOLDER: Moving piece with ghost preview]
+% INSERT FIGURE HERE: Screenshot showing a held piece with the ghost preview below it
+
+\subsubsection{Dropping a Piece}
+
+\begin{enumerate}
+    \item Position the piece over your desired column
+    \item Check the visual feedback:
+    \begin{itemize}
+        \item \textbf{Green tint} = valid drop location
+        \item \textbf{Red tint} = column is full, choose another
+    \end{itemize}
+    \item \textbf{Release the pinch} (separate thumb and index finger)
+    \item The piece falls into position and your turn ends
+\end{enumerate}
+
+% [IMAGE PLACEHOLDER: Valid vs invalid drop feedback]
+% INSERT FIGURE HERE: Side-by-side showing green (valid) and red (invalid) piece states
+
+\subsubsection{Rotating the Board}
+
+To see the board from different angles:
+
+\begin{enumerate}
+    \item With one hand, \textbf{pinch and hold} the game board (grab it like any object)
+    \item With your other hand, perform a \textbf{pinch gesture}
+    \item While both hands are pinching, \textbf{drag your second hand} to rotate:
+    \begin{itemize}
+        \item Horizontal movement rotates the board left/right
+        \item Vertical movement tilts the board forward/back
+    \end{itemize}
+    \item Release either pinch to stop rotating
+\end{enumerate}
+
+After each turn, the board automatically returns to its upright position so both players always start from the same view.
+
+% [IMAGE PLACEHOLDER: Two-hand rotation]
+% INSERT FIGURE HERE: Photo or diagram showing the two-hand rotation gesture
+
+\subsection{Visual Feedback Guide}
+
+The game provides visual cues to help players understand what is happening:
+
+\begin{table}[H]
+\centering
+\caption{Visual Feedback Elements}
+\begin{tabular}{p{4cm}p{8cm}}
+\toprule
+\textbf{Visual Cue} & \textbf{Meaning} \\
+\midrule
+Orange piece & Human player's piece \\
+Blue piece & AI opponent's piece \\
+Glowing object & Your hand is close enough to grab this object \\
+Green tint on held piece & Valid drop location selected \\
+Red tint on held piece & Invalid location (column full) \\
+Ghost/transparent piece & Preview of where your piece will land \\
+Hand skeleton overlay & Shows the game is tracking your hand \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% [IMAGE PLACEHOLDER: Annotated visual feedback]
+% INSERT FIGURE HERE: Annotated screenshot showing all visual feedback elements labeled
+
+\subsection{Strategy Tips}
+
+\begin{enumerate}
+    \item \textbf{Control the center:} Pieces in the middle of the board connect to more potential winning lines
+    \item \textbf{Think in 3D:} Winning lines can go in 13 directions, so use board rotation to check all angles
+    \item \textbf{Build forks:} Create positions where you threaten to win in two places at once, forcing the opponent into an impossible block
+    \item \textbf{Block early:} When the AI gets three in a row, block immediately before it becomes a forced win
+    \item \textbf{Watch the depth:} The most overlooked threats are the diagonal lines that go ``into'' the board
+\end{enumerate}
+
+% ============================================================================
+% SYSTEM OVERVIEW
+% ============================================================================
+\section{System Overview}
+
+Now that you understand how to play, this section provides a high-level view of how Axial works under the hood. We start broad and progressively go deeper in the following sections.
+
+\subsection{Architecture: Two Connected Systems}
+
+Axial is built as two separate programs that communicate with each other:
+
+\begin{verbatim}
++------------------------------------------+
+|           UNITY (C#) - "The Body"        |
+|  - Renders the 3D game board and pieces  |
+|  - Processes webcam for hand tracking    |
+|  - Handles all player interaction        |
+|  - Displays visual feedback              |
++------------------+-----------------------+
+                   | TCP/JSON messages
+                   | (localhost:5555)
++------------------+-----------------------+
+|         PYTHON - "The Brain"             |
+|  - Runs the AI opponent (MCTS algorithm) |
+|  - Validates moves                       |
+|  - Determines game outcomes              |
++------------------------------------------+
+\end{verbatim}
+
+\textbf{Why two systems?} The AI requires heavy computation (thousands of game simulations per move). Running this in a separate Python process prevents the game from freezing or dropping frames while the AI ``thinks.'' The Unity side stays smooth at 60 FPS while Python crunches numbers in the background.
+
+Communication happens through TCP sockets with JSON-formatted messages. When you drop a piece, Unity sends your move to Python; Python updates the game state, calculates the AI's response, and sends the AI's move back. This round-trip takes less than 2 milliseconds of network time, which is imperceptible.
+
+% [IMAGE PLACEHOLDER: Architecture diagram]
+% INSERT FIGURE HERE: Visual diagram showing Unity and Python boxes with arrows between them
+
+\subsection{Component Flow: How the Pieces Fit Together}
+
+Within the Unity application, several components work together to create the hand-tracking game experience. Here is how data flows from the webcam to a placed piece:
+
+\begin{verbatim}
+WEBCAM FEED
+    |
+    v
+[HandLandmarkerRunner] -- Runs MediaPipe hand detection
+    |                     Outputs 21 landmark points per hand
+    v
+[DualHandManager] -- Routes each detected hand to its tracker
+    |                (handles left vs right hand classification)
+    |
+    +--------+--------+
+    |                 |
+    v                 v
+[HandTracker3D]   [HandTracker3D]  -- Convert 2D landmarks to 3D
+(Left Hand)       (Right Hand)        positions in game space
+    |                 |
+    v                 v
+[PinchDetector]   [PinchDetector]  -- Detect pinch gestures
+    |                 |
+    v                 v
+[GrabController]  [GrabController] -- Handle object grabbing
+    |                 |
+    +--------+--------+
+             |
+             v
+      [GamePiece] -- Snaps to grid, shows drop preview
+             |
+             v
+      [GridManager] -- Accepts piece, animates fall,
+             |         checks for wins
+             v
+[AxialGameController] -- Sends move to Python, receives AI move
+             |
+             v
+      [GridManager] -- Places AI's piece
+\end{verbatim}
+
+Additionally, when both hands are detected and one is holding an object:
+
+\begin{verbatim}
+[RotationController] -- Monitors both GrabControllers
+    |                   When one holds + other pinches,
+    v                   enables rotation mode
+[GridManager.transform] -- Rotates the entire board
+\end{verbatim}
+
+This pipeline transforms raw webcam pixels into meaningful game actions. Each component has a single responsibility, making the system easier to debug and modify.
+
+% [IMAGE PLACEHOLDER: Component flow diagram]
+% INSERT FIGURE HERE: Visual flowchart of the component pipeline described above
+
+\subsection{The 3D Game Board}
+
+Before diving into the technical details of hand tracking, it helps to understand what players are interacting with.
+
+\subsubsection{Board Structure}
+
+Imagine a transparent box divided into a grid of cells. The board has:
+
+\begin{itemize}
+    \item \textbf{7 columns} along the X-axis (left to right)
+    \item \textbf{6 rows} along the Z-axis (front to back, the ``depth'')
+    \item \textbf{6 layers} along the Y-axis (bottom to top, where pieces stack)
+\end{itemize}
+
+This creates $7 \times 6 \times 6 = 252$ individual cells where pieces can rest. Each column is like a vertical tube: when you drop a piece into column $(x, z)$, it falls to the lowest unoccupied Y position in that tube.
+
+% [IMAGE PLACEHOLDER: Board dimensions diagram]
+% INSERT FIGURE HERE: 3D diagram showing the board with X, Y, Z axes labeled
+
+\subsubsection{Cell Coordinates}
+
+Every cell has a coordinate $(x, y, z)$ where:
+\begin{itemize}
+    \item $x \in [0, 6]$: which column (left to right)
+    \item $y \in [0, 5]$: which layer (bottom to top)
+    \item $z \in [0, 5]$: which row (front to back)
+\end{itemize}
+
+The \texttt{GridManager} component tracks which player (if any) occupies each cell using a 3D array. It also handles converting between grid coordinates and actual 3D world positions for rendering and collision detection.
+
+\subsubsection{Winning Conditions}
+
+A player wins by placing four pieces in a consecutive line. In 3D, there are 13 possible directions for a winning line:
+
+\begin{table}[H]
+\centering
+\caption{The 13 Winning Directions}
+\begin{tabular}{ll}
+\toprule
+\textbf{Category} & \textbf{Directions} \\
+\midrule
+Axial (3) & Along X, Along Y, Along Z \\
+Flat diagonals (4) & XY diagonal, XZ diagonal, YZ diagonal (both orientations each) \\
+Space diagonals (4) & Through the 3D corners (XYZ combinations) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+After every piece placement, the game checks all 13 directions from the new piece's position to see if a winning line has formed.
+
+% ============================================================================
+% TECHNICAL CHALLENGE
+% ============================================================================
+\section{Technical Challenge: Hand Tracking as Exclusive Input}
+
+The core technical challenge of this project was making hand tracking the \textbf{only} input method. No keyboard, no mouse, just hands in front of a webcam. This section explains the problems encountered and how they were solved.
+
+\subsection{Challenge Requirements}
+
+\begin{enumerate}
+    \item Players must grab, move, and place pieces using only hand gestures
+    \item The system must work with any standard webcam (no special hardware)
+    \item Interaction must feel responsive and natural, not laggy or jittery
+    \item The system must handle different hand sizes, skin tones, and gesture styles
+\end{enumerate}
+
+\subsection{The Depth Problem}
+
+The biggest challenge was determining \textbf{how far the hand is from the camera} (the Z-axis depth).
+
+\textbf{Why is this hard?} A standard webcam produces a flat 2D image. It knows where your hand is horizontally (left/right) and vertically (up/down), but it cannot directly measure depth (near/far). However, players need depth control to reach different rows of the 3D board.
+
+\textbf{The solution:} Infer depth from \textbf{apparent hand size}. When your hand is close to the camera, it appears large in the image. When far away, it appears small. By measuring how ``big'' the hand looks, we can estimate its distance.
+
+% [IMAGE PLACEHOLDER: Hand size vs distance]
+% INSERT FIGURE HERE: Side-by-side showing same hand close (large) vs far (small) from camera
+
+\subsection{Finding the Right Measurement}
+
+The concept sounds simple, but implementation required extensive experimentation. The challenge: how do you measure ``hand size'' in a way that stays consistent regardless of what gesture the player is making?
+
+Eight different measurement approaches were tested:
+
+\begin{table}[H]
+\centering
+\caption{Hand Size Methods Evaluated}
+\begin{tabular}{p{4cm}p{2cm}p{6cm}}
+\toprule
+\textbf{Method} & \textbf{Result} & \textbf{Problem} \\
+\midrule
+Index to Pinky distance & Failed & Rotated hands gave wrong readings \\
+Wrist to Fingertip distance & Failed & Making a fist ``teleported'' the hand far away \\
+Bounding box around hand & Partial & Fist shrank the box, moving depth \\
+MediaPipe's built-in Z & Failed & Values were not calibrated for real distance \\
+Palm width (X-axis only) & Partial & 90-degree rotation broke it completely \\
+Average of multiple measurements & Better & Still affected by some gestures \\
+Palm skeleton only & Good & Minor drift when rotating \\
+\textbf{PalmMaxDimension} & \textbf{Success} & Requires initial calibration \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{The Winning Approach: PalmMaxDimension}
+
+The key insight was twofold:
+
+\begin{enumerate}
+    \item \textbf{Use only stable landmarks:} The wrist and four finger base knuckles do not move when you curl your fingers or make gestures. Measuring only these five points makes the system immune to gestures like fists or pointing.
+
+    \item \textbf{Take the maximum of three measurements:} Calculate palm width horizontally (X), palm width vertically (Y), and palm height. Whichever measurement is largest ``wins'' and drives the depth calculation. This handles rotation: when the palm faces the camera, X-width is large; when the hand rotates sideways, height becomes large instead. The maximum stays consistent.
+\end{enumerate}
+
+% [IMAGE PLACEHOLDER: Stable landmarks diagram]
+% INSERT FIGURE HERE: Hand image highlighting only the 5 stable landmarks used
+
+\subsection{Eliminating Jitter}
+
+Even with the correct measurement approach, hand tracking data is inherently noisy. MediaPipe (the hand detection library) produces slightly different coordinates each frame, even for a perfectly still hand. Without smoothing, objects would visibly shake.
+
+Multiple smoothing layers were implemented throughout the pipeline:
+
+\begin{enumerate}
+    \item \textbf{Hand size smoothing:} Each new measurement is blended with the previous value (92\% old, 8\% new), creating a stable rolling average.
+
+    \item \textbf{Dead zone:} Changes smaller than 2\% are ignored completely. This prevents micro-jitter from accumulating.
+
+    \item \textbf{Z-position smoothing:} An additional smoothing pass specifically for depth, which is the noisiest axis.
+
+    \item \textbf{Grabbed object smoothing:} When holding an object, the object follows the hand with interpolation rather than snapping directly. This hides remaining jitter.
+
+    \item \textbf{Movement dead zone:} While holding an object, movements smaller than 5mm are ignored.
+\end{enumerate}
+
+The result is smooth, stable interaction where players do not notice any jitter, while still feeling responsive to intentional movements.
+
+\subsection{Pinch Detection Reliability}
+
+The pinch gesture (thumb touching index finger) triggers grabbing and releasing. Making this reliable required two techniques:
+
+\textbf{Hysteresis thresholds:} Instead of a single threshold (``pinching if distance < X''), two thresholds are used:
+\begin{itemize}
+    \item Pinch \textbf{starts} when finger distance drops below 0.8
+    \item Pinch \textbf{ends} when finger distance rises above 1.2
+\end{itemize}
+
+The gap prevents rapid toggling when the hand is near the boundary. Without this, small tremors would cause objects to be grabbed and released repeatedly.
+
+\textbf{Confirmation frames:} A pinch must be detected for 2 consecutive frames before triggering. This filters out single-frame detection errors.
+
+\subsection{Challenges Overcome Summary}
+
+\begin{enumerate}
+    \item \textbf{Depth from 2D camera:} Solved with PalmMaxDimension algorithm
+    \item \textbf{Gesture interference:} Solved by using only stable palm landmarks
+    \item \textbf{Rotation sensitivity:} Solved by taking maximum of three orthogonal measurements
+    \item \textbf{Tracking jitter:} Solved with multi-layer smoothing pipeline
+    \item \textbf{Pinch false triggers:} Solved with hysteresis and confirmation frames
+    \item \textbf{Object shake when grabbed:} Solved with smoothed following and movement dead zones
+\end{enumerate}
+
+% ============================================================================
+% TECHNICAL DEEP DIVE
+% ============================================================================
+\section{Technical Implementation Details}
+
+This section provides deeper technical details for readers interested in the implementation specifics.
+
+\subsection{Hand Tracking Pipeline}
+
+\subsubsection{MediaPipe Integration}
+
+Hand detection uses Google's MediaPipe Hand Landmarker, which processes each webcam frame and outputs 21 landmark points per detected hand:
+
+\begin{verbatim}
+Landmark indices:
+    0: Wrist
+  1-4: Thumb (base to tip)
+  5-8: Index finger (base to tip)
+ 9-12: Middle finger (base to tip)
+13-16: Ring finger (base to tip)
+17-20: Pinky (base to tip)
+\end{verbatim}
+
+Each landmark has normalized $(x, y)$ coordinates in the range $[0, 1]$, representing percentage of frame width/height. MediaPipe also provides a relative $z$ value per landmark, but this represents finger depth relative to the palm, not absolute distance from camera.
+
+% [IMAGE PLACEHOLDER: MediaPipe landmarks]
+% INSERT FIGURE HERE: Diagram showing all 21 hand landmarks numbered
+
+\subsubsection{Dual Hand Support}
+
+The \texttt{DualHandManager} component routes detected hands to separate left/right trackers. MediaPipe provides handedness classification, but from the camera's perspective (mirrored). The manager corrects this:
+
+\begin{lstlisting}[language=C, caption=Handedness Correction]
+// MediaPipe "Left" = camera sees left side = user's RIGHT hand
+if (categoryName.Contains("left"))
+    return Handedness.Right;
+else if (categoryName.Contains("right"))
+    return Handedness.Left;
+\end{lstlisting}
+
+A confidence threshold (0.5) filters uncertain classifications to prevent hands from swapping erratically.
+
+\subsubsection{3D Position Calculation}
+
+\texttt{HandTracker3D} converts 2D normalized coordinates to 3D world positions:
+
+\begin{itemize}
+    \item \textbf{X position:} Normalized X mapped to a configurable world width
+    \item \textbf{Y position:} Normalized Y mapped to a configurable world height (inverted, since screen Y increases downward)
+    \item \textbf{Z position:} Calculated from hand size using PalmMaxDimension algorithm
+\end{itemize}
+
+The PalmMaxDimension calculation:
+
+\begin{lstlisting}[language=C, caption=PalmMaxDimension Algorithm]
+// Measure three dimensions of the palm
+float widthX = Abs(indexBase.x - pinkyBase.x);  // Horizontal
+float widthY = Abs(indexBase.y - pinkyBase.y);  // Vertical
+float height = Distance(wrist, middleBase);      // Palm height
+
+// Normalize each to 0-1 based on calibrated min/max values
+float normX = InverseLerp(minX, maxX, widthX);
+float normY = InverseLerp(minY, maxY, widthY);
+float normH = InverseLerp(minH, maxH, height);
+
+// Winner takes all - largest dimension drives depth
+float handSize = Max(normX, normY, normH);
+
+// Map to Z range
+float zPosition = Lerp(minZ, maxZ, handSize);
+\end{lstlisting}
+
+\subsubsection{Thread Safety}
+
+MediaPipe may invoke callbacks from background threads, but Unity requires all API calls on the main thread. A thread-safe caching pattern handles this:
+
+\begin{lstlisting}[language=C, caption=Thread-Safe Data Transfer]
+// Background thread (MediaPipe callback)
+void OnHandDataReceived(HandLandmarkerResult result) {
+    lock (_lock) {
+        result.CloneTo(ref _cachedResult);
+        _hasNewData = true;
+    }
+}
+
+// Main thread (Unity Update loop)
+void Update() {
+    if (_hasNewData) {
+        lock (_lock) {
+            ProcessHandData(_cachedResult);
+            _hasNewData = false;
+        }
+    }
+}
+\end{lstlisting}
+
+\subsection{Grab System}
+
+The \texttt{GrabController} manages object interaction with extensive smoothing to ensure stability.
+
+\subsubsection{Proximity Detection}
+
+Every 50 milliseconds, the controller checks for nearby grabbable objects:
+
+\begin{enumerate}
+    \item Sphere-cast from the smoothed pinch point position
+    \item Find all objects with \texttt{GrabbableObject} component within grab radius
+    \item Select the nearest valid object (not already grabbed, grabbing enabled)
+    \item Call \texttt{OnNearby()} on the nearest object to trigger glow effect
+    \item Call \texttt{OnNotNearby()} on the previous nearest if it changed
+\end{enumerate}
+
+This provides visual feedback before the player pinches, so they know what they will grab.
+
+% [IMAGE PLACEHOLDER: Proximity glow effect]
+% INSERT FIGURE HERE: Screenshot showing a piece glowing when hand approaches
+
+\subsubsection{Grab Smoothing Pipeline}
+
+When an object is grabbed, multiple smoothing stages prevent jitter:
+
+\begin{lstlisting}[language=C, caption=Smoothed Object Following]
+// 1. Smooth the raw pinch point
+_smoothedPinchPoint = Lerp(rawPinchPoint, _smoothedPinchPoint, 0.7f);
+
+// 2. Calculate target position
+Vector3 target = _smoothedPinchPoint + grabOffset;
+
+// 3. Apply movement dead zone
+if (Distance(target, currentPos) < 0.005f)
+    return;  // Ignore tiny movements
+
+// 4. Smoothly interpolate toward target
+newPosition = Lerp(currentPos, target, followSpeed * deltaTime);
+\end{lstlisting}
+
+Additionally, grabbed objects are forced into kinematic mode, disabling physics interference that could cause unexpected movement.
+
+\subsection{Grid Management}
+
+The \texttt{GridManager} handles board state and piece placement.
+
+\subsubsection{Board Data Structure}
+
+\begin{lstlisting}[language=C, caption=Board Representation]
+// 3D array: [column, layer, row]
+private int[,,] boardGrid = new int[7, 6, 6];
+// Values: 0 = empty, 1 = human player, 2 = AI player
+\end{lstlisting}
+
+\subsubsection{World Position Mapping}
+
+Converting grid coordinates to world positions:
+
+\begin{lstlisting}[language=C, caption=Grid to World Conversion]
+public Vector3 GetCellCenterWorld(int x, int y, int z)
+{
+    // Calculate position in grid's local space
+    float halfCell = cellSpacing / 2f;
+    Vector3 localPos = new Vector3(
+        x * cellSpacing + halfCell,
+        y * cellSpacing + halfCell,
+        z * cellSpacing + halfCell
+    );
+    // Transform to world space (accounts for grid rotation/position)
+    return transform.TransformPoint(localPos);
+}
+\end{lstlisting}
+
+This approach allows the entire board to be rotated while maintaining correct cell positions.
+
+\subsubsection{Piece Placement Flow}
+
+When a piece is dropped:
+
+\begin{enumerate}
+    \item \textbf{Validate:} Check if column $(x, z)$ has space
+    \item \textbf{Find target:} Get lowest empty Y in that column
+    \item \textbf{Mark immediately:} Set \texttt{boardGrid[x, y, z] = playerNumber} before animation (prevents race conditions if AI responds quickly)
+    \item \textbf{Parent piece:} Attach to grid transform so piece inherits board rotation
+    \item \textbf{Animate fall:} Move piece downward using \texttt{Vector3.MoveTowards}
+    \item \textbf{Snap to final:} Set exact position when animation completes
+    \item \textbf{Lock piece:} Disable grabbing on the placed piece
+    \item \textbf{Check win:} Scan all 13 directions from new piece
+    \item \textbf{Fire event:} Notify game controller that placement is complete
+\end{enumerate}
+
+% [IMAGE PLACEHOLDER: Piece falling animation]
+% INSERT FIGURE HERE: Sequence showing a piece animating into position
+
+\subsection{Two-Hand Rotation}
+
+The \texttt{RotationController} enables board rotation using both hands.
+
+\subsubsection{Activation Conditions}
+
+Rotation activates when:
+\begin{itemize}
+    \item One hand is holding an object (the board)
+    \item The other hand performs a pinch while not holding anything
+\end{itemize}
+
+\begin{lstlisting}[language=C, caption=Rotation Trigger Logic]
+if (leftGrabController.IsHoldingObject) {
+    if (rightPinchDetector.IsPinching &&
+        !rightGrabController.IsHoldingObject) {
+        StartRotation(leftGrabController, rightPinchDetector);
+    }
+}
+// (Same check with hands reversed)
+\end{lstlisting}
+
+\subsubsection{Rotation Calculation}
+
+The rotating hand's index finger tip position is tracked. Movement from the previous frame determines rotation:
+
+\begin{itemize}
+    \item Horizontal (X) movement $\rightarrow$ Yaw rotation (spin left/right)
+    \item Vertical (Y) movement $\rightarrow$ Pitch rotation (tilt forward/back)
+\end{itemize}
+
+Rotation uses \texttt{RotateAround()} with the grid's calculated center point as the pivot, ensuring the board spins around its middle rather than a corner.
+
+\subsubsection{Automatic Reset}
+
+After each piece lands, the grid smoothly animates back to upright:
+
+\begin{lstlisting}[language=C, caption=Grid Reset Animation]
+void UpdateGridReset() {
+    // Rotate toward upright at 180 degrees per second
+    gridTransform.rotation = Quaternion.RotateTowards(
+        gridTransform.rotation,
+        uprightRotation,
+        180f * Time.deltaTime
+    );
+}
+\end{lstlisting}
+
+Only the Y-rotation (yaw) resets; any tilt the player applied is preserved. If the player starts rotating manually, the automatic reset cancels.
+
+\subsection{Skeleton Visualization}
+
+A skeleton overlay helps players verify their hand is being tracked correctly. Twenty-five cylinder primitives connect adjacent landmarks:
+
+\begin{itemize}
+    \item Wrist to each finger base (5 bones)
+    \item Each finger: base to tip through joints (4 fingers $\times$ 3 segments + thumb $\times$ 3 = 15 bones + 5 wrist = 20 total finger bones)
+\end{itemize}
+
+Each frame, bones are repositioned, rotated, and scaled to match current landmark positions. Performance optimizations include cached transforms, disabled shadows, and no colliders.
+
+% [IMAGE PLACEHOLDER: Skeleton visualization]
+% INSERT FIGURE HERE: Screenshot showing the hand skeleton overlay
+
+% ============================================================================
+% AI OPPONENT
+% ============================================================================
+\section{AI Opponent}
+
+The AI opponent runs in the Python backend and uses Monte Carlo Tree Search (MCTS) to select moves. While the full algorithmic details are covered in a separate AI-focused report, key points relevant to gameplay include:
+
+\begin{itemize}
+    \item \textbf{Thinking process:} The AI simulates thousands of random game continuations to estimate which move leads to the best outcome
+    \item \textbf{Threat awareness:} The AI always takes immediate winning moves and blocks opponent wins
+    \item \textbf{Difficulty scaling:} Higher difficulty means more simulations, leading to deeper analysis and stronger play
+    \item \textbf{Response time:} Easy mode responds in under 1 second; Nightmare mode may take 2-3 seconds
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\caption{Difficulty Levels}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Level} & \textbf{AI Simulations} & \textbf{Approximate Strength} \\
+\midrule
+Easy & 200 & Beatable with basic strategy \\
+Medium & 500 & Competitive for casual players \\
+Hard & 1,000 & Requires careful planning \\
+Nightmare & 2,000 & Expert-level play \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================================
+% EVALUATION
+% ============================================================================
+\section{Evaluation}
+
+\subsection{Counter Group Feedback}
+
+The game was tested by a counter group who provided feedback:
+
+\textbf{Positive:}
+\begin{itemize}
+    \item Overall impression was ``great''
+    \item Hand tracking controls were engaging and novel
+    \item Visual design was clean and easy to read
+\end{itemize}
+
+\textbf{Constructive:}
+\begin{itemize}
+    \item AI was considered too difficult for casual players
+    \item Suggested reducing board size to make the game easier
+\end{itemize}
+
+\subsection{Response to Feedback}
+
+Rather than reducing the board (which would change the fundamental game), I addressed the difficulty concern by implementing the four-tier difficulty system. Lower difficulties use fewer AI simulations, causing it to occasionally miss optimal moves while still playing competently. This preserves the full 3D experience while making the game accessible to players of all skill levels.
+
+% ============================================================================
+% MEMBER RESPONSIBILITIES
+% ============================================================================
+\section{Member Responsibilities}
+
+This project was completed as a \textbf{solo developer}. All work was performed by Caden Calderon:
+
+\begin{itemize}
+    \item Game design and rules
+    \item Unity application (C\#): visualization, UI, game logic
+    \item Hand tracking system: MediaPipe integration, depth inference, gesture detection
+    \item Grab and rotation systems with smoothing
+    \item Grid management and piece physics
+    \item Python backend: AI opponent using MCTS
+    \item Testing and debugging
+    \item Documentation
+\end{itemize}
+
+\textbf{Asset Attribution:} All visual assets (3D models, materials, UI elements) were created by the developer. No external assets were downloaded or purchased.
+
+% ============================================================================
+% CONCLUSION
+% ============================================================================
+\section{Conclusion}
+
+Axial demonstrates that hand tracking can serve as a viable exclusive input method for strategy games using only a standard webcam. The project successfully addressed the core technical challenges:
+
+\begin{enumerate}
+    \item \textbf{Depth inference:} The PalmMaxDimension algorithm provides stable Z-axis positioning by combining three orthogonal palm measurements
+    \item \textbf{Gesture immunity:} Using only stable palm landmarks prevents gestures from affecting position
+    \item \textbf{Jitter elimination:} Multi-layer smoothing throughout the pipeline ensures stable, responsive interaction
+    \item \textbf{Two-hand interaction:} Simultaneous tracking enables intuitive board rotation for 3D exploration
+    \item \textbf{Visual feedback:} Proximity highlighting and drop previews make the interface predictable
+\end{enumerate}
+
+The game extends classic Connect Four into three dimensions while the hand-tracking controls make the spatial gameplay feel tangible and immersive.
+
+\subsection{Future Improvements}
+
+\begin{itemize}
+    \item \textbf{Per-user calibration:} Auto-calibrate depth ranges based on individual hand sizes
+    \item \textbf{WebGL deployment:} Enable browser-based play without installation
+    \item \textbf{Networked multiplayer:} Human vs. human matches over the internet
+    \item \textbf{Additional gestures:} Explore gestures for menu navigation and undo functionality
+\end{itemize}
+
+\end{document}
