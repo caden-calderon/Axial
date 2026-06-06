@@ -8,6 +8,7 @@
 		Float32BufferAttribute,
 		LineBasicMaterial,
 		LineSegments,
+		NormalBlending,
 		Points,
 		PointsMaterial,
 		ShaderMaterial
@@ -83,39 +84,47 @@
 		blending: AdditiveBlending
 	});
 
-	const lineOpacity = $derived(uiTheme === 'dark' ? 0.34 : 0.28);
-	const edgeOpacity = $derived(uiTheme === 'dark' ? 0.8 : 0.52);
-	const innerStreakOpacity = $derived(uiTheme === 'dark' ? 0.42 : 0.26);
-	const outerStreakOpacity = $derived(uiTheme === 'dark' ? 0.18 : 0.1);
-	const nodeOpacity = $derived(uiTheme === 'dark' ? 0.64 : 0.42);
-	const nodeHaloOpacity = $derived(uiTheme === 'dark' ? 0.11 : 0.07);
-	const shellOpacity = $derived(uiTheme === 'dark' ? 0.045 : 0.09);
+	const lineOpacity = $derived(uiTheme === 'dark' ? 0.34 : 0.48);
+	const edgeOpacity = $derived(uiTheme === 'dark' ? 0.8 : 0.76);
+	const innerStreakOpacity = $derived(uiTheme === 'dark' ? 0.42 : 0.24);
+	const outerStreakOpacity = $derived(uiTheme === 'dark' ? 0.18 : 0.12);
+	const nodeOpacity = $derived(uiTheme === 'dark' ? 0.64 : 0.58);
+	const nodeHaloOpacity = $derived(uiTheme === 'dark' ? 0.11 : 0.14);
+	const shellOpacity = $derived(uiTheme === 'dark' ? 0.045 : 0.055);
+	const gridLineBlending = $derived(uiTheme === 'dark' ? AdditiveBlending : NormalBlending);
+	const gridGlowBlending = AdditiveBlending;
 
 	$effect(() => {
 		lineMaterial.color.set(palette.grid);
 		lineMaterial.opacity = lineOpacity;
+		lineMaterial.blending = gridLineBlending;
 		lineMaterial.needsUpdate = true;
 
 		edgeMaterial.color.set(palette.grid);
 		edgeMaterial.opacity = edgeOpacity;
+		edgeMaterial.blending = gridLineBlending;
 		edgeMaterial.needsUpdate = true;
 
 		innerStreakMaterial.uniforms.glowColor.value.set(uiTheme === 'dark' ? '#ffffff' : palette.grid);
 		innerStreakMaterial.uniforms.opacity.value = innerStreakOpacity;
+		innerStreakMaterial.blending = gridGlowBlending;
 		innerStreakMaterial.needsUpdate = true;
 
 		outerStreakMaterial.uniforms.glowColor.value.set(palette.gridEmissive);
 		outerStreakMaterial.uniforms.opacity.value = outerStreakOpacity;
+		outerStreakMaterial.blending = gridGlowBlending;
 		outerStreakMaterial.needsUpdate = true;
 
 		nodeMaterial.color.set(uiTheme === 'dark' ? '#ffffff' : palette.grid);
 		nodeMaterial.opacity = nodeOpacity;
-		nodeMaterial.size = uiTheme === 'dark' ? 0.045 : 0.036;
+		nodeMaterial.size = uiTheme === 'dark' ? 0.045 : 0.042;
+		nodeMaterial.blending = gridLineBlending;
 		nodeMaterial.needsUpdate = true;
 
 		nodeHaloMaterial.color.set(palette.gridEmissive);
 		nodeHaloMaterial.opacity = nodeHaloOpacity;
-		nodeHaloMaterial.size = uiTheme === 'dark' ? 0.14 : 0.1;
+		nodeHaloMaterial.size = uiTheme === 'dark' ? 0.14 : 0.13;
+		nodeHaloMaterial.blending = gridGlowBlending;
 		nodeHaloMaterial.needsUpdate = true;
 	});
 
@@ -184,13 +193,13 @@
 		<T.MeshPhysicalMaterial
 			color={palette.grid}
 			emissive={palette.gridEmissive}
-			emissiveIntensity={uiTheme === 'dark' ? 0.12 : 0.04}
+			emissiveIntensity={uiTheme === 'dark' ? 0.12 : 0.015}
 			roughness={0.12}
 			metalness={0}
 			clearcoat={1}
 			clearcoatRoughness={0.04}
 			ior={1.45}
-			transmission={uiTheme === 'dark' ? 0.18 : 0.08}
+			transmission={uiTheme === 'dark' ? 0.18 : 0.04}
 			thickness={0.18}
 			transparent
 			opacity={shellOpacity}

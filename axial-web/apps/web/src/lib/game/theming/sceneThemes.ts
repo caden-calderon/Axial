@@ -41,16 +41,16 @@ export const SCENE_THEMES: Record<SceneThemeName, Record<UiThemeName, ScenePalet
 			preview: '#f5d46f'
 		},
 		light: {
-			background: '#f6f9f7',
-			fog: '#dce9e6',
-			grid: '#3a756e',
-			gridEmissive: '#9ae4d4',
-			hover: '#c7921c',
-			playerOne: '#d86135',
-			playerOneGlow: '#ff8a54',
-			playerTwo: '#267bb5',
-			playerTwoGlow: '#54b4f6',
-			preview: '#ba8219'
+			background: '#e9ece2',
+			fog: '#cdd8cf',
+			grid: '#4e746e',
+			gridEmissive: '#77b9ad',
+			hover: '#9a7827',
+			playerOne: '#b87043',
+			playerOneGlow: '#d08b57',
+			playerTwo: '#3d7491',
+			playerTwoGlow: '#6299b4',
+			preview: '#8d6f24'
 		}
 	},
 	void: {
@@ -67,16 +67,16 @@ export const SCENE_THEMES: Record<SceneThemeName, Record<UiThemeName, ScenePalet
 			preview: '#c7b7ff'
 		},
 		light: {
-			background: '#f8f5ff',
-			fog: '#e7e0f8',
-			grid: '#6452a6',
-			gridEmissive: '#b19cff',
-			hover: '#735ad6',
-			playerOne: '#c64a6b',
-			playerOneGlow: '#ff7396',
-			playerTwo: '#158a75',
-			playerTwoGlow: '#34d6b8',
-			preview: '#735ad6'
+			background: '#ebe8e4',
+			fog: '#d5d0d6',
+			grid: '#625b78',
+			gridEmissive: '#9587bd',
+			hover: '#6f5ba6',
+			playerOne: '#aa5e6d',
+			playerOneGlow: '#cc7587',
+			playerTwo: '#347c72',
+			playerTwoGlow: '#5aa79b',
+			preview: '#6f5ba6'
 		}
 	},
 	frost: {
@@ -93,16 +93,16 @@ export const SCENE_THEMES: Record<SceneThemeName, Record<UiThemeName, ScenePalet
 			preview: '#8fe8ff'
 		},
 		light: {
-			background: '#f2fbff',
-			fog: '#d9eef6',
-			grid: '#2d7084',
-			gridEmissive: '#9befff',
-			hover: '#167e9b',
-			playerOne: '#b85f25',
-			playerOneGlow: '#ff994d',
-			playerTwo: '#405fbd',
-			playerTwoGlow: '#7a97ff',
-			preview: '#167e9b'
+			background: '#e6ede8',
+			fog: '#cbdcd4',
+			grid: '#426f76',
+			gridEmissive: '#76b8c2',
+			hover: '#2f7f8a',
+			playerOne: '#aa7042',
+			playerOneGlow: '#cf9160',
+			playerTwo: '#536d9f',
+			playerTwoGlow: '#7488bc',
+			preview: '#2f7f8a'
 		}
 	}
 };

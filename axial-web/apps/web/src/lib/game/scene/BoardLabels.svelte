@@ -97,8 +97,8 @@
 	let cameraLocalX = $state(1);
 	let cameraLocalZ = $state(1);
 	const labelColor = $derived(uiTheme === 'dark' ? '#dcecff' : palette.grid);
-	const fillOpacity = $derived(uiTheme === 'dark' ? 0.46 : 0.38);
-	const outlineOpacity = $derived(uiTheme === 'dark' ? 0.32 : 0.16);
+	const fillOpacity = $derived(uiTheme === 'dark' ? 0.46 : 0.5);
+	const outlineOpacity = $derived(uiTheme === 'dark' ? 0.32 : 0.18);
 	const labelMaterial = new MeshBasicMaterial({
 		depthTest: false,
 		depthWrite: false,

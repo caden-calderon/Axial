@@ -17,13 +17,15 @@
 		boardRotation,
 		boardScale,
 		onHover,
-		onPlay
+		onPlay,
+		isMovePlayable
 	}: {
 		game: GameSnapshot;
 		boardRotation: number;
 		boardScale: number;
 		onHover: (move: Move | null) => void;
 		onPlay: (move: Move) => void;
+		isMovePlayable?: (move: Move) => boolean;
 	} = $props();
 
 	const { camera, canvas, dom } = useThrelte();
@@ -85,6 +87,8 @@
 		let bestScore = Number.POSITIVE_INFINITY;
 
 		for (const column of columns) {
+			if (isMovePlayable && !isMovePlayable(column)) continue;
+
 			const dropHeight = getDropHeight(game.board, column);
 			if (dropHeight < 0) continue;
 

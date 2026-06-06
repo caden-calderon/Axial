@@ -2,13 +2,21 @@
 	import { onMount } from 'svelte';
 	import { T } from '@threlte/core';
 	import { OrbitControls } from '@threlte/extras';
-	import { getDropHeight, type GameSnapshot, type Move } from '@axial/core';
+	import {
+		getDropHeight,
+		isLegalDoubleAdjacentMove,
+		type GameSnapshot,
+		type Move,
+		type PlacedMove
+	} from '@axial/core';
 	import GamePiece from './GamePiece.svelte';
 	import DropPreview from './DropPreview.svelte';
 	import BoardGrid from './BoardGrid.svelte';
 	import BoardLabels from './BoardLabels.svelte';
 	import ColumnPicker from './ColumnPicker.svelte';
 	import { type Vec3 } from './geometry';
+	import type { PlacementMode } from '../state/gameController.svelte';
+	import type { PieceColors, PieceShape } from '../state/pieceAppearance';
 	import { SCENE_THEMES, type SceneThemeName, type UiThemeName } from '../theming/sceneThemes';
 
 	let {
@@ -17,6 +25,10 @@
 		labelsVisible,
 		uiTheme,
 		sceneTheme,
+		pieceShape,
+		pieceColors,
+		placementMode,
+		doubleAdjacentAnchor,
 		onHover,
 		onPlay
 	}: {
@@ -25,12 +37,25 @@
 		labelsVisible: boolean;
 		uiTheme: UiThemeName;
 		sceneTheme: SceneThemeName;
+		pieceShape: PieceShape;
+		pieceColors: PieceColors;
+		placementMode: PlacementMode;
+		doubleAdjacentAnchor: PlacedMove | null;
 		onHover: (move: Move | null) => void;
 		onPlay: (move: Move) => void;
 	} = $props();
 
 	const palette = $derived(SCENE_THEMES[sceneTheme][uiTheme]);
-	const previewHeight = $derived(hoveredMove ? getDropHeight(game.board, hoveredMove) : -1);
+	const previewColor = $derived(
+		placementMode === 'blocker'
+			? '#60756f'
+			: game.currentPlayer === 1
+				? pieceColors.playerOne
+				: pieceColors.playerTwo
+	);
+	const previewHeight = $derived(
+		hoveredMove && isMovePlayable(hoveredMove) ? getDropHeight(game.board, hoveredMove) : -1
+	);
 	let isCompact = $state(false);
 	const cameraPosition: Vec3 = $derived(isCompact ? [8.8, 8.4, 18] : [5.8, 5.7, 9.4]);
 	const cameraFov = $derived(isCompact ? 46 : 42);
@@ -48,6 +73,14 @@
 
 		return () => window.removeEventListener('resize', updateViewport);
 	});
+
+	function isMovePlayable(move: Move): boolean {
+		return (
+			placementMode !== 'double-adjacent' ||
+			(doubleAdjacentAnchor !== null &&
+				isLegalDoubleAdjacentMove(game.board, move, doubleAdjacentAnchor))
+		);
+	}
 </script>
 
 <T.Color attach="background" args={[palette.background]} />
@@ -67,7 +100,7 @@
 	/>
 </T.PerspectiveCamera>
 
-<ColumnPicker {game} {boardRotation} {boardScale} {onHover} {onPlay} />
+<ColumnPicker {game} {boardRotation} {boardScale} {onHover} {onPlay} {isMovePlayable} />
 
 <T.AmbientLight intensity={uiTheme === 'dark' ? 0.62 : 0.92} />
 <T.HemisphereLight args={[palette.grid, palette.background, uiTheme === 'dark' ? 1.55 : 1.2]} />
@@ -91,10 +124,16 @@
 	{/if}
 
 	{#if hoveredMove && previewHeight >= 0 && game.status.state === 'playing'}
-		<DropPreview move={hoveredMove} height={previewHeight} {palette} />
+		<DropPreview
+			move={hoveredMove}
+			height={previewHeight}
+			{pieceShape}
+			color={previewColor}
+			kind={placementMode}
+		/>
 	{/if}
 
 	{#each game.moveHistory as move, index (`${index}-${move.row}-${move.col}-${move.height}`)}
-		<GamePiece {move} moveIndex={index} {palette} />
+		<GamePiece {move} moveIndex={index} {pieceShape} {pieceColors} />
 	{/each}
 </T.Group>

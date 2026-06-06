@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { Canvas } from '@threlte/core';
-	import type { GameSnapshot, Move } from '@axial/core';
+	import type { GameSnapshot, Move, PlacedMove } from '@axial/core';
+	import type { PlacementMode } from '../state/gameController.svelte';
+	import type { PieceColors, PieceShape } from '../state/pieceAppearance';
 	import type { SceneThemeName, UiThemeName } from '../theming/sceneThemes';
 	import AxialWorld from './AxialWorld.svelte';
 
@@ -10,6 +12,10 @@
 		labelsVisible,
 		uiTheme,
 		sceneTheme,
+		pieceShape,
+		pieceColors,
+		placementMode,
+		doubleAdjacentAnchor,
 		onHover,
 		onPlay
 	}: {
@@ -18,6 +24,10 @@
 		labelsVisible: boolean;
 		uiTheme: UiThemeName;
 		sceneTheme: SceneThemeName;
+		pieceShape: PieceShape;
+		pieceColors: PieceColors;
+		placementMode: PlacementMode;
+		doubleAdjacentAnchor: PlacedMove | null;
 		onHover: (move: Move | null) => void;
 		onPlay: (move: Move) => void;
 	} = $props();
@@ -25,7 +35,19 @@
 
 <div class="scene-shell">
 	<Canvas dpr={[1, 2]} shadows={false}>
-		<AxialWorld {game} {hoveredMove} {labelsVisible} {uiTheme} {sceneTheme} {onHover} {onPlay} />
+		<AxialWorld
+			{game}
+			{hoveredMove}
+			{labelsVisible}
+			{uiTheme}
+			{sceneTheme}
+			{pieceShape}
+			{pieceColors}
+			{placementMode}
+			{doubleAdjacentAnchor}
+			{onHover}
+			{onPlay}
+		/>
 	</Canvas>
 </div>
 

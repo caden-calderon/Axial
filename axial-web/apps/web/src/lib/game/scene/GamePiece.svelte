@@ -4,13 +4,23 @@
 	import { AdditiveBlending } from 'three';
 	import type { PlacedMove } from '@axial/core';
 	import { cellPosition, DROP_START_Y, PIECE_SIZE } from './geometry';
-	import type { ScenePalette } from '../theming/sceneThemes';
+	import type { PieceColors, PieceShape } from '../state/pieceAppearance';
 
-	let { move, moveIndex, palette }: { move: PlacedMove; moveIndex: number; palette: ScenePalette } =
-		$props();
+	let {
+		move,
+		moveIndex,
+		pieceShape,
+		pieceColors
+	}: {
+		move: PlacedMove;
+		moveIndex: number;
+		pieceShape: PieceShape;
+		pieceColors: PieceColors;
+	} = $props();
 
 	const target = $derived(cellPosition(move.height, move.row, move.col));
 	const dropDuration = $derived(createDropDuration(move, moveIndex));
+	const isBlocker = $derived(move.kind === 'blocker');
 	let y = $state(DROP_START_Y);
 	let scale = $state(0.94);
 	let opacity = $state(0);
@@ -18,10 +28,13 @@
 	let settled = $state(false);
 	let elapsed = 0;
 
-	const color = $derived(move.player === 1 ? palette.playerOne : palette.playerTwo);
-	const glow = $derived(move.player === 1 ? palette.playerOneGlow : palette.playerTwoGlow);
-	const materialOpacity = $derived(settled ? 0.86 : 0.76);
-	const glowOpacity = $derived(settled ? 0.2 : 0.28);
+	const color = $derived(
+		isBlocker ? '#5f726b' : move.player === 1 ? pieceColors.playerOne : pieceColors.playerTwo
+	);
+	const glow = $derived(isBlocker ? '#8fb9ad' : color);
+	const renderShape = $derived(isBlocker ? 'cube' : pieceShape);
+	const materialOpacity = $derived(isBlocker ? (settled ? 0.68 : 0.58) : settled ? 0.86 : 0.76);
+	const glowOpacity = $derived(isBlocker ? (settled ? 0.1 : 0.16) : settled ? 0.2 : 0.28);
 	const piecePosition = $derived([target[0], y, target[2]] as [number, number, number]);
 
 	useTask((delta) => {
@@ -88,18 +101,28 @@
 	</T.Mesh>
 
 	<T.Mesh>
-		<RoundedBoxGeometry args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE]} radius={0.07} smoothness={4} />
+		{#if renderShape === 'cube'}
+			<RoundedBoxGeometry
+				args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE]}
+				radius={0.07}
+				smoothness={4}
+			/>
+		{:else if renderShape === 'orb'}
+			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 36, 22]} />
+		{:else}
+			<T.OctahedronGeometry args={[PIECE_SIZE * 0.78, 1]} />
+		{/if}
 		<T.MeshPhysicalMaterial
 			{color}
 			emissive={glow}
-			emissiveIntensity={settled ? 0.18 : 0.4}
-			roughness={0.08}
-			metalness={0.06}
-			clearcoat={1}
-			clearcoatRoughness={0.035}
-			ior={1.55}
-			transmission={0.18}
-			thickness={0.32}
+			emissiveIntensity={isBlocker ? (settled ? 0.08 : 0.2) : settled ? 0.18 : 0.4}
+			roughness={isBlocker ? 0.24 : 0.08}
+			metalness={isBlocker ? 0.12 : 0.06}
+			clearcoat={isBlocker ? 0.72 : 1}
+			clearcoatRoughness={isBlocker ? 0.18 : 0.035}
+			ior={isBlocker ? 1.42 : 1.55}
+			transmission={isBlocker ? 0.08 : 0.18}
+			thickness={isBlocker ? 0.18 : 0.32}
 			specularIntensity={1}
 			transparent
 			opacity={opacity * materialOpacity}
@@ -107,7 +130,17 @@
 	</T.Mesh>
 
 	<T.Mesh scale={0.58}>
-		<RoundedBoxGeometry args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE]} radius={0.04} smoothness={2} />
+		{#if renderShape === 'cube'}
+			<RoundedBoxGeometry
+				args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE]}
+				radius={0.04}
+				smoothness={2}
+			/>
+		{:else if renderShape === 'orb'}
+			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 24, 16]} />
+		{:else}
+			<T.OctahedronGeometry args={[PIECE_SIZE * 0.8, 0]} />
+		{/if}
 		<T.MeshBasicMaterial
 			color={glow}
 			transparent
@@ -118,11 +151,17 @@
 	</T.Mesh>
 
 	<T.Mesh>
-		<RoundedBoxGeometry
-			args={[PIECE_SIZE * 1.012, PIECE_SIZE * 1.012, PIECE_SIZE * 1.012]}
-			radius={0.075}
-			smoothness={4}
-		/>
+		{#if renderShape === 'cube'}
+			<RoundedBoxGeometry
+				args={[PIECE_SIZE * 1.012, PIECE_SIZE * 1.012, PIECE_SIZE * 1.012]}
+				radius={0.075}
+				smoothness={4}
+			/>
+		{:else if renderShape === 'orb'}
+			<T.SphereGeometry args={[PIECE_SIZE * 0.59, 28, 16]} />
+		{:else}
+			<T.OctahedronGeometry args={[PIECE_SIZE * 0.79, 1]} />
+		{/if}
 		<T.MeshBasicMaterial
 			color="#ffffff"
 			transparent
