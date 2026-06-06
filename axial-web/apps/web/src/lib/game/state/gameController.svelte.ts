@@ -1,14 +1,17 @@
 import { browser } from '$app/environment';
-import { chooseRandomMove } from '@axial/ai';
+import { chooseMctsMove, chooseRandomMove } from '@axial/ai';
 import {
+	DEFAULT_WIN_CONDITION,
 	MATCH_CONFIGS,
 	applyBlocker,
 	applyDoubleAdjacentFirst,
 	applyDoubleAdjacentSecond,
 	applyMove,
+	cloneGame,
 	createGame,
 	getPendingDoubleAdjacentOrigin,
 	legalMoves,
+	normalizeWinCondition,
 	replayMoves,
 	type GameSnapshot,
 	type MatchMode,
@@ -16,7 +19,8 @@ import {
 	type Player,
 	type PlacedMove,
 	type ReplayMove,
-	type TacticalSpecialId
+	type TacticalSpecialId,
+	type WinCondition
 } from '@axial/core';
 import { SCENE_THEME_OPTIONS, type SceneThemeName, type UiThemeName } from '../theming/sceneThemes';
 import {
@@ -26,6 +30,7 @@ import {
 	type PieceColors,
 	type PieceShape
 } from './pieceAppearance';
+import { createClassicAiClient, type ClassicAiClient } from './classicAiClient';
 import { createSessionRecord, recordCompletedGame, type SessionRecord } from './sessionRecord';
 
 const STORAGE_KEYS = {
@@ -33,13 +38,47 @@ const STORAGE_KEYS = {
 	sceneTheme: 'axial-scene-theme',
 	labelsVisible: 'axial-axis-labels',
 	opponentMode: 'axial-opponent-mode',
+	aiDifficulty: 'axial-ai-difficulty',
 	matchMode: 'axial-match-mode',
+	winLineLength: 'axial-win-line-length',
+	linesToWin: 'axial-lines-to-win',
 	pieceShape: 'axial-piece-shape',
 	playerOneColor: 'axial-piece-player-one',
 	playerTwoColor: 'axial-piece-player-two'
 } as const;
 
 export type OpponentMode = 'local' | 'ai';
+export type AiDifficulty = 'easy' | 'medium' | 'hard' | 'nightmare';
+
+export const WIN_LINE_LENGTH_OPTIONS: readonly {
+	value: number;
+	label: string;
+	shortLabel: string;
+}[] = [
+	{ value: 4, label: 'Connect 4', shortLabel: '4' },
+	{ value: 5, label: 'Connect 5', shortLabel: '5' }
+];
+
+export const LINES_TO_WIN_OPTIONS: readonly {
+	value: number;
+	label: string;
+	shortLabel: string;
+}[] = [
+	{ value: 1, label: '1 line', shortLabel: '1' },
+	{ value: 2, label: '2 lines', shortLabel: '2' },
+	{ value: 3, label: '3 lines', shortLabel: '3' }
+];
+
+export const AI_DIFFICULTY_OPTIONS: readonly {
+	value: AiDifficulty;
+	label: string;
+	shortLabel: string;
+}[] = [
+	{ value: 'easy', label: 'Easy', shortLabel: 'Easy' },
+	{ value: 'medium', label: 'Medium', shortLabel: 'Med' },
+	{ value: 'hard', label: 'Hard', shortLabel: 'Hard' },
+	{ value: 'nightmare', label: 'Nightmare', shortLabel: 'Max' }
+];
 
 const LOCAL_TURN_LABELS: Record<Player, string> = {
 	1: "Player 1's turn",
@@ -62,6 +101,40 @@ const AI_RESULT_LABELS: Record<Player, string> = {
 };
 
 const AI_MOVE_DELAY_MS = 520;
+const CLASSIC_AI_SEARCH_PRESETS = {
+	easy: {
+		simulations: 16,
+		maxTimeMs: 70,
+		smartRolloutRate: 0.45,
+		earlyExitVisits: 12,
+		earlyExitRatio: 0.92,
+		useRave: false
+	},
+	medium: {
+		simulations: 48,
+		maxTimeMs: 140,
+		smartRolloutRate: 0.58,
+		earlyExitVisits: 28,
+		earlyExitRatio: 0.9,
+		useRave: true
+	},
+	hard: {
+		simulations: 96,
+		maxTimeMs: 220,
+		smartRolloutRate: 0.68,
+		earlyExitVisits: 48,
+		earlyExitRatio: 0.9,
+		useRave: true
+	},
+	nightmare: {
+		simulations: 288,
+		maxTimeMs: 900,
+		smartRolloutRate: 0.78,
+		earlyExitVisits: 120,
+		earlyExitRatio: 0.88,
+		useRave: true
+	}
+} as const satisfies Record<AiDifficulty, object>;
 
 type MoveSource = 'human' | 'ai';
 export type PlacementMode = 'piece' | 'blocker' | 'double-adjacent';
@@ -75,12 +148,14 @@ export const TACTICAL_SPECIAL_LOADOUT: TacticalSpecialCounts = {
 export type GameController = ReturnType<typeof createGameController>;
 
 export function createGameController() {
-	let game = $state<GameSnapshot>(createGame());
+	let winCondition = $state<WinCondition>({ ...DEFAULT_WIN_CONDITION });
+	let game = $state<GameSnapshot>(createGame(DEFAULT_WIN_CONDITION));
 	let hoveredMove = $state<Move | null>(null);
 	let uiTheme = $state<UiThemeName>('dark');
 	let sceneTheme = $state<SceneThemeName>('prism');
 	let labelsVisible = $state(true);
 	let opponentMode = $state<OpponentMode>('local');
+	let aiDifficulty = $state<AiDifficulty>('hard');
 	let matchMode = $state<MatchMode>('classic');
 	let pieceShape = $state<PieceShape>('cube');
 	let pieceColors = $state<PieceColors>({ ...DEFAULT_PIECE_COLORS });
@@ -91,6 +166,8 @@ export function createGameController() {
 	let selectedSpecial = $state<TacticalSpecialId | null>(null);
 	let aiThinking = $state(false);
 	let aiMoveTimeout: ReturnType<typeof setTimeout> | null = null;
+	let aiSearchRequestId = 0;
+	let classicAiClient: ClassicAiClient | null = null;
 	let matchId = 0;
 	let recordedMatchId: number | null = null;
 
@@ -186,14 +263,24 @@ export function createGameController() {
 		const savedSceneTheme = parseSceneTheme(localStorage.getItem(STORAGE_KEYS.sceneTheme));
 		const savedLabelsVisible = parseBoolean(localStorage.getItem(STORAGE_KEYS.labelsVisible));
 		const savedOpponentMode = parseOpponentMode(localStorage.getItem(STORAGE_KEYS.opponentMode));
+		const savedAiDifficulty = parseAiDifficulty(localStorage.getItem(STORAGE_KEYS.aiDifficulty));
 		const savedMatchMode = parseMatchMode(localStorage.getItem(STORAGE_KEYS.matchMode));
+		const savedWinCondition = parseWinCondition(
+			localStorage.getItem(STORAGE_KEYS.winLineLength),
+			localStorage.getItem(STORAGE_KEYS.linesToWin)
+		);
 		const savedPieceShape = parsePieceShape(localStorage.getItem(STORAGE_KEYS.pieceShape));
 
 		if (savedUiTheme) uiTheme = savedUiTheme;
 		if (savedSceneTheme) sceneTheme = savedSceneTheme;
 		if (savedLabelsVisible !== null) labelsVisible = savedLabelsVisible;
 		if (savedOpponentMode) opponentMode = savedOpponentMode;
+		if (savedAiDifficulty) aiDifficulty = savedAiDifficulty;
 		if (savedMatchMode) matchMode = savedMatchMode;
+		if (savedWinCondition) {
+			winCondition = savedWinCondition;
+			game = createGame(winCondition);
+		}
 		if (savedPieceShape) pieceShape = savedPieceShape;
 
 		pieceColors = {
@@ -282,7 +369,7 @@ export function createGameController() {
 		clearQueuedAiMove();
 		matchId += 1;
 		recordedMatchId = null;
-		game = createGame();
+		game = createGame(winCondition);
 		hoveredMove = null;
 		moveError = '';
 		redoMoves = [];
@@ -297,7 +384,7 @@ export function createGameController() {
 		clearQueuedAiMove();
 		const previousMoves = game.moveHistory.slice(0, -1).map(toMove);
 		redoMoves = [toMove(lastMove), ...redoMoves];
-		game = replayMoves(previousMoves);
+		game = replayMoves(previousMoves, winCondition);
 		hoveredMove = null;
 		moveError = '';
 		selectedSpecial = null;
@@ -312,7 +399,7 @@ export function createGameController() {
 		moveError = '';
 
 		try {
-			game = replayMoves([...game.moveHistory.map(toMove), nextMove]);
+			game = replayMoves([...game.moveHistory.map(toMove), nextMove], winCondition);
 			redoMoves = remainingMoves;
 			hoveredMove = null;
 			selectedSpecial = null;
@@ -328,7 +415,7 @@ export function createGameController() {
 
 		clearQueuedAiMove();
 		redoMoves = [...game.moveHistory.map(toMove), ...redoMoves];
-		game = createGame();
+		game = createGame(winCondition);
 		hoveredMove = null;
 		moveError = '';
 		selectedSpecial = null;
@@ -361,6 +448,18 @@ export function createGameController() {
 		queueAiMove();
 	}
 
+	function setAiDifficulty(nextDifficulty: AiDifficulty): void {
+		if (setupLocked) {
+			moveError = 'Start a new match to change AI strength';
+			return;
+		}
+
+		clearQueuedAiMove();
+		aiDifficulty = nextDifficulty;
+		persist(STORAGE_KEYS.aiDifficulty, nextDifficulty);
+		queueAiMove();
+	}
+
 	function setMatchMode(nextMode: MatchMode): void {
 		if (matchMode === nextMode) return;
 
@@ -372,6 +471,38 @@ export function createGameController() {
 		matchMode = nextMode;
 		persist(STORAGE_KEYS.matchMode, nextMode);
 		resetGame();
+	}
+
+	function setWinLineLength(lineLength: number): void {
+		setWinCondition({ ...winCondition, lineLength });
+	}
+
+	function setLinesToWin(linesToWin: number): void {
+		setWinCondition({ ...winCondition, linesToWin });
+	}
+
+	function setWinCondition(nextWinCondition: WinCondition): void {
+		if (setupLocked) {
+			moveError = 'Start a new match to change win rules';
+			return;
+		}
+
+		let normalized: WinCondition;
+		try {
+			normalized = normalizeWinCondition(nextWinCondition);
+		} catch (error) {
+			moveError = error instanceof Error ? error.message : 'Unsupported win condition';
+			return;
+		}
+
+		clearQueuedAiMove();
+		winCondition = normalized;
+		game = createGame(winCondition);
+		redoMoves = [];
+		selectedSpecial = null;
+		gameOverDismissed = false;
+		persist(STORAGE_KEYS.winLineLength, String(winCondition.lineLength));
+		persist(STORAGE_KEYS.linesToWin, String(winCondition.linesToWin));
 	}
 
 	function toggleBlockerCombo(): void {
@@ -488,30 +619,70 @@ export function createGameController() {
 
 		clearQueuedAiMove();
 		aiThinking = true;
+		const requestId = aiSearchRequestId;
 		aiMoveTimeout = setTimeout(() => {
 			aiMoveTimeout = null;
-
-			if (opponentMode !== 'ai' || game.status.state !== 'playing' || game.currentPlayer !== 2) {
-				aiThinking = false;
-				return;
-			}
-
-			const move = chooseRandomMove(game);
-			if (move) {
-				playMove(move, 'ai');
-			}
-
-			aiThinking = false;
+			void runQueuedAiMove(requestId);
 		}, AI_MOVE_DELAY_MS);
 	}
 
+	async function runQueuedAiMove(requestId: number): Promise<void> {
+		if (!isCurrentAiTurn(requestId)) {
+			aiThinking = false;
+			return;
+		}
+
+		const requestGame = cloneGame(game);
+		const requestMode = matchMode;
+		const requestMatchId = matchId;
+		const requestDifficulty = aiDifficulty;
+
+		try {
+			const move = await chooseAiMove(
+				requestGame,
+				requestMode,
+				requestMatchId,
+				requestDifficulty,
+				getClassicAiClient
+			);
+			if (move && isCurrentAiTurn(requestId) && matchId === requestMatchId) {
+				playMove(move, 'ai');
+			}
+		} catch (error) {
+			if (!isAbortError(error) && isCurrentAiTurn(requestId)) {
+				const move = chooseRandomMove(game);
+				if (move) playMove(move, 'ai');
+			}
+		} finally {
+			if (requestId === aiSearchRequestId) {
+				aiThinking = false;
+			}
+		}
+	}
+
 	function clearQueuedAiMove(): void {
+		aiSearchRequestId += 1;
 		if (aiMoveTimeout) {
 			clearTimeout(aiMoveTimeout);
 			aiMoveTimeout = null;
 		}
 
+		classicAiClient?.cancelPending();
 		aiThinking = false;
+	}
+
+	function getClassicAiClient(): ClassicAiClient {
+		classicAiClient ??= createClassicAiClient();
+		return classicAiClient;
+	}
+
+	function isCurrentAiTurn(requestId: number): boolean {
+		return (
+			requestId === aiSearchRequestId &&
+			opponentMode === 'ai' &&
+			game.status.state === 'playing' &&
+			game.currentPlayer === 2
+		);
 	}
 
 	return {
@@ -572,11 +743,17 @@ export function createGameController() {
 		get matchMode() {
 			return matchMode;
 		},
+		get winCondition() {
+			return winCondition;
+		},
 		get moveError() {
 			return moveError;
 		},
 		get opponentMode() {
 			return opponentMode;
+		},
+		get aiDifficulty() {
+			return aiDifficulty;
 		},
 		get placementMode() {
 			return placementMode;
@@ -630,11 +807,14 @@ export function createGameController() {
 		resetGame,
 		rewindGame,
 		setHover,
+		setAiDifficulty,
+		setLinesToWin,
 		setMatchMode,
 		setOpponentMode,
 		setPieceColor,
 		setPieceShape,
 		setSceneTheme,
+		setWinLineLength,
 		toggleLabels,
 		toggleBlockerCombo,
 		toggleDoubleAdjacent,
@@ -661,6 +841,88 @@ function parseBoolean(value: string | null): boolean | null {
 
 function parseOpponentMode(value: string | null): OpponentMode | null {
 	return value === 'local' || value === 'ai' ? value : null;
+}
+
+function parseAiDifficulty(value: string | null): AiDifficulty | null {
+	return AI_DIFFICULTY_OPTIONS.some((option) => option.value === value)
+		? (value as AiDifficulty)
+		: null;
+}
+
+function parseWinCondition(
+	lineLengthValue: string | null,
+	linesToWinValue: string | null
+): WinCondition | null {
+	if (lineLengthValue === null && linesToWinValue === null) return null;
+
+	const lineLength =
+		lineLengthValue === null ? DEFAULT_WIN_CONDITION.lineLength : Number(lineLengthValue);
+	const linesToWin =
+		linesToWinValue === null ? DEFAULT_WIN_CONDITION.linesToWin : Number(linesToWinValue);
+
+	try {
+		return normalizeWinCondition({ lineLength, linesToWin });
+	} catch {
+		return null;
+	}
+}
+
+async function chooseAiMove(
+	game: GameSnapshot,
+	matchMode: MatchMode,
+	matchId: number,
+	aiDifficulty: AiDifficulty,
+	getClassicAiClient: () => ClassicAiClient
+): Promise<Move | null> {
+	if (matchMode !== 'classic') return chooseRandomMove(game);
+
+	const options = {
+		...classicAiSearchOptionsForGame(aiDifficulty, game),
+		seed: aiSeedForGame(game, matchId)
+	};
+
+	try {
+		return (await getClassicAiClient().requestMove(game, options))?.move ?? chooseRandomMove(game);
+	} catch (error) {
+		if (isAbortError(error)) throw error;
+		return chooseMctsMove(game, options) ?? chooseRandomMove(game);
+	}
+}
+
+function classicAiSearchOptionsForGame(aiDifficulty: AiDifficulty, game: GameSnapshot) {
+	const preset = CLASSIC_AI_SEARCH_PRESETS[aiDifficulty];
+	const multiplier =
+		1 +
+		(game.winCondition.linesToWin - 1) * 0.34 +
+		(game.winCondition.lineLength - DEFAULT_WIN_CONDITION.lineLength) * 0.16;
+
+	return {
+		...preset,
+		simulations: Math.round(preset.simulations * multiplier),
+		maxTimeMs: Math.round(preset.maxTimeMs * multiplier),
+		earlyExitVisits: Math.round(preset.earlyExitVisits * Math.min(multiplier, 1.45))
+	};
+}
+
+function aiSeedForGame(game: GameSnapshot, matchId: number): number {
+	let hash = (0x811c9dc5 ^ matchId) >>> 0;
+
+	for (const move of game.moveHistory) {
+		hash ^= move.row + 1;
+		hash = Math.imul(hash, 0x01000193);
+		hash ^= (move.col + 1) << 8;
+		hash = Math.imul(hash, 0x01000193);
+		hash ^= (move.height + 1) << 16;
+		hash = Math.imul(hash, 0x01000193);
+		hash ^= move.player << 24;
+		hash = Math.imul(hash, 0x01000193);
+	}
+
+	return hash >>> 0;
+}
+
+function isAbortError(error: unknown): boolean {
+	return error instanceof Error && error.name === 'AbortError';
 }
 
 function parseMatchMode(value: string | null): MatchMode | null {

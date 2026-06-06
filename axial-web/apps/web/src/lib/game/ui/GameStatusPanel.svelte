@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { BOARD_COLUMNS, BOARD_HEIGHT, BOARD_ROWS, WIN_LENGTH, type Player } from '@axial/core';
+	import { BOARD_COLUMNS, BOARD_HEIGHT, BOARD_ROWS, type Player } from '@axial/core';
 	import {
 		Bot,
 		Box,
@@ -8,7 +8,6 @@
 		ChevronUp,
 		Circle,
 		CircleDot,
-		Clock3,
 		CopyPlus,
 		Gem,
 		Lock,
@@ -24,9 +23,16 @@
 		Undo2,
 		Users
 	} from '@lucide/svelte';
-	import type { MatchMode, TacticalSpecialId } from '@axial/core';
+	import type { MatchMode, TacticalSpecialId, WinCondition } from '@axial/core';
 	import { PIECE_SHAPE_OPTIONS, type PieceColors, type PieceShape } from '../state/pieceAppearance';
-	import type { OpponentMode, TacticalSpecialCounts } from '../state/gameController.svelte';
+	import {
+		AI_DIFFICULTY_OPTIONS,
+		LINES_TO_WIN_OPTIONS,
+		WIN_LINE_LENGTH_OPTIONS,
+		type AiDifficulty,
+		type OpponentMode,
+		type TacticalSpecialCounts
+	} from '../state/gameController.svelte';
 	import type { SessionRecord } from '../state/sessionRecord';
 	import type { SceneThemeName, UiThemeName } from '../theming/sceneThemes';
 	import SceneSelector from './SceneSelector.svelte';
@@ -39,7 +45,9 @@
 		uiTheme,
 		labelsVisible,
 		opponentMode,
+		aiDifficulty,
 		matchMode,
+		winCondition,
 		aiThinking,
 		pieceShape,
 		pieceColors,
@@ -61,7 +69,10 @@
 		onUndo,
 		onRedo,
 		onOpponentModeChange,
+		onAiDifficultyChange,
 		onMatchModeChange,
+		onWinLineLengthChange,
+		onLinesToWinChange,
 		onToggleBlockerCombo,
 		onToggleDoubleAdjacent,
 		onPieceShapeChange,
@@ -77,7 +88,9 @@
 		uiTheme: UiThemeName;
 		labelsVisible: boolean;
 		opponentMode: OpponentMode;
+		aiDifficulty: AiDifficulty;
 		matchMode: MatchMode;
+		winCondition: WinCondition;
 		aiThinking: boolean;
 		pieceShape: PieceShape;
 		pieceColors: PieceColors;
@@ -99,7 +112,10 @@
 		onUndo: () => void;
 		onRedo: () => void;
 		onOpponentModeChange: (mode: OpponentMode) => void;
+		onAiDifficultyChange: (difficulty: AiDifficulty) => void;
 		onMatchModeChange: (mode: MatchMode) => void;
+		onWinLineLengthChange: (lineLength: number) => void;
+		onLinesToWinChange: (linesToWin: number) => void;
 		onToggleBlockerCombo: () => void;
 		onToggleDoubleAdjacent: () => void;
 		onPieceShapeChange: (shape: PieceShape) => void;
@@ -355,6 +371,66 @@
 							</button>
 						</div>
 
+						<div class="rule-customizer" class:locked={setupLocked}>
+							<div class="rule-control">
+								<span>
+									<CircleDot size={13} strokeWidth={2} />
+									Connect
+								</span>
+								<div class="mode-switch connect-switch" role="group" aria-label="Connect length">
+									{#each WIN_LINE_LENGTH_OPTIONS as option (option.value)}
+										<button
+											type="button"
+											class:selected={winCondition.lineLength === option.value}
+											aria-pressed={winCondition.lineLength === option.value}
+											disabled={setupLocked}
+											title={setupLocked ? 'Start a new match to change win rules' : option.label}
+											onclick={() => onWinLineLengthChange(option.value)}
+										>
+											<span>{option.shortLabel}</span>
+										</button>
+									{/each}
+								</div>
+							</div>
+							<div class="rule-control">
+								<span>
+									<Trophy size={13} strokeWidth={2} />
+									Lines
+								</span>
+								<div class="mode-switch line-count-switch" role="group" aria-label="Lines to win">
+									{#each LINES_TO_WIN_OPTIONS as option (option.value)}
+										<button
+											type="button"
+											class:selected={winCondition.linesToWin === option.value}
+											aria-pressed={winCondition.linesToWin === option.value}
+											disabled={setupLocked}
+											title={setupLocked ? 'Start a new match to change win rules' : option.label}
+											onclick={() => onLinesToWinChange(option.value)}
+										>
+											<span>{option.shortLabel}</span>
+										</button>
+									{/each}
+								</div>
+							</div>
+						</div>
+
+						{#if opponentMode === 'ai'}
+							<div class="mode-switch difficulty-switch" role="group" aria-label="AI strength">
+								{#each AI_DIFFICULTY_OPTIONS as option (option.value)}
+									<button
+										type="button"
+										class:selected={aiDifficulty === option.value}
+										aria-pressed={aiDifficulty === option.value}
+										disabled={setupLocked}
+										title={setupLocked ? 'Start a new match to change AI strength' : option.label}
+										onclick={() => onAiDifficultyChange(option.value)}
+									>
+										<span>{option.shortLabel}</span>
+									</button>
+								{/each}
+							</div>
+						{/if}
+
 						<div class="setup-grid">
 							<div class="setup-stat">
 								<Boxes size={14} strokeWidth={2} />
@@ -363,13 +439,13 @@
 							</div>
 							<div class="setup-stat">
 								<CircleDot size={14} strokeWidth={2} />
-								<span>{WIN_LENGTH}</span>
+								<span>{winCondition.lineLength}</span>
 								<small>Connect</small>
 							</div>
 							<div class="setup-stat">
-								<Clock3 size={14} strokeWidth={2} />
-								<span>Off</span>
-								<small>Clock</small>
+								<Trophy size={14} strokeWidth={2} />
+								<span>{winCondition.linesToWin}</span>
+								<small>Lines</small>
 							</div>
 							<div class="setup-stat">
 								<Shield size={14} strokeWidth={2} />

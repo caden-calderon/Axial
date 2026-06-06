@@ -43,13 +43,23 @@ describe('game controller appearance lock', () => {
 	it('locks opponent and rules setup after the first placed piece', () => {
 		const controller = createGameController();
 
+		controller.setOpponentMode('ai');
+		controller.setAiDifficulty('nightmare');
 		controller.setMatchMode('tactical');
+		controller.setWinLineLength(5);
+		controller.setLinesToWin(2);
 		controller.playMove({ row: 0, col: 0 });
 		controller.setMatchMode('classic');
-		controller.setOpponentMode('ai');
+		controller.setOpponentMode('local');
+		controller.setAiDifficulty('easy');
+		controller.setWinLineLength(4);
+		controller.setLinesToWin(1);
 
 		expect(controller.matchMode).toBe('tactical');
-		expect(controller.opponentMode).toBe('local');
+		expect(controller.opponentMode).toBe('ai');
+		expect(controller.aiDifficulty).toBe('nightmare');
+		expect(controller.winCondition).toEqual({ lineLength: 5, linesToWin: 2 });
+		expect(controller.game.winCondition).toEqual({ lineLength: 5, linesToWin: 2 });
 		expect(controller.setupLocked).toBe(true);
 	});
 

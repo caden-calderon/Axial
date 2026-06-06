@@ -14,7 +14,13 @@ describe('session record', () => {
 
 	it('records player one wins', () => {
 		expect(
-			recordCompletedGame(createSessionRecord(), { state: 'won', winner: 1, line: [] })
+			recordCompletedGame(createSessionRecord(), {
+				state: 'won',
+				winner: 1,
+				line: [],
+				lines: [],
+				lineCount: 0
+			})
 		).toEqual({
 			playerOneWins: 1,
 			playerTwoWins: 0,
@@ -24,7 +30,13 @@ describe('session record', () => {
 
 	it('records player two wins', () => {
 		expect(
-			recordCompletedGame(createSessionRecord(), { state: 'won', winner: 2, line: [] })
+			recordCompletedGame(createSessionRecord(), {
+				state: 'won',
+				winner: 2,
+				line: [],
+				lines: [],
+				lineCount: 0
+			})
 		).toEqual({
 			playerOneWins: 0,
 			playerTwoWins: 1,

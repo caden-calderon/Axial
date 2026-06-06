@@ -10,12 +10,14 @@
 		move,
 		moveIndex,
 		pieceShape,
-		pieceColors
+		pieceColors,
+		highlighted = false
 	}: {
 		move: PlacedMove;
 		moveIndex: number;
 		pieceShape: PieceShape;
 		pieceColors: PieceColors;
+		highlighted?: boolean;
 	} = $props();
 
 	const target = $derived(cellPosition(move.height, move.row, move.col));
@@ -26,6 +28,7 @@
 	let opacity = $state(0);
 	let fallGlow = $state(1);
 	let settled = $state(false);
+	let highlightPhase = $state(0);
 	let elapsed = 0;
 
 	const color = $derived(
@@ -36,8 +39,18 @@
 	const materialOpacity = $derived(isBlocker ? (settled ? 0.68 : 0.58) : settled ? 0.86 : 0.76);
 	const glowOpacity = $derived(isBlocker ? (settled ? 0.1 : 0.16) : settled ? 0.2 : 0.28);
 	const piecePosition = $derived([target[0], y, target[2]] as [number, number, number]);
+	const highlightPulse = $derived(highlighted ? 0.68 + Math.sin(highlightPhase) * 0.24 : 0);
+	const highlightScale = $derived(1.18 + highlightPulse * 0.16);
+	const highlightOpacity = $derived(opacity * (highlighted ? 0.16 + highlightPulse * 0.22 : 0));
+	const highlightLight = $derived(highlighted ? 0.58 + highlightPulse * 0.52 : 0);
 
 	useTask((delta) => {
+		if (highlighted) {
+			highlightPhase += Math.min(delta, 0.05) * 3.4;
+		} else {
+			highlightPhase = 0;
+		}
+
 		if (settled) return;
 
 		elapsed += Math.min(delta, 0.04);
@@ -89,6 +102,10 @@
 </script>
 
 <T.Group position={piecePosition} {scale}>
+	{#if highlighted}
+		<T.PointLight color={glow} intensity={highlightLight} distance={2.3} decay={2} />
+	{/if}
+
 	<T.Mesh position={[0, PIECE_SIZE * 1.25, 0]}>
 		<T.CylinderGeometry args={[PIECE_SIZE * 0.12, PIECE_SIZE * 0.2, PIECE_SIZE * 1.9, 18]} />
 		<T.MeshBasicMaterial
@@ -99,6 +116,29 @@
 			blending={AdditiveBlending}
 		/>
 	</T.Mesh>
+
+	{#if highlighted}
+		<T.Mesh scale={highlightScale}>
+			{#if renderShape === 'cube'}
+				<RoundedBoxGeometry
+					args={[PIECE_SIZE * 1.02, PIECE_SIZE * 1.02, PIECE_SIZE * 1.02]}
+					radius={0.085}
+					smoothness={4}
+				/>
+			{:else if renderShape === 'orb'}
+				<T.SphereGeometry args={[PIECE_SIZE * 0.61, 32, 18]} />
+			{:else}
+				<T.OctahedronGeometry args={[PIECE_SIZE * 0.83, 1]} />
+			{/if}
+			<T.MeshBasicMaterial
+				color={glow}
+				transparent
+				opacity={highlightOpacity}
+				depthWrite={false}
+				blending={AdditiveBlending}
+			/>
+		</T.Mesh>
+	{/if}
 
 	<T.Mesh>
 		{#if renderShape === 'cube'}
@@ -196,4 +236,17 @@
 			blending={AdditiveBlending}
 		/>
 	</T.Mesh>
+
+	{#if highlighted}
+		<T.Mesh position={[0, -PIECE_SIZE * 0.56, 0]} rotation.x={-Math.PI / 2} scale={highlightScale}>
+			<T.RingGeometry args={[PIECE_SIZE * 0.58, PIECE_SIZE * 0.88, 64]} />
+			<T.MeshBasicMaterial
+				color={glow}
+				transparent
+				opacity={highlightOpacity * 0.72}
+				depthWrite={false}
+				blending={AdditiveBlending}
+			/>
+		</T.Mesh>
+	{/if}
 </T.Group>

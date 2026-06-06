@@ -2,6 +2,10 @@ export const BOARD_HEIGHT = 6;
 export const BOARD_ROWS = 6;
 export const BOARD_COLUMNS = 7;
 export const WIN_LENGTH = 4;
+export const MIN_WIN_LINE_LENGTH = 4;
+export const MAX_WIN_LINE_LENGTH = 5;
+export const MIN_LINES_TO_WIN = 1;
+export const MAX_LINES_TO_WIN = 3;
 export const CELL_COUNT = BOARD_HEIGHT * BOARD_ROWS * BOARD_COLUMNS;
 export const BLOCKER_CELL = 3;
 
@@ -14,9 +18,19 @@ export type MatchConfig = {
     rows: number;
     columns: number;
   };
-  winLength: number;
+  defaultWinCondition: WinCondition;
   specialPieceSlots: number;
 };
+
+export type WinCondition = {
+  lineLength: number;
+  linesToWin: number;
+};
+
+export const DEFAULT_WIN_CONDITION: WinCondition = Object.freeze({
+  lineLength: WIN_LENGTH,
+  linesToWin: MIN_LINES_TO_WIN,
+});
 
 export const MATCH_MODE_LABELS: Record<MatchMode, string> = {
   classic: "Classic",
@@ -31,7 +45,7 @@ export const MATCH_CONFIGS: Record<MatchMode, MatchConfig> = {
       rows: BOARD_ROWS,
       columns: BOARD_COLUMNS,
     },
-    winLength: WIN_LENGTH,
+    defaultWinCondition: DEFAULT_WIN_CONDITION,
     specialPieceSlots: 0,
   },
   tactical: {
@@ -41,7 +55,7 @@ export const MATCH_CONFIGS: Record<MatchMode, MatchConfig> = {
       rows: BOARD_ROWS,
       columns: BOARD_COLUMNS,
     },
-    winLength: WIN_LENGTH,
+    defaultWinCondition: DEFAULT_WIN_CONDITION,
     specialPieceSlots: 3,
   },
 };
@@ -72,12 +86,28 @@ export type PlacedMove = Move & {
 
 export type GameStatus =
   | { state: "playing"; currentPlayer: Player }
-  | { state: "won"; winner: Player; line: number[] }
+  | {
+      state: "won";
+      winner: Player;
+      line: number[];
+      lines: number[][];
+      lineCount: number;
+    }
   | { state: "draw" };
+
+export type CompletedLine = {
+  id: string;
+  player: Player;
+  cells: number[];
+  direction: readonly [number, number, number];
+  lineLength: number;
+};
 
 export type GameSnapshot = {
   board: Uint8Array;
   currentPlayer: Player;
+  winCondition: WinCondition;
+  completedLines: CompletedLine[];
   lastMove: PlacedMove | null;
   moveHistory: PlacedMove[];
   status: GameStatus;
@@ -115,18 +145,30 @@ type CellCoordinate = {
   col: number;
 };
 
-export function createGame(): GameSnapshot {
+export function createGame(
+  winCondition: WinCondition = DEFAULT_WIN_CONDITION,
+): GameSnapshot {
+  const normalizedWinCondition = normalizeWinCondition(winCondition);
+
   return {
     board: new Uint8Array(CELL_COUNT),
     currentPlayer: 1,
+    winCondition: normalizedWinCondition,
+    completedLines: [],
     lastMove: null,
     moveHistory: [],
     status: { state: "playing", currentPlayer: 1 },
   };
 }
 
-export function replayMoves(moves: readonly ReplayMove[]): GameSnapshot {
-  return moves.reduce((game, move) => applyReplayMove(game, move), createGame());
+export function replayMoves(
+  moves: readonly ReplayMove[],
+  winCondition: WinCondition = DEFAULT_WIN_CONDITION,
+): GameSnapshot {
+  return moves.reduce(
+    (game, move) => applyReplayMove(game, move),
+    createGame(winCondition),
+  );
 }
 
 export function applyReplayMove(
@@ -161,6 +203,8 @@ export function cloneGame(game: GameSnapshot): GameSnapshot {
   return {
     board: game.board.slice(),
     currentPlayer: game.currentPlayer,
+    winCondition: cloneWinCondition(game.winCondition),
+    completedLines: game.completedLines.map(cloneCompletedLine),
     lastMove: game.lastMove ? clonePlacedMove(game.lastMove) : null,
     moveHistory: game.moveHistory.map(clonePlacedMove),
     status: cloneStatus(game.status),
@@ -255,9 +299,22 @@ export function applyMove(
   next.lastMove = placed;
   next.moveHistory.push(placed);
 
-  const winLine = findWinningLine(next.board, placed);
-  if (winLine) {
-    next.status = { state: "won", winner: player, line: winLine };
+  next.completedLines = findCompletedLineSegments(
+    next.board,
+    next.winCondition,
+  );
+  const playerLines = next.completedLines.filter(
+    (line) => line.player === player,
+  );
+  if (playerLines.length >= next.winCondition.linesToWin) {
+    const winLines = playerLines.map((line) => line.cells);
+    next.status = {
+      state: "won",
+      winner: player,
+      line: mergeLineCells(winLines),
+      lines: winLines,
+      lineCount: winLines.length,
+    };
     return next;
   }
 
@@ -396,17 +453,112 @@ export function areCellsAdjacent(
 export function findWinningLine(
   board: Uint8Array,
   move: PlacedMove,
+  winCondition: WinCondition = DEFAULT_WIN_CONDITION,
 ): number[] | null {
   if (move.kind === "blocker") return null;
 
   for (const direction of DIRECTIONS) {
     const line = collectLine(board, move, direction);
-    if (line.length >= WIN_LENGTH) {
-      return line;
+    if (line.length >= winCondition.lineLength) {
+      const center = indexOf(move.height, move.row, move.col);
+      const centerOffset = line.indexOf(center);
+      const start = Math.max(
+        0,
+        Math.min(
+          centerOffset - winCondition.lineLength + 1,
+          line.length - winCondition.lineLength,
+        ),
+      );
+      return line.slice(start, start + winCondition.lineLength);
     }
   }
 
   return null;
+}
+
+export function findCompletedLines(
+  board: Uint8Array,
+  player: Player,
+  winCondition: WinCondition = DEFAULT_WIN_CONDITION,
+): number[][] {
+  return findCompletedLineSegments(board, winCondition, player).map((line) => [
+    ...line.cells,
+  ]);
+}
+
+export function findCompletedLineSegments(
+  board: Uint8Array,
+  winCondition: WinCondition = DEFAULT_WIN_CONDITION,
+  playerFilter?: Player,
+): CompletedLine[] {
+  const { lineLength } = normalizeWinCondition(winCondition);
+  const lines: CompletedLine[] = [];
+  const players: readonly Player[] = playerFilter ? [playerFilter] : [1, 2];
+
+  for (let height = 0; height < BOARD_HEIGHT; height += 1) {
+    for (let row = 0; row < BOARD_ROWS; row += 1) {
+      for (let col = 0; col < BOARD_COLUMNS; col += 1) {
+        for (const direction of DIRECTIONS) {
+          const [dh, dr, dc] = direction;
+
+          for (const player of players) {
+            if (
+              isInBounds(height - dh, row - dr, col - dc) &&
+              getCell(board, height - dh, row - dr, col - dc) === player
+            ) {
+              continue;
+            }
+
+            const cells: number[] = [];
+            let nextHeight = height;
+            let nextRow = row;
+            let nextCol = col;
+
+            while (
+              isInBounds(nextHeight, nextRow, nextCol) &&
+              getCell(board, nextHeight, nextRow, nextCol) === player
+            ) {
+              cells.push(indexOf(nextHeight, nextRow, nextCol));
+              nextHeight += dh;
+              nextRow += dr;
+              nextCol += dc;
+            }
+
+            if (cells.length >= lineLength) {
+              lines.push({
+                id: completedLineId(player, lineLength, cells),
+                player,
+                cells,
+                direction,
+                lineLength,
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return lines;
+}
+
+export function normalizeWinCondition(
+  winCondition: WinCondition,
+): WinCondition {
+  const lineLength = assertIntegerInRange(
+    winCondition.lineLength,
+    MIN_WIN_LINE_LENGTH,
+    MAX_WIN_LINE_LENGTH,
+    "Win line length",
+  );
+  const linesToWin = assertIntegerInRange(
+    winCondition.linesToWin,
+    MIN_LINES_TO_WIN,
+    MAX_LINES_TO_WIN,
+    "Lines to win",
+  );
+
+  return { lineLength, linesToWin };
 }
 
 export function otherPlayer(player: Player): Player {
@@ -453,7 +605,13 @@ function collectRay(
 
 function cloneStatus(status: GameStatus): GameStatus {
   if (status.state === "won") {
-    return { state: "won", winner: status.winner, line: [...status.line] };
+    return {
+      state: "won",
+      winner: status.winner,
+      line: [...status.line],
+      lines: status.lines.map((line) => [...line]),
+      lineCount: status.lineCount,
+    };
   }
 
   if (status.state === "playing") {
@@ -461,6 +619,48 @@ function cloneStatus(status: GameStatus): GameStatus {
   }
 
   return { state: "draw" };
+}
+
+function cloneWinCondition(winCondition: WinCondition): WinCondition {
+  return {
+    lineLength: winCondition.lineLength,
+    linesToWin: winCondition.linesToWin,
+  };
+}
+
+function cloneCompletedLine(line: CompletedLine): CompletedLine {
+  return {
+    id: line.id,
+    player: line.player,
+    cells: [...line.cells],
+    direction: line.direction,
+    lineLength: line.lineLength,
+  };
+}
+
+function completedLineId(
+  player: Player,
+  lineLength: number,
+  cells: readonly number[],
+): string {
+  return `${player}:${lineLength}:${cells.join("-")}`;
+}
+
+function mergeLineCells(lines: readonly (readonly number[])[]): number[] {
+  return [...new Set(lines.flat())];
+}
+
+function assertIntegerInRange(
+  value: number,
+  min: number,
+  max: number,
+  label: string,
+): number {
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new RangeError(`${label} must be an integer from ${min} to ${max}`);
+  }
+
+  return value;
 }
 
 function clonePlacedMove(move: PlacedMove): PlacedMove {

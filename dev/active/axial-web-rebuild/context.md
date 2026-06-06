@@ -4,12 +4,15 @@
 
 Axial is being rebuilt from the preserved Unity/Python project into a polished browser-native strategy game. The active app is `axial-web/apps/web`, using SvelteKit, TypeScript, pnpm, Three.js, and Threlte. The old Unity project remains in `axial-unity/`.
 
-Current priority: move from visual/UI polish into serious Classic-mode AI planning. Caden wants an AI opponent that can beat him as the benchmark. The next session should research and compare approaches before starting large implementation or training work. Tactical/special-piece AI remains deferred.
+Current priority: move from visual/UI polish into serious Classic-mode AI planning. Caden wants an AI opponent that can beat him as the benchmark. Tactical/special-piece AI remains deferred.
+
+Research and architecture notes for the Classic AI direction now live in `dev/active/axial-web-rebuild/classic-ai-research.md`.
 
 ## Game Facts
 
 - Board: 6 x 6 x 7, with 252 cells.
-- Objective: connect 4 horizontally, vertically, planar diagonally, or 3D diagonally.
+- Objective defaults to connect 4 horizontally, vertically, planar diagonally, or 3D diagonally.
+- Active web rules now support pre-match win-condition variants for both Classic and Tactical: connect 4 or connect 5, with 1, 2, or 3 completed lines required to win.
 - Legal moves: 42 surface columns `(row, col)`; gravity selects the first empty height.
 - Core index formula: `idx = h + r * D + c * D * R`.
 - Active web core lives in `axial-web/packages/core`.
@@ -26,6 +29,14 @@ The web app is playable and split into focused layers:
 - `src/lib/game/ui/`: HUD, status panel, game-over modal, scene selector.
 - `packages/ai`: pure TypeScript AI move selection helpers.
 
+Deployment state:
+
+- Caden bought `playaxial.dev` through Porkbun.
+- The app is being prepared for Cloudflare Pages using the explicit `@sveltejs/adapter-cloudflare` adapter.
+- Deployment notes and dashboard values live in `dev/active/axial-web-rebuild/deployment.md`.
+- Recommended DNS path is to keep Porkbun as registrar, add `playaxial.dev` to Cloudflare, then replace the Porkbun nameservers with Cloudflare's assigned nameservers so the apex domain can be attached cleanly to Pages.
+- Future live multiplayer should be a separate Cloudflare Worker plus Durable Objects room service, with the web app remaining the frontend and `@axial/core` validating server-side moves.
+
 Implemented gameplay/UX:
 
 - Playable 6 x 6 x 7 board with projected column picking.
@@ -36,8 +47,13 @@ Implemented gameplay/UX:
 - Collapsible top-right control panel with smooth downward expansion.
 - Expanded match console with Match, Appearance, and Session sections.
 - Session record tracks Player 1 wins, Player 2 wins, and draws once per completed match.
-- AI opponent mode is unlocked with a first-pass random legal-move opponent.
+- AI opponent mode is unlocked. Classic mode now uses a bounded TypeScript MCTS/search opponent in a Web Worker; Tactical mode still uses random normal moves because special-piece AI is deferred.
+- Classic AI has pre-match difficulty presets: Easy, Medium, Hard, and Max. Hard preserves the current default strength; Max uses a larger worker-only budget.
 - Match setup exposes `Classic` and `Tactical` modes and locks opponent/rules after the first placement.
+- Match setup exposes win-rule controls for connect length and completed lines needed; those settings are persisted and lock after the first placement.
+- The latest placed move gets a pulsing 3D glow so returning to the board makes the most recent placement easy to find.
+- Completed lines are now visible before the match ends. The core snapshot exposes stable completed-line IDs, and the scene renders each line with a draw-through animation, traveling glow bead, final pulse, and idle glowing marker.
+- Multi-line scoring counts maximal contiguous runs, not every overlapping length-N window. In connect-4 / 2-lines mode, five in a row is one completed line, while crossing or separate completed runs count separately.
 - Tactical mode now has two playable specials in a fixed three-piece kit per player: two Blocker Combos and one Double Adjacent.
 - Blocker Combo places a neutral gravity blocker first, then requires a regular piece in the same turn.
 - Double Adjacent places one owned gravity piece, then requires a second owned gravity piece whose final landing cell is adjacent in the 26-neighbor 3D sense.
@@ -59,8 +75,9 @@ Implemented gameplay/UX:
 - Light mode is warmer/desaturated, with stronger board-grid contrast and glow accents.
 - Axis labels behave as a readable overlay: bottom numbers on clockwise perimeter rails; X/Y fixed side candidates; Z fixed corner rail candidates; camera-based fades prevent duplicate clutter.
 - Expanded controls now behave like a match console: a compact live strip, local/AI mode surface, Classic/Tactical rules selector, current setup cards, live appearance controls, and a session record.
-- AI mode is represented in the Match section and currently uses a random legal-move opponent as the baseline behavior.
+- AI mode is represented in the Match section. Classic AI uses bounded worker-backed MCTS; Tactical AI is intentionally still a random normal-move baseline until Tactical search is designed.
 - Board dimensions, connect length, clock state, and Tactical kit counts are shown as current setup facts; match mode is editable only before the active match starts.
+- Board dimensions, connect length, target line count, and Tactical kit counts are shown as current setup facts; match mode and win condition are editable only before the active match starts.
 - Game-over actions are labeled by intent: `New match` clears the board, `Review from start` rewinds the completed move list for redo stepping, and `Keep board` dismisses the result.
 - Text selection is disabled on the game shell so dragging across the HUD/panel does not create browser text highlights.
 - Piece style and player colors are live appearance settings persisted in local storage and applied to placed pieces and drop previews.
@@ -71,17 +88,20 @@ Implemented gameplay/UX:
 
 Latest checks passed from `axial-web/apps/web` unless noted:
 
-- `pnpm --filter @axial/web test:unit -- --run` from `axial-web/`
+- `pnpm --filter @axial/web test:unit -- --run src/lib/game/state/gameController.test.ts` from `axial-web/`
 - `pnpm --filter @axial/ai test:unit` from `axial-web/`
 - `pnpm --filter @axial/core test:unit` from `axial-web/`
 - `pnpm check`
 - `pnpm lint`
 - `pnpm build`
+- Browser plugin runtime was not exposed by tool discovery, so local Playwright fallback was used against `http://localhost:5174/`.
+- Playwright fallback smoke passed: page loaded without page errors, AI mode selected, board clicks advanced through paired human/AI moves to `10 MOVES`.
+- Worker smoke passed against `http://localhost:5173/`: Classic AI worker was created, page had no errors, and one human click advanced through the worker-backed AI reply to `2 MOVES`.
+- Difficulty smoke passed against `http://localhost:5173/`: AI mode revealed Easy/Med/Hard/Max, Max selected correctly, the worker was created, and play advanced to `4 MOVES` with no page errors.
 
 Known non-blocking build warnings:
 
 - Large Three.js/Threlte game chunk.
-- `adapter-auto` cannot detect a production environment during local build.
 
 Visual verification used local Playwright screenshots because the Browser plugin was listed but the required Node REPL `js` execution tool was not exposed by tool discovery.
 
@@ -135,17 +155,29 @@ Useful screenshots in `axial-web/apps/web/` include:
 
 ## Next AI Candidates
 
-- Research AlphaZero-style self-play, strong heuristic search, MCTS, threat-space search, and hybrid teacher/model approaches for Classic Axial.
-- Inspect the preserved Unity/Python project for existing AI, training, checkpoints, heuristics, and reusable evaluation ideas.
-- Define a measurable strength benchmark, including win rates against baselines and direct play against Caden.
-- Decide the training/search stack: Python/PyTorch, TypeScript, Rust/WASM, or a hybrid.
-- Decide the board representation for search/training: current typed arrays, bitboards, tensor feature planes, symmetry transforms, and replay formats.
-- Produce a staged implementation plan before starting large-scale training.
+- Caden locked the Classic AI direction on 2026-06-06: rewrite MCTS/search in the web repo first, then train a policy-value model with self-play/RL after search and evaluation are trustworthy.
+- First implementation landed in `@axial/ai`: precomputed 954 winning segments, row-major move indices, mutable Classic search state, heuristic tactical selector, seeded evaluation harness, and deterministic MCTS with RAVE-style statistics.
+- Classic AI opponent mode now calls bounded MCTS through a Vite Web Worker with `96` simulations capped at about `220ms`.
+- Classic AI search now reads `game.winCondition`, including connect-5 and multi-line targets, through dynamic segment tables.
+- Classic AI now gives multi-line modes stronger strategy weight: non-terminal line completions are valuable, opponent line progress is blocked, line-completion forks influence forcing moves, rollouts pursue/block line progress, and search budgets scale upward for connect-5 / 2-3-line variants.
+- The app has a cancellable Classic AI client: reset/undo/mode changes terminate stale worker requests before they can play old moves.
+- The Match panel exposes AI strength when AI mode is selected; the setting persists and locks with the rest of setup after the first move.
+- Keep the old Python MCTS runnable only as a reference/baseline, not as production code moved into `axial-web`.
+- Root `pyproject.toml`/`uv.lock` now provide a Python 3.12 `numpy`/`numba` environment for preserved MCTS checks.
+- Preserved MCTS smoke command passed: `uv run --python 3.12 python main/test_simple.py`.
+- Baseline preserved MCTS speed from that run: 1000 smart rollouts in 6.92s, 500-simulation move in 3.96s, 2-second budget produced 329 simulations, and AI beat random 10-0.
+- New TypeScript MCTS focused test timing after fast affected-line ordering: 40 simulations on the empty board in about 261ms under Vitest.
+- Keep the web core's `Uint8Array` board and replay moves as canonical app state; use an internal Classic search state with column heights, precomputed 954 winning segments, incremental line counts, seeded randomness, and explicit row-major policy indices.
+- Define measurable strength with seeded matches against random, greedy, heuristic, basic MCTS, enhanced MCTS/Python teacher, and direct Caden challenge games.
+- Next AI engineering step: add progress messages for longer searches and larger benchmark runs.
+- Add PyTorch/training dependencies only when neural work resumes.
+- Treat AlphaZero/PyTorch/ONNX as a later measured upgrade after the teacher/evaluation harness proves whether neural guidance improves play beyond MCTS alone.
 - Keep Tactical/special-piece AI deferred until Classic-mode AI direction is locked.
 
 ## Next Polish Candidates
 
 - More Caden-directed UI changes.
+- First public Cloudflare Pages deploy for `playaxial.dev`.
 - Add editable loadout UX for choosing the three Tactical specials.
 - Graphics quality settings.
 - Richer glass/acrylic board material.

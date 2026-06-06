@@ -52,7 +52,9 @@
 		uiTheme={controller.uiTheme}
 		labelsVisible={controller.labelsVisible}
 		opponentMode={controller.opponentMode}
+		aiDifficulty={controller.aiDifficulty}
 		matchMode={controller.matchMode}
+		winCondition={controller.winCondition}
 		aiThinking={controller.aiThinking}
 		pieceShape={controller.pieceShape}
 		pieceColors={controller.pieceColors}
@@ -74,7 +76,10 @@
 		onUndo={controller.undoMove}
 		onRedo={controller.redoMove}
 		onOpponentModeChange={controller.setOpponentMode}
+		onAiDifficultyChange={controller.setAiDifficulty}
 		onMatchModeChange={controller.setMatchMode}
+		onWinLineLengthChange={controller.setWinLineLength}
+		onLinesToWinChange={controller.setLinesToWin}
 		onToggleBlockerCombo={controller.toggleBlockerCombo}
 		onToggleDoubleAdjacent={controller.toggleDoubleAdjacent}
 		onPieceShapeChange={controller.setPieceShape}

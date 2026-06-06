@@ -4,7 +4,7 @@
 
 Make Axial a polished browser-native strategy game. The active screen should remain the playable 3D board with compact controls, clear game state, and excellent visual readability.
 
-Near-term priority: shift from visual/UI polish into serious Classic-mode AI planning. The target is an AI opponent that can beat Caden. Research and architecture decisions should come before large implementation or training work.
+Near-term priority: shift from visual/UI polish into serious Classic-mode AI planning. The target is an AI opponent that can beat Caden. Research and architecture decisions should come before large implementation or training work. The current recommendation is documented in `dev/active/axial-web-rebuild/classic-ai-research.md`.
 
 ## Current Architecture
 
@@ -12,6 +12,7 @@ Near-term priority: shift from visual/UI polish into serious Classic-mode AI pla
 - `axial-web/packages/core`: pure TypeScript rules package.
 - `axial-web/packages/ai`: pure TypeScript AI move-selection package.
 - `axial-unity`: preserved Unity version.
+- Production deployment target: Cloudflare Pages at `playaxial.dev`, with Porkbun kept as registrar and Cloudflare used as authoritative DNS once nameservers are changed.
 
 Important boundaries:
 
@@ -38,6 +39,9 @@ Important boundaries:
 - Appearance setup includes live scene theme, piece shape, per-player piece colors, light/dark mode, and axis-number visibility.
 - Piece shape and player colors are pre-match loadout settings: they are editable on a fresh board, then locked after the first placed piece until `New match`/reset.
 - Opponent mode and match rules are also pre-match setup choices and lock after the first placement.
+- Win rules are pre-match setup choices for both Classic and Tactical: players can choose connect 4 or connect 5, and require 1, 2, or 3 completed lines to win. The core game snapshot carries the selected win condition so replay, undo/redo, and AI evaluate the same rules.
+- Completed lines are first-class visual state during active play. They should be recomputed from board ownership, keyed with stable IDs, and rendered as persistent in-board markers so multi-line modes communicate progress before the final win.
+- The SvelteKit app now uses `@sveltejs/adapter-cloudflare` directly instead of `adapter-auto`; Cloudflare Pages build settings and DNS notes live in `dev/active/axial-web-rebuild/deployment.md`.
 - The game shell disables browser text selection to preserve a game-like interaction feel.
 - Desktop turn pill is independent from the AXIAL wordmark and fixed-width at top center.
 - Mobile keeps controls smaller, tucked top-right, and hides the turn pill.
@@ -45,14 +49,17 @@ Important boundaries:
 
 ## Near-Term Priorities
 
-1. Research and compare serious Classic-mode AI approaches: AlphaZero-style self-play, strong heuristic search, MCTS, threat-space search, and hybrid teacher/model paths.
-2. Audit the preserved Unity/Python AI and training code before designing from scratch.
-3. Define measurable strength targets, including baseline win rates, latency budget, reproducible evaluation, and "beats Caden" as the real benchmark.
-4. Decide the training/search stack and representation: Python/PyTorch, TypeScript, Rust/WASM, typed arrays, bitboards, tensor feature planes, and symmetry handling.
-5. Produce a staged Classic AI implementation plan before starting large-scale training.
-6. Keep Tactical/special-piece AI deferred until Classic-mode AI is locked.
-7. Respond to Caden-directed UI/visual changes when needed.
-8. Add editable loadout UX for choosing the three Tactical specials when returning to Tactical polish.
+1. Add progress messages for longer Classic AI searches.
+2. Extend the seeded evaluation harness with larger random/greedy/heuristic/basic-MCTS benchmark suites and JSONL-style match logs, including connect-5 and 2-3-line win targets.
+3. Tune the TypeScript heuristic/MCTS engine against those benchmarks and direct Caden challenge games.
+4. Consider a dedicated benchmark CLI/script once match logging shape is clear.
+5. Keep the old Python MCTS runnable only as a reference/baseline through the root `uv` environment.
+6. Add PyTorch/training dependencies only when neural self-play work resumes.
+7. Treat AlphaZero/PyTorch/ONNX as a later measured upgrade once the teacher/evaluation harness can prove neural guidance improves strength.
+8. Keep Tactical/special-piece AI deferred until Classic-mode AI is locked.
+9. Respond to Caden-directed UI/visual changes when needed.
+10. Add editable loadout UX for choosing the three Tactical specials when returning to Tactical polish.
+11. Complete the first public Cloudflare Pages deployment and attach `playaxial.dev`.
 
 ## Testing Expectations
 

@@ -1,6 +1,57 @@
 import { legalMoves, type GameSnapshot, type Move } from "@axial/core";
+import { randomIndex, type RandomSource } from "./random";
 
-export type RandomSource = () => number;
+export { createSeededRandom, type RandomSource } from "./random";
+export {
+  CELL_SEGMENTS,
+  CLASSIC_MOVES,
+  CLASSIC_MOVE_COUNT,
+  CLASSIC_MOVE_INDICES,
+  DEFAULT_SEGMENT_TABLE,
+  SEGMENT_AXIS_COUNTS,
+  WINNING_SEGMENTS,
+  cellToMoveIndex,
+  getSegmentTable,
+  moveFromIndex,
+  moveToIndex,
+  type ClassicMove,
+  type MoveIndex,
+  type SegmentAxis,
+  type SegmentTable,
+  type WinningSegment,
+} from "./classic/geometry";
+export { ClassicSearchState } from "./classic/state";
+export {
+  analyzeHeuristicMove,
+  chooseHeuristicMove,
+  compareMoveIndicesByShape,
+  countImmediateThreats,
+  countLineCompletionThreats,
+  countLineCompletionsForMove,
+  evaluatePosition,
+  findForcingMoves,
+  findWinningMoves,
+  scoreLegalMoves,
+  scoreMove,
+  selectHeuristicMove,
+  type HeuristicMoveResult,
+  type MoveScore,
+} from "./classic/heuristic";
+export {
+  analyzeMctsMove,
+  chooseMctsMove,
+  type MctsMoveResult,
+  type MctsMoveStat,
+  type MctsOptions,
+} from "./classic/mcts";
+export {
+  playAiMatch,
+  runEvaluation,
+  type AiPlayer,
+  type EvaluationResult,
+  type MatchPlayerConfig,
+  type MatchResult,
+} from "./evaluation";
 
 export function chooseRandomMove(
   game: GameSnapshot,
@@ -17,9 +68,5 @@ export function chooseRandomMove(
 }
 
 function randomMoveIndex(moveCount: number, random: RandomSource): number {
-  const value = random();
-  const normalized = Number.isFinite(value)
-    ? Math.min(Math.max(value, 0), 0.999999999)
-    : 0;
-  return Math.floor(normalized * moveCount);
+  return randomIndex(moveCount, random);
 }

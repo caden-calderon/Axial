@@ -457,6 +457,61 @@ button {
 	border-radius: 0.95rem;
 }
 
+.rule-customizer {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.34rem;
+}
+
+.rule-customizer.locked {
+	filter: saturate(0.82);
+}
+
+.rule-control {
+	display: grid;
+	min-width: 0;
+	gap: 0.24rem;
+}
+
+.rule-control > span {
+	display: inline-flex;
+	min-width: 0;
+	align-items: center;
+	justify-content: center;
+	gap: 0.24rem;
+	color: var(--muted);
+	font-size: 0.62rem;
+	font-weight: 790;
+	text-transform: uppercase;
+}
+
+.connect-switch {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	border-radius: 0.85rem;
+}
+
+.line-count-switch {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	border-radius: 0.85rem;
+}
+
+.connect-switch button,
+.line-count-switch button {
+	min-height: 1.72rem;
+	padding: 0 0.18rem;
+	font-size: 0.68rem;
+}
+
+.difficulty-switch {
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	border-radius: 0.95rem;
+}
+
+.difficulty-switch button {
+	padding: 0 0.24rem;
+	font-size: 0.66rem;
+}
+
 .setup-grid,
 .record-grid {
 	display: grid;

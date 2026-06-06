@@ -4,6 +4,7 @@ import {
   BOARD_HEIGHT,
   BOARD_ROWS,
   BLOCKER_CELL,
+  DEFAULT_WIN_CONDITION,
   MATCH_CONFIGS,
   applyBlocker,
   applyDoubleAdjacentFirst,
@@ -12,6 +13,7 @@ import {
   areCellsAdjacent,
   cellFromIndex,
   createGame,
+  findCompletedLines,
   getPendingDoubleAdjacentOrigin,
   getDropHeight,
   indexOf,
@@ -29,7 +31,7 @@ describe("Axial game core", () => {
         rows: BOARD_ROWS,
         columns: BOARD_COLUMNS,
       },
-      winLength: 4,
+      defaultWinCondition: DEFAULT_WIN_CONDITION,
       specialPieceSlots: 0,
     });
   });
@@ -42,7 +44,7 @@ describe("Axial game core", () => {
         rows: BOARD_ROWS,
         columns: BOARD_COLUMNS,
       },
-      winLength: 4,
+      defaultWinCondition: DEFAULT_WIN_CONDITION,
       specialPieceSlots: 3,
     });
   });
@@ -180,10 +182,12 @@ describe("Axial game core", () => {
     const origin = getPendingDoubleAdjacentOrigin(game);
 
     expect(origin).not.toBeNull();
-    expect(isLegalDoubleAdjacentMove(game.board, { row: 2, col: 3 }, origin!))
-      .toBe(true);
-    expect(isLegalDoubleAdjacentMove(game.board, { row: 5, col: 6 }, origin!))
-      .toBe(false);
+    expect(
+      isLegalDoubleAdjacentMove(game.board, { row: 2, col: 3 }, origin!),
+    ).toBe(true);
+    expect(
+      isLegalDoubleAdjacentMove(game.board, { row: 5, col: 6 }, origin!),
+    ).toBe(false);
     expect(() =>
       applyDoubleAdjacentSecond(game, { row: 5, col: 6 }, origin!),
     ).toThrow("Second piece must land adjacent");
@@ -215,9 +219,7 @@ describe("Axial game core", () => {
     }
 
     expect(areCellsAdjacent(center, center)).toBe(false);
-    expect(areCellsAdjacent(center, { height: 4, row: 2, col: 2 })).toBe(
-      false,
-    );
+    expect(areCellsAdjacent(center, { height: 4, row: 2, col: 2 })).toBe(false);
   });
 
   it("replays double-adjacent moves without alternating between the two pieces", () => {
@@ -280,6 +282,101 @@ describe("Axial game core", () => {
     game = applyMove(game, { row: 3, col: 0 });
 
     expect(game.status).toMatchObject({ state: "won", winner: 1 });
+  });
+
+  it("can require five in a row before declaring a win", () => {
+    let game = createGame({ lineLength: 5, linesToWin: 1 });
+
+    game = applyMove(game, { row: 0, col: 0 });
+    game = applyMove(game, { row: 5, col: 0 });
+    game = applyMove(game, { row: 0, col: 1 });
+    game = applyMove(game, { row: 5, col: 1 });
+    game = applyMove(game, { row: 0, col: 2 });
+    game = applyMove(game, { row: 5, col: 2 });
+    game = applyMove(game, { row: 0, col: 3 });
+
+    expect(game.status).toEqual({ state: "playing", currentPlayer: 2 });
+
+    game = applyMove(game, { row: 5, col: 3 });
+    game = applyMove(game, { row: 0, col: 4 });
+
+    expect(game.status).toMatchObject({
+      state: "won",
+      winner: 1,
+      lineCount: 1,
+    });
+    expect(game.status.state === "won" ? game.status.line : []).toHaveLength(5);
+  });
+
+  it("can require multiple completed lines before declaring a win", () => {
+    let game = createGame({ lineLength: 4, linesToWin: 2 });
+
+    game = applyMove(game, { row: 0, col: 0 });
+    game = applyMove(game, { row: 3, col: 6 });
+    game = applyMove(game, { row: 0, col: 1 });
+    game = applyMove(game, { row: 3, col: 5 });
+    game = applyMove(game, { row: 0, col: 2 });
+    game = applyMove(game, { row: 3, col: 4 });
+    game = applyMove(game, { row: 0, col: 3 });
+
+    expect(game.status).toEqual({ state: "playing", currentPlayer: 2 });
+    expect(findCompletedLines(game.board, 1, game.winCondition)).toHaveLength(
+      1,
+    );
+    expect(game.completedLines).toHaveLength(1);
+    expect(game.completedLines[0]).toMatchObject({
+      player: 1,
+      lineLength: 4,
+    });
+    expect(game.completedLines[0]?.cells).toHaveLength(4);
+
+    game = applyMove(game, { row: 2, col: 6 });
+    game = applyMove(game, { row: 1, col: 0 });
+    game = applyMove(game, { row: 2, col: 5 });
+    game = applyMove(game, { row: 1, col: 1 });
+    game = applyMove(game, { row: 2, col: 4 });
+    game = applyMove(game, { row: 1, col: 2 });
+    game = applyMove(game, { row: 4, col: 6 });
+    game = applyMove(game, { row: 1, col: 3 });
+
+    expect(game.status).toMatchObject({
+      state: "won",
+      winner: 1,
+      lineCount: 2,
+    });
+    expect(game.status.state === "won" ? game.status.lines : []).toHaveLength(
+      2,
+    );
+    expect(
+      game.completedLines.filter((line) => line.player === 1),
+    ).toHaveLength(2);
+  });
+
+  it("counts a longer contiguous run as one completed line", () => {
+    let game = createGame({ lineLength: 4, linesToWin: 2 });
+
+    game = applyMove(game, { row: 0, col: 0 });
+    game = applyMove(game, { row: 5, col: 0 });
+    game = applyMove(game, { row: 0, col: 1 });
+    game = applyMove(game, { row: 5, col: 1 });
+    game = applyMove(game, { row: 0, col: 2 });
+    game = applyMove(game, { row: 5, col: 2 });
+    game = applyMove(game, { row: 0, col: 3 });
+
+    expect(game.status).toEqual({ state: "playing", currentPlayer: 2 });
+    expect(
+      game.completedLines.filter((line) => line.player === 1),
+    ).toHaveLength(1);
+
+    game = applyMove(game, { row: 5, col: 3 });
+    game = applyMove(game, { row: 0, col: 4 });
+
+    expect(game.status).toEqual({ state: "playing", currentPlayer: 2 });
+    const playerOneLines = game.completedLines.filter(
+      (line) => line.player === 1,
+    );
+    expect(playerOneLines).toHaveLength(1);
+    expect(playerOneLines[0]?.cells).toHaveLength(5);
   });
 
   it("detects a 3D diagonal win", () => {

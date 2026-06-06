@@ -19,7 +19,20 @@
 - [x] Implement board constants and coordinate helpers.
 - [x] Implement legal moves, gravity drops, win detection, draw detection.
 - [x] Add initial game-core tests.
+- [x] Add configurable win conditions for connect 4/connect 5 and 1-3 completed lines.
+- [x] Track completed lines as stable game-state markers during active multi-line matches.
 - [ ] Add golden-position fixtures from the Python project.
+
+## Deployment
+
+- [x] Choose Cloudflare Pages as the first public host for `playaxial.dev`.
+- [x] Switch SvelteKit from `adapter-auto` to explicit `@sveltejs/adapter-cloudflare`.
+- [x] Pin the Cloudflare build Node version with `axial-web/.node-version`.
+- [x] Document Cloudflare Pages build settings, Porkbun/Cloudflare DNS setup, and future multiplayer direction.
+- [ ] Create the Cloudflare Pages project from Git.
+- [ ] Move authoritative DNS for `playaxial.dev` from Porkbun DNS to the Cloudflare nameservers assigned to the zone.
+- [ ] Attach `playaxial.dev` as the Pages custom domain after the first successful deploy.
+- [ ] Add the future multiplayer Worker/Durable Object app when live invite links become the active task.
 
 ## Phase 1: Beautiful Playable 3D MVP
 
@@ -46,16 +59,27 @@
 - [x] Create `packages/ai`.
 - [x] Implement random legal-move player.
 - [x] Wire AI opponent mode into the web controller.
-- [ ] Audit preserved Unity/Python AI and training code before designing the serious Classic AI.
-- [ ] Research AlphaZero-style self-play, heuristic search, MCTS, threat-space search, and hybrid approaches for Classic Axial.
-- [ ] Define Classic AI benchmark targets, including baselines, latency, reproducibility, and direct strength against Caden.
-- [ ] Decide Classic AI architecture and training/search stack.
-- [ ] Decide board representation for search/training: typed arrays, bitboards, feature planes, symmetries, and replay tensors.
-- [ ] Port or adapt Caden's existing stronger heuristic/greedy player.
-- [ ] Port enhanced MCTS to TypeScript.
-- [ ] Move MCTS into a Web Worker.
-- [ ] Add progress and cancellation messages.
-- [ ] Add difficulty presets.
+- [x] Audit preserved Unity/Python AI and training code before designing the serious Classic AI.
+- [x] Research AlphaZero-style self-play, heuristic search, MCTS, threat-space search, and hybrid approaches for Classic Axial.
+- [x] Draft Classic AI benchmark targets, including baselines, latency, reproducibility, and direct strength against Caden.
+- [x] Draft Classic AI architecture and staged training/search recommendation in `classic-ai-research.md`.
+- [x] Draft board representation plan for search/training: canonical typed array, internal line-count search state, policy indices, symmetries, and later bitboards/tensors.
+- [x] Review Classic AI recommendation with Caden and lock the first implementation direction: rewrite MCTS/search in the web repo first, then train a model with self-play/RL.
+- [x] Add reproducible `uv` Python AI environment metadata for preserved Numba MCTS evaluation.
+- [x] Smoke-run preserved Python MCTS through `uv` and capture baseline performance.
+- [ ] Add PyTorch/training dependencies to the `uv` environment when neural work resumes.
+- [x] Add Classic AI golden fixtures and precomputed winning segment tests.
+- [x] Add seeded AI-vs-AI evaluation harness and baseline match reporting.
+- [x] Rewrite immediate win/block and threat-scored heuristic player in TypeScript.
+- [ ] Rewrite Caden's existing stronger heuristic/greedy ideas in TypeScript.
+- [x] Rewrite first enhanced MCTS in TypeScript using the old Python MCTS as a reference and benchmark.
+- [x] Wire Classic AI opponent mode to bounded MCTS search while keeping Tactical AI random/deferred.
+- [x] Move Classic MCTS into a Web Worker.
+- [x] Add cancellation path for stale Classic AI worker requests.
+- [ ] Add progress messages from long-running Classic AI search.
+- [x] Add difficulty presets.
+- [x] Keep Classic AI rule-aware for configurable connect length and line-count win targets.
+- [x] Improve Classic AI heuristic/MCTS behavior for 2-3-line targets by valuing and blocking non-terminal line progress.
 - [ ] Benchmark AI strength and latency.
 - [ ] Train or build a Classic-mode opponent that can beat Caden.
 
@@ -91,7 +115,10 @@
 - [x] Add selectable piece shapes: cube, orb, and crystal.
 - [x] Add persisted Player 1 and Player 2 piece color pickers.
 - [x] Lock piece shape and colors after the first placed piece until a new match/reset.
+- [x] Add pulsing last-move glow so the newest placement is easy to spot.
+- [x] Render completed lines with a draw-through glow animation and persistent idle marker.
 - [x] Add a pre-match Classic/Tactical rules selector.
+- [x] Add pre-match connect-length and lines-to-win controls for both modes.
 - [x] Lock opponent mode and rules after the first placement until a new match/reset.
 - [x] Remove inactive center-turn-pill arrow/side-expand affordance after Tactical actions moved to the top-right Pieces mode.
 - [x] Differentiate the Double Adjacent icon from the general Pieces/loadout icon.
@@ -128,6 +155,7 @@
 - [x] Unlock AI mode with a random legal-move opponent.
 - [x] Capture tactical special-piece design notes.
 - [x] Add match config foundation for Classic vs Tactical modes.
+- [x] Share configurable win-condition rules across Classic and Tactical modes.
 - [x] Add live piece appearance controls before tactical special pieces.
 - [x] Treat piece shape/colors as pre-match choices once the active match starts.
 - [x] Make Tactical selectable and playable with the first blocker-combo special.
@@ -141,10 +169,10 @@
 
 ## Phase 4: Neural AI
 
-- [ ] Audit existing `Training/` code and checkpoints.
-- [ ] Decide whether Classic Axial should use an AlphaZero-style policy/value model plus MCTS or a different serious-AI path.
+- [x] Audit existing `Training/` code and checkpoints.
+- [x] Decide serious-AI path: MCTS/search first, then AlphaZero-style policy/value training with self-play/RL if benchmarks justify it.
 - [ ] Decide ONNX vs TensorFlow.js export path.
-- [ ] Rebuild self-play/training scripts with reproducible config.
+- [ ] Rebuild self-play/training scripts with reproducible `uv` config.
 - [ ] Train baseline policy/value model.
 - [ ] Export browser model artifact.
 - [ ] Integrate model-assisted AI in browser.

@@ -14,6 +14,7 @@
 	import BoardGrid from './BoardGrid.svelte';
 	import BoardLabels from './BoardLabels.svelte';
 	import ColumnPicker from './ColumnPicker.svelte';
+	import CompletedLineMarker from './CompletedLineMarker.svelte';
 	import { type Vec3 } from './geometry';
 	import type { PlacementMode } from '../state/gameController.svelte';
 	import type { PieceColors, PieceShape } from '../state/pieceAppearance';
@@ -60,6 +61,7 @@
 	const cameraPosition: Vec3 = $derived(isCompact ? [8.8, 8.4, 18] : [5.8, 5.7, 9.4]);
 	const cameraFov = $derived(isCompact ? 46 : 42);
 	const boardScale = $derived(isCompact ? 0.62 : 0.88);
+	const lastMoveIndex = $derived(game.moveHistory.length - 1);
 
 	const boardRotation = -0.34;
 
@@ -134,6 +136,16 @@
 	{/if}
 
 	{#each game.moveHistory as move, index (`${index}-${move.row}-${move.col}-${move.height}`)}
-		<GamePiece {move} moveIndex={index} {pieceShape} {pieceColors} />
+		<GamePiece
+			{move}
+			moveIndex={index}
+			{pieceShape}
+			{pieceColors}
+			highlighted={index === lastMoveIndex}
+		/>
+	{/each}
+
+	{#each game.completedLines as line (line.id)}
+		<CompletedLineMarker {line} {pieceColors} />
 	{/each}
 </T.Group>

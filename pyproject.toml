@@ -1,0 +1,18 @@
+[project]
+name = "axial-python-ai"
+version = "0.1.0"
+description = "Reproducible Python environment for evaluating preserved Axial AI baselines."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "numba>=0.61,<0.63",
+  "numpy>=1.26,<2.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0,<9",
+  "ruff>=0.11,<0.13",
+]
+
+[tool.uv]
+package = false
