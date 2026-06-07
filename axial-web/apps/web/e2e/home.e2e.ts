@@ -22,6 +22,9 @@ test('Axial shell loads and renders the game canvas', async ({ page }) => {
 	await expect(page.locator('.board-dimensions')).toHaveText('6 x 6 x 7');
 	await expect(page.getByRole('group', { name: 'Opponent mode' })).toBeVisible();
 	await expect(
+		page.getByRole('button', { name: /enter fullscreen|exit fullscreen/i })
+	).toBeVisible();
+	await expect(
 		page.getByRole('button', { name: /collapse settings|expand settings/i })
 	).toBeVisible();
 	await expect(page.locator('canvas')).toBeVisible();
@@ -38,4 +41,40 @@ test('Axial shell loads and renders the game canvas', async ({ page }) => {
 
 	expect(pageErrors).toEqual([]);
 	expect(failedRequests).toEqual([]);
+});
+
+test('PWA install metadata is available', async ({ page, request }) => {
+	await page.goto('/');
+
+	const manifestHref = await page.locator('link[rel="manifest"]').getAttribute('href');
+	const appleTouchIconHref = await page
+		.locator('link[rel="apple-touch-icon"]')
+		.getAttribute('href');
+
+	expect(new URL(manifestHref ?? '', page.url()).pathname).toBe('/manifest.webmanifest');
+	expect(new URL(appleTouchIconHref ?? '', page.url()).pathname).toBe(
+		'/icons/apple-touch-icon.png'
+	);
+
+	const response = await request.get('/manifest.webmanifest');
+	expect(response.ok()).toBe(true);
+
+	const manifest = (await response.json()) as {
+		display?: string;
+		display_override?: string[];
+		icons?: { sizes?: string; purpose?: string; src?: string }[];
+		name?: string;
+		start_url?: string;
+	};
+
+	expect(manifest.name).toBe('Axial');
+	expect(manifest.start_url).toBe('/');
+	expect(manifest.display).toBe('fullscreen');
+	expect(manifest.display_override).toContain('standalone');
+	expect(manifest.icons).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({ src: '/icons/axial-icon-192.png', sizes: '192x192' }),
+			expect.objectContaining({ src: '/icons/axial-icon-512.png', sizes: '512x512' })
+		])
+	);
 });

@@ -11,6 +11,8 @@
 		CopyPlus,
 		Gem,
 		Lock,
+		Maximize2,
+		Minimize2,
 		Moon,
 		Palette,
 		Pipette,
@@ -65,9 +67,12 @@
 		moveError,
 		canUndo,
 		canRedo,
+		fullscreenAvailable,
+		fullscreenActive,
 		onReset,
 		onUndo,
 		onRedo,
+		onToggleFullscreen,
 		onOpponentModeChange,
 		onAiDifficultyChange,
 		onMatchModeChange,
@@ -108,9 +113,12 @@
 		moveError: string;
 		canUndo: boolean;
 		canRedo: boolean;
+		fullscreenAvailable: boolean;
+		fullscreenActive: boolean;
 		onReset: () => void;
 		onUndo: () => void;
 		onRedo: () => void;
+		onToggleFullscreen: () => void;
 		onOpponentModeChange: (mode: OpponentMode) => void;
 		onAiDifficultyChange: (difficulty: AiDifficulty) => void;
 		onMatchModeChange: (mode: MatchMode) => void;
@@ -150,19 +158,24 @@
 </script>
 
 <section class="control-panel" class:collapsed={!expanded}>
-	<div class="panel-toolbar" class:pieces-mode={piecesMode && matchMode === 'tactical'}>
-		<button
-			class="icon-button pieces-toggle"
-			class:active={piecesMode && matchMode === 'tactical'}
-			type="button"
-			aria-label={piecesMode ? 'Show match controls' : 'Show pieces'}
-			aria-pressed={piecesMode && matchMode === 'tactical'}
-			title={matchMode === 'tactical' ? 'Pieces' : 'Switch to Tactical to use pieces'}
-			disabled={matchMode !== 'tactical'}
-			onclick={togglePiecesMode}
-		>
-			<Boxes size={18} strokeWidth={1.9} />
-		</button>
+	<div
+		class="panel-toolbar"
+		class:pieces-mode={piecesMode && matchMode === 'tactical'}
+		class:tactical-toolbar={matchMode === 'tactical'}
+	>
+		{#if matchMode === 'tactical'}
+			<button
+				class="icon-button pieces-toggle"
+				class:active={piecesMode}
+				type="button"
+				aria-label={piecesMode ? 'Show match controls' : 'Show pieces'}
+				aria-pressed={piecesMode}
+				title="Pieces"
+				onclick={togglePiecesMode}
+			>
+				<Boxes size={18} strokeWidth={1.9} />
+			</button>
+		{/if}
 		{#if piecesMode && matchMode === 'tactical'}
 			<button
 				class="toolbar-piece-button"
@@ -228,6 +241,22 @@
 			>
 				<RotateCcw size={18} strokeWidth={1.9} />
 			</button>
+			{#if fullscreenAvailable}
+				<button
+					class="icon-button"
+					type="button"
+					aria-label={fullscreenActive ? 'Exit fullscreen' : 'Enter fullscreen'}
+					aria-pressed={fullscreenActive}
+					title={fullscreenActive ? 'Exit fullscreen' : 'Fullscreen'}
+					onclick={onToggleFullscreen}
+				>
+					{#if fullscreenActive}
+						<Minimize2 size={18} strokeWidth={1.9} />
+					{:else}
+						<Maximize2 size={18} strokeWidth={1.9} />
+					{/if}
+				</button>
+			{/if}
 			<button
 				class="icon-button"
 				type="button"

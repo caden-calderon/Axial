@@ -4,7 +4,9 @@
 
 Make Axial a polished browser-native strategy game. The active screen should remain the playable 3D board with compact controls, clear game state, and excellent visual readability.
 
-Near-term priority: shift from visual/UI polish into serious Classic-mode AI planning. The target is an AI opponent that can beat Caden. Research and architecture decisions should come before large implementation or training work. The current recommendation is documented in `dev/active/axial-web-rebuild/classic-ai-research.md`.
+Near-term priority: begin the next session with a performance/refactor cleanup pass before new feature work. Focus first on the large Three.js/Threlte chunk warning, dead or duplicated code, component boundaries, and any maintainability issues from rapid iteration. After that audit, handle Caden's next directed gameplay/UI changes.
+
+Classic-mode AI remains an important future lane. The target is an AI opponent that can beat Caden, and the current recommendation is documented in `dev/active/axial-web-rebuild/classic-ai-research.md`.
 
 ## Current Architecture
 
@@ -44,23 +46,27 @@ Important boundaries:
 - Result overlays should not interrupt critical board-state animation; after a winning line appears, the game-over modal waits for the completed-line draw/settle timing before opening.
 - The SvelteKit app now uses `@sveltejs/adapter-cloudflare` directly instead of `adapter-auto`; Cloudflare Pages build settings, DNS notes, release workflow, and production smoke checklist live in `dev/active/axial-web-rebuild/deployment.md`.
 - The game shell disables browser text selection to preserve a game-like interaction feel.
+- Mobile app-like play is supported through PWA install metadata and a fullscreen toolbar control where the browser exposes the Fullscreen API.
 - Desktop turn pill is independent from the AXIAL wordmark and fixed-width at top center.
 - Mobile keeps controls smaller, tucked top-right, and hides the turn pill.
 - Variant mode design is tracked in `dev/active/axial-web-rebuild/variant-modes.md`; classic rules remain the default.
 
 ## Near-Term Priorities
 
-1. Add progress messages for longer Classic AI searches.
-2. Extend the seeded evaluation harness with larger random/greedy/heuristic/basic-MCTS benchmark suites and JSONL-style match logs, including connect-5 and 2-3-line win targets.
-3. Tune the TypeScript heuristic/MCTS engine against those benchmarks and direct Caden challenge games.
-4. Consider a dedicated benchmark CLI/script once match logging shape is clear.
-5. Keep the old Python MCTS runnable only as a reference/baseline through the root `uv` environment.
-6. Add PyTorch/training dependencies only when neural self-play work resumes.
-7. Treat AlphaZero/PyTorch/ONNX as a later measured upgrade once the teacher/evaluation harness can prove neural guidance improves strength.
-8. Keep Tactical/special-piece AI deferred until Classic-mode AI is locked.
-9. Respond to Caden-directed UI/visual changes when needed.
-10. Add editable loadout UX for choosing the three Tactical specials when returning to Tactical polish.
-11. Keep the production deploy loop healthy with local checks, Cloudflare deployment review, and production smoke tests before/after significant changes.
+1. Analyze the large web chunk warning and decide whether code-splitting, lazy loading, dependency trimming, or a measured "accept for now" decision is appropriate.
+2. Audit `apps/web/src/lib/game`, `packages/core`, and `packages/ai` for dead code, duplicated logic, stale helpers, and component boundaries that should be cleaned before more features land.
+3. Keep refactors behavior-preserving unless Caden explicitly asks for gameplay changes in the same area.
+4. Respond to Caden-directed UI/gameplay changes after the cleanup pass has produced a clear map of risks and quick wins.
+5. Add progress messages for longer Classic AI searches.
+6. Extend the seeded evaluation harness with larger random/greedy/heuristic/basic-MCTS benchmark suites and JSONL-style match logs, including connect-5 and 2-3-line win targets.
+7. Tune the TypeScript heuristic/MCTS engine against those benchmarks and direct Caden challenge games.
+8. Consider a dedicated benchmark CLI/script once match logging shape is clear.
+9. Keep the old Python MCTS runnable only as a reference/baseline through the root `uv` environment.
+10. Add PyTorch/training dependencies only when neural self-play work resumes.
+11. Treat AlphaZero/PyTorch/ONNX as a later measured upgrade once the teacher/evaluation harness can prove neural guidance improves strength.
+12. Keep Tactical/special-piece AI deferred until Classic-mode AI is locked.
+13. Add editable loadout UX for choosing the three Tactical specials when returning to Tactical polish.
+14. Keep the production deploy loop healthy with local checks, Cloudflare deployment review, and production smoke tests before/after significant changes.
 
 ## Testing Expectations
 
@@ -84,7 +90,6 @@ For AI changes:
 
 ## Deferred Work
 
-- Web Worker MCTS.
 - Training pipeline cleanup.
 - Neural model export/inference.
 - Multiplayer.

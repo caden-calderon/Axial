@@ -34,6 +34,7 @@
 - [x] Attach `playaxial.dev` as the Pages custom domain after the first successful deploy.
 - [x] Add a lightweight automated production smoke command.
 - [x] Document the release workflow, production smoke checklist, and rollback habit.
+- [x] Add PWA install metadata, branded icons, and a lightweight service worker.
 - [ ] Add the future multiplayer Worker/Durable Object app when live invite links become the active task.
 
 ## Phase 1: Beautiful Playable 3D MVP
@@ -122,6 +123,7 @@
 - [x] Delay the game-over modal until the completed-line animation can finish.
 - [x] Slow and soften piece drop animation timing.
 - [x] Replace dark-mode radial color fields with a solid scene background.
+- [x] Add a fullscreen toolbar control for browsers that support the Fullscreen API.
 - [x] Add a pre-match Classic/Tactical rules selector.
 - [x] Add pre-match connect-length and lines-to-win controls for both modes.
 - [x] Lock opponent mode and rules after the first placement until a new match/reset.
@@ -134,6 +136,14 @@
 - [ ] Add convincing contact cues without broad fake ground shadows.
 - [ ] Add quality presets.
 - [x] Test desktop and mobile viewports.
+
+## Immediate Next Engineering Candidates
+
+- [ ] Analyze the large Three.js/Threlte game chunk warning and decide on code-splitting, lazy loading, dependency trimming, or accepting the current bundle with documentation.
+- [ ] Audit `apps/web/src/lib/game` for dead code, duplicated component logic, stale helpers, and UI/scene/state boundaries that should be cleaned before more features land.
+- [ ] Audit `packages/core` and `packages/ai` for unused exports, duplicated rules/search logic, and tests that should be tightened.
+- [ ] Keep initial cleanup refactors behavior-preserving unless Caden's next requested changes touch the same area.
+- [ ] Re-run focused unit/e2e/build checks after cleanup and before pushing.
 
 ## Tactical Variants
 

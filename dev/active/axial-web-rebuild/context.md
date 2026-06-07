@@ -4,7 +4,9 @@
 
 Axial is being rebuilt from the preserved Unity/Python project into a polished browser-native strategy game. The active app is `axial-web/apps/web`, using SvelteKit, TypeScript, pnpm, Three.js, and Threlte. The old Unity project remains in `axial-unity/`.
 
-Current priority: move from visual/UI polish into serious Classic-mode AI planning. Caden wants an AI opponent that can beat him as the benchmark. Tactical/special-piece AI remains deferred.
+Current next-session priority: start with a performance/refactor cleanup pass, especially the large Three.js/Threlte chunk warning, dead or duplicated code, and any obvious maintainability issues that accumulated during rapid gameplay/UI iteration. After that audit, handle Caden's next directed gameplay/UI changes.
+
+Classic-mode AI remains an important future lane. Caden wants an AI opponent that can beat him as the benchmark. Tactical/special-piece AI remains deferred.
 
 Research and architecture notes for the Classic AI direction now live in `dev/active/axial-web-rebuild/classic-ai-research.md`.
 
@@ -36,6 +38,7 @@ Deployment state:
 - `https://playaxial.pages.dev` is the Pages preview/project URL.
 - GitHub integration is enabled; pushes to `main` trigger production Cloudflare Pages deployments.
 - The app uses the explicit `@sveltejs/adapter-cloudflare` adapter.
+- The app has local PWA install metadata: manifest, Axial icons, iOS home-screen tags, and a SvelteKit service worker. Installed mobile launches should use browser app display modes instead of a normal tab when supported.
 - Deployment notes and dashboard values live in `dev/active/axial-web-rebuild/deployment.md`.
 - Porkbun remains the registrar, and Cloudflare is the authoritative DNS host with nameservers `gwen.ns.cloudflare.com` and `melnicoff.ns.cloudflare.com`.
 - Production smoke can be run with `pnpm smoke:production` from `axial-web/`.
@@ -67,6 +70,7 @@ Implemented gameplay/UX:
 - Tactical replay history records special metadata on sub-actions so undo/redo and future AI/training can reconstruct same-player continuations.
 - Piece appearance controls support cube, orb, and crystal shapes plus per-player color pickers.
 - Piece shape and player colors lock after the first placed piece, including undo/review states; starting a new match unlocks them.
+- Supported browsers expose a fullscreen toolbar button. Mobile users can also install Axial from the browser/home-screen flow for the more app-like experience.
 
 ## Visual/UI Decisions
 
@@ -78,6 +82,7 @@ Implemented gameplay/UX:
 - Tactical turns use a `Pieces` mode in the top-right control pill: the leftmost toolbar button swaps normal controls for special-piece actions, while the dropdown opens either the normal setup menu or piece details depending on the active toolbar mode.
 - The centered desktop turn pill is now status-only, with no arrow or inactive side-expansion affordance.
 - Desktop top-right controls use the same full-height acrylic pill scale as the centered turn pill, while mobile keeps the smaller compact toolbar.
+- The disabled Tactical pieces button is hidden in Classic mode so the toolbar has room for the fullscreen control without crowding the default mobile layout.
 - The Double Adjacent special uses a distinct copy-plus icon so it does not read as the general Pieces/loadout button.
 - Light mode is warmer/desaturated, with stronger board-grid contrast and glow accents.
 - Dark mode uses a solid scene field to keep the board readable and avoid colored background circles competing with pieces/lines.

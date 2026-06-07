@@ -186,6 +186,15 @@ button {
 	gap: 0.22rem;
 }
 
+.panel-toolbar.tactical-toolbar:not(.pieces-mode) {
+	gap: 0.18rem;
+}
+
+.panel-toolbar.tactical-toolbar:not(.pieces-mode) .icon-button {
+	width: 2.08rem;
+	height: 2.08rem;
+}
+
 .pieces-toggle.active {
 	border-color: color-mix(in oklab, var(--accent) 48%, transparent);
 	background: color-mix(in oklab, var(--accent) 18%, var(--surface));
@@ -925,6 +934,15 @@ button {
 
 	.panel-toolbar.pieces-mode {
 		gap: 0.18rem;
+	}
+
+	.panel-toolbar.tactical-toolbar:not(.pieces-mode) {
+		gap: 0.15rem;
+	}
+
+	.panel-toolbar.tactical-toolbar:not(.pieces-mode) .icon-button {
+		width: 1.78rem;
+		height: 1.78rem;
 	}
 
 	.panel-body {

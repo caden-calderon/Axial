@@ -8,83 +8,137 @@ Start by reading:
 - `/home/caden/projects/Axial/dev/active/axial-web-rebuild/context.md`
 - `/home/caden/projects/Axial/dev/active/axial-web-rebuild/plan.md`
 - `/home/caden/projects/Axial/dev/active/axial-web-rebuild/tasks.md`
+- `/home/caden/projects/Axial/dev/active/axial-web-rebuild/deployment.md`
 
-The active app is `axial-web/apps/web`, a SvelteKit + TypeScript + pnpm app using Three.js/Threlte. The preserved Unity project is `axial-unity/`.
+The active app is `axial-web/apps/web`, a SvelteKit + TypeScript + pnpm app using Three.js/Threlte. The preserved Unity/Python project remains in `axial-unity/`.
 
-Next-session focus:
+## Session Focus
 
-- Shift from visual/UI polish to serious Classic-mode AI planning.
-- Goal: design and eventually train an AI opponent for the Classic game that can beat Caden.
-- Treat "better than Caden" as the real benchmark, not just beating the random baseline.
-- Do not start with Tactical/special-piece AI. Keep the first serious AI target locked to Classic rules.
-- Start with architecture, research, and trade-off discussion before implementing or training.
+Begin with an engineering cleanup and performance pass before adding new features.
 
-Current game state:
+Primary starting goals:
 
-- Classic board: 6 x 6 x 7, 252 cells, 42 gravity columns, connect 4 across horizontal, vertical, planar diagonal, and 3D diagonal directions.
-- The web app is playable with projected column picking, drop preview, animated pieces, scene themes, light/dark mode, and toggleable axis labels.
-- Undo/redo, game-over modal, new match, review-from-start, and keep-board actions are implemented.
-- AI mode is unlocked with a first-pass random legal-move opponent in `axial-web/packages/ai`.
-- The expanded match console shows Match, Appearance, and Session sections with pre-match Local/AI and Classic/Tactical setup controls.
-- Tactical mode is playable with two Blocker Combos and one Double Adjacent per player, but Tactical AI/training should wait.
-- Turn-time Tactical actions are available from a `Pieces` mode in the top-right control pill.
-- Opponent mode, rules mode, piece shape, and player colors lock after the first placement; reset/new match unlocks them.
-- Core rules and replay metadata already support Classic and Tactical, but Classic is the AI training target for now.
+1. Investigate the large Three.js/Threlte game chunk warning from `pnpm build`.
+2. Audit the current web/game code for dead code, duplicated helpers, stale abstractions, and unclear boundaries.
+3. Keep initial cleanup refactors behavior-preserving unless Caden explicitly asks for a gameplay/UI change in the same area.
+4. After the cleanup map is clear, handle Caden's next requested gameplay/UI changes.
 
-AI discussion goals:
+Caden expects to bring more additions and fixes next session. Do not push every tiny local edit; develop locally until the batch is worth pushing or Caden asks for a push.
 
-- Research and compare plausible approaches for a strong Classic-mode opponent:
-  - AlphaZero/AlphaGo-style self-play with policy/value network plus MCTS.
-  - Strong handcrafted heuristic search and threat-space search.
-  - MCTS with engineered rollout/evaluation features.
-  - Hybrid path: heuristic/MCTS teacher first, neural model later.
-  - Any exact/solver-inspired ideas that are realistic for a 6 x 6 x 7 connect-4-like game.
-- Decide what "serious AI" means in measurable terms:
-  - win rate against random/greedy/MCTS baselines,
-  - latency budget in-browser,
-  - strength against Caden,
-  - training/evaluation reproducibility.
-- Inspect the preserved Unity/Python project and existing training code before designing from scratch.
-- Decide whether the training engine should be Python/PyTorch, TypeScript, Rust/WASM, or a hybrid.
-- Decide what representation to use for search/training: current typed-array board, bitboards, feature planes, symmetry transforms, replay tensors, etc.
-- Plan a staged path from baseline to strong opponent before writing large code.
+## Current Production State
 
-Important files/directories to inspect:
+- Public site: `https://playaxial.dev`.
+- Cloudflare Pages project: `playaxial`.
+- GitHub integration is enabled; pushes to `main` deploy production.
+- Porkbun remains the registrar, Cloudflare is authoritative DNS.
+- The app has PWA metadata/icons, iOS home-screen metadata, and a SvelteKit service worker.
+- Supported browsers show a fullscreen toolbar button.
+
+## Current Game State
+
+- Board: 6 x 6 x 7, 252 cells, 42 gravity columns.
+- Win conditions are configurable before match start:
+  - connect 4 or connect 5,
+  - 1, 2, or 3 completed lines required to win.
+- Multi-line scoring counts maximal contiguous runs, not every overlapping window. A connect-5 in connect-4 mode counts as one line unless it forms a crossing/separate run.
+- Classic and Tactical modes are playable.
+- Tactical currently has two fixed specials: Blocker Combo and Double Adjacent.
+- Classic AI uses worker-backed TypeScript MCTS/search with Easy, Medium, Hard, and Max presets.
+- Tactical AI is intentionally still a random normal-move baseline.
+- Completed lines render with an animated line draw/glow and persistent marker.
+- The game-over modal waits for line animation timing before opening.
+- Last placed piece glows/pulses.
+- Dark mode uses solid scene colors, not radial/background color fields.
+- Piece drops are slower and softer than the first version.
+- Mobile app-like play is supported through install metadata plus the fullscreen toolbar button.
+
+## Files To Inspect First
+
+For bundle/performance cleanup:
+
+- `axial-web/apps/web/vite.config.ts`
+- `axial-web/apps/web/svelte.config.js`
+- `axial-web/apps/web/package.json`
+- `axial-web/apps/web/src/routes/+page.svelte`
+- `axial-web/apps/web/src/lib/game/scene/AxialScene.svelte`
+- `axial-web/apps/web/src/lib/game/scene/AxialWorld.svelte`
+- `axial-web/apps/web/src/lib/game/scene/GamePiece.svelte`
+- `axial-web/apps/web/src/lib/game/scene/BoardGrid.svelte`
+- `axial-web/apps/web/src/lib/game/scene/CompletedLineLayer.svelte`
+- `axial-web/apps/web/src/lib/game/state/gameController.svelte.ts`
+- `axial-web/apps/web/src/lib/game/ui/GameStatusPanel.svelte`
+- `axial-web/apps/web/src/routes/layout.css`
+
+For rules/AI cleanup:
 
 - `axial-web/packages/core/src/index.ts`
 - `axial-web/packages/core/src/index.test.ts`
 - `axial-web/packages/ai/src/index.ts`
-- `axial-web/apps/web/src/lib/game/state/gameController.svelte.ts`
-- `axial-web/apps/web/src/routes/+page.svelte`
-- `axial-unity/`
-- Any existing Python/training/AI folders in the preserved project.
+- `axial-web/packages/ai/src/index.test.ts`
+- `axial-web/apps/web/src/lib/game/state/aiWorkerClient.ts`
+- `axial-web/apps/web/src/lib/game/workers/classicAi.worker.ts`
+
+Docs:
+
+- `dev/active/axial-web-rebuild/classic-ai-research.md`
 - `dev/active/axial-web-rebuild/variant-modes.md`
 
-Expected workflow:
+## Suggested Workflow
 
-1. Review the current rules/core/AI state and preserved AI/training code.
-2. Do focused research where current information matters; prefer primary/official sources and cite them.
-3. Brainstorm 2-3 viable AI architecture paths with trade-offs.
-4. Recommend a staged plan for building an AI that can beat Caden in Classic mode.
-5. Update active docs/tasks with the chosen direction.
-6. Only begin implementation after the plan is agreed or clearly low-risk.
-7. When coding AI/core behavior, run focused tests:
-   - `pnpm --filter @axial/core test:unit`
-   - `pnpm --filter @axial/ai test:unit`
-   - `pnpm check`, `pnpm lint`, `pnpm build` for web integration changes.
+1. Run or inspect the latest build warning before editing:
+   - `cd /home/caden/projects/Axial/axial-web`
+   - `pnpm build`
+2. Determine what is actually in the large chunk:
+   - inspect build output,
+   - inspect imports from scene/UI files,
+   - check whether Three/Threlte are all loaded on the first route by design,
+   - decide whether lazy-loading the game scene or splitting heavy visual layers is worth it.
+3. Audit for cleanup candidates:
+   - unused exports/imports,
+   - duplicated geometry/rules helpers,
+   - component props that can be simplified,
+   - stale screenshots/artifacts,
+   - dead UI branches after recent toolbar/PWA changes,
+   - overly large components that should be split only if it reduces real complexity.
+4. Make a short plan before refactoring. Prefer small, behavior-preserving cleanups with focused tests.
+5. After cleanup, ask for or proceed with Caden's next requested gameplay/UI changes.
+6. Update `context.md`, `plan.md`, and `tasks.md` as decisions land.
 
-Use the Codex Browser plugin for visual/browser verification if its runtime is exposed. If the required Node REPL `js` tool is not exposed, report that concrete plugin issue and use local Playwright screenshots as fallback.
+## Verification Expectations
 
-Recent checks passed:
+For cleanup/refactor-only changes:
 
-- `pnpm --filter @axial/core test:unit`
-- `pnpm --filter @axial/ai test:unit`
-- `pnpm --filter @axial/web test:unit -- --run`
 - `pnpm check`
 - `pnpm lint`
 - `pnpm build`
+- focused unit tests for touched packages:
+  - `pnpm --filter @axial/core test:unit`
+  - `pnpm --filter @axial/ai test:unit`
+  - `pnpm --filter @axial/web test:unit -- --run`
 
-Known non-blocking build warnings:
+For visual/UI changes:
 
-- Large Three.js/Threlte game chunk.
-- `adapter-auto` cannot detect a production environment during local build.
+- `pnpm --filter @axial/web test:e2e`
+- Desktop and mobile visual smoke.
+- Use the Codex Browser plugin if its required runtime tool is exposed. If it is not exposed, state that concrete issue and use local Playwright screenshots as fallback.
+
+For production pushes:
+
+- Push only when Caden asks or when a coherent batch is ready.
+- After pushing `main`, check the Cloudflare Pages deployment and smoke `https://playaxial.dev`.
+
+## Recent Checks From The Previous Session
+
+- `pnpm check`
+- `pnpm lint`
+- `pnpm build`
+- `pnpm --filter @axial/web test:e2e`
+- local desktop/mobile Playwright visual smoke
+
+Known non-blocking issue to start with:
+
+- `pnpm build` warns that a game chunk is larger than 500 kB after minification.
+
+Important judgment:
+
+- Do not chase bundle splitting blindly. Axial is currently a one-screen WebGL game, so some large first-load code is expected. The right answer may be a measured split, an intentional deferral, or removing accidental imports/dead code. Verify before changing architecture.

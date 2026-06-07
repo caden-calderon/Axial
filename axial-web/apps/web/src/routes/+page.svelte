@@ -7,10 +7,71 @@
 	import GameStatusPanel from '$lib/game/ui/GameStatusPanel.svelte';
 
 	const controller = createGameController();
+	let fullscreenAvailable = $state(false);
+	let fullscreenActive = $state(false);
 
 	onMount(() => {
 		controller.hydrateFromStorage();
+
+		const updateFullscreenState = () => {
+			fullscreenAvailable = isFullscreenSupported();
+			fullscreenActive = getFullscreenElement() !== null;
+		};
+
+		updateFullscreenState();
+		document.addEventListener('fullscreenchange', updateFullscreenState);
+		document.addEventListener('webkitfullscreenchange', updateFullscreenState);
+
+		return () => {
+			document.removeEventListener('fullscreenchange', updateFullscreenState);
+			document.removeEventListener('webkitfullscreenchange', updateFullscreenState);
+		};
 	});
+
+	async function toggleFullscreen(): Promise<void> {
+		if (!fullscreenAvailable) return;
+
+		try {
+			if (getFullscreenElement()) {
+				await exitFullscreen();
+				return;
+			}
+
+			const target = document.querySelector('.game-shell') ?? document.documentElement;
+			await requestFullscreen(target);
+		} catch (error) {
+			console.warn('Fullscreen request was rejected by the browser.', error);
+		}
+	}
+
+	function getFullscreenElement(): Element | null {
+		const doc = document as WebkitFullscreenDocument;
+		return document.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
+	}
+
+	function isFullscreenSupported(): boolean {
+		const element = document.documentElement as WebkitFullscreenElement;
+		return Boolean(element.requestFullscreen ?? element.webkitRequestFullscreen);
+	}
+
+	function requestFullscreen(element: Element): Promise<void> | void {
+		const target = element as WebkitFullscreenElement;
+		return target.requestFullscreen?.() ?? target.webkitRequestFullscreen?.();
+	}
+
+	function exitFullscreen(): Promise<void> | void {
+		const doc = document as WebkitFullscreenDocument;
+		return document.exitFullscreen?.() ?? doc.webkitExitFullscreen?.();
+	}
+
+	type WebkitFullscreenDocument = Document & {
+		webkitExitFullscreen?: () => Promise<void> | void;
+		webkitFullscreenElement?: Element | null;
+	};
+
+	type WebkitFullscreenElement = Element & {
+		webkitRequestFullscreen?: () => Promise<void> | void;
+	};
 </script>
 
 <svelte:head>
@@ -72,9 +133,12 @@
 		moveError={controller.moveError}
 		canUndo={controller.canUndo}
 		canRedo={controller.canRedo}
+		{fullscreenAvailable}
+		{fullscreenActive}
 		onReset={controller.resetGame}
 		onUndo={controller.undoMove}
 		onRedo={controller.redoMove}
+		onToggleFullscreen={toggleFullscreen}
 		onOpponentModeChange={controller.setOpponentMode}
 		onAiDifficultyChange={controller.setAiDifficulty}
 		onMatchModeChange={controller.setMatchMode}
