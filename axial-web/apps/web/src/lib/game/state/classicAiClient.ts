@@ -1,4 +1,4 @@
-import { BOARD_COLUMNS, type GameSnapshot } from '@axial/core';
+import type { GameSnapshot } from '@axial/core';
 import type { MctsMoveResult, MctsOptions } from '@axial/ai';
 import type { ClassicAiWorkerRequest, ClassicAiWorkerResponse } from './classicAiMessages';
 
@@ -18,6 +18,7 @@ type WorkerLike = {
 type PendingRequest = {
 	resolve: (result: MctsMoveResult | null) => void;
 	reject: (error: unknown) => void;
+	fallbackColumns: number;
 };
 
 export type ClassicAiWorkerFactory = () => WorkerLike;
@@ -61,7 +62,8 @@ export function createClassicAiClient(
 
 		request.resolve({
 			move: response.move,
-			moveIndex: response.moveIndex ?? response.move.row * BOARD_COLUMNS + response.move.col,
+			moveIndex:
+				response.moveIndex ?? response.move.row * request.fallbackColumns + response.move.col,
 			reason: response.reason ?? 'search',
 			simulations: response.simulations,
 			elapsedMs: response.elapsedMs,
@@ -90,7 +92,7 @@ export function createClassicAiClient(
 			nextRequestId += 1;
 
 			return new Promise((resolve, reject) => {
-				pending.set(id, { resolve, reject });
+				pending.set(id, { resolve, reject, fallbackColumns: game.dimensions.columns });
 				getWorker().postMessage({ id, game, options });
 			});
 		},

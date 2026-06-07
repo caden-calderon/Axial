@@ -2,22 +2,47 @@ export const BOARD_HEIGHT = 6;
 export const BOARD_ROWS = 6;
 export const BOARD_COLUMNS = 7;
 export const WIN_LENGTH = 4;
+export const MIN_BOARD_HEIGHT = BOARD_HEIGHT;
+export const MIN_BOARD_ROWS = BOARD_ROWS;
+export const MIN_BOARD_COLUMNS = BOARD_COLUMNS;
+export const MAX_BOARD_DIMENSION = 10;
 export const MIN_WIN_LINE_LENGTH = 4;
 export const MAX_WIN_LINE_LENGTH = 5;
 export const MIN_LINES_TO_WIN = 1;
 export const MAX_LINES_TO_WIN = 3;
-export const CELL_COUNT = BOARD_HEIGHT * BOARD_ROWS * BOARD_COLUMNS;
 export const BLOCKER_CELL = 3;
 
 export type MatchMode = "classic" | "tactical";
 
+export type BoardDimensions = {
+  height: number;
+  rows: number;
+  columns: number;
+};
+
+export const DEFAULT_BOARD_DIMENSIONS: BoardDimensions = Object.freeze({
+  height: BOARD_HEIGHT,
+  rows: BOARD_ROWS,
+  columns: BOARD_COLUMNS,
+});
+
+export const MIN_BOARD_DIMENSIONS: BoardDimensions = Object.freeze({
+  height: MIN_BOARD_HEIGHT,
+  rows: MIN_BOARD_ROWS,
+  columns: MIN_BOARD_COLUMNS,
+});
+
+export const MAX_BOARD_DIMENSIONS: BoardDimensions = Object.freeze({
+  height: MAX_BOARD_DIMENSION,
+  rows: MAX_BOARD_DIMENSION,
+  columns: MAX_BOARD_DIMENSION,
+});
+
+export const CELL_COUNT = cellCount(DEFAULT_BOARD_DIMENSIONS);
+
 export type MatchConfig = {
   mode: MatchMode;
-  board: {
-    height: number;
-    rows: number;
-    columns: number;
-  };
+  board: BoardDimensions;
   defaultWinCondition: WinCondition;
   specialPieceSlots: number;
 };
@@ -40,21 +65,13 @@ export const MATCH_MODE_LABELS: Record<MatchMode, string> = {
 export const MATCH_CONFIGS: Record<MatchMode, MatchConfig> = {
   classic: {
     mode: "classic",
-    board: {
-      height: BOARD_HEIGHT,
-      rows: BOARD_ROWS,
-      columns: BOARD_COLUMNS,
-    },
+    board: DEFAULT_BOARD_DIMENSIONS,
     defaultWinCondition: DEFAULT_WIN_CONDITION,
     specialPieceSlots: 0,
   },
   tactical: {
     mode: "tactical",
-    board: {
-      height: BOARD_HEIGHT,
-      rows: BOARD_ROWS,
-      columns: BOARD_COLUMNS,
-    },
+    board: DEFAULT_BOARD_DIMENSIONS,
     defaultWinCondition: DEFAULT_WIN_CONDITION,
     specialPieceSlots: 3,
   },
@@ -105,6 +122,7 @@ export type CompletedLine = {
 
 export type GameSnapshot = {
   board: Uint8Array;
+  dimensions: BoardDimensions;
   currentPlayer: Player;
   winCondition: WinCondition;
   completedLines: CompletedLine[];
@@ -147,11 +165,14 @@ type CellCoordinate = {
 
 export function createGame(
   winCondition: WinCondition = DEFAULT_WIN_CONDITION,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
 ): GameSnapshot {
   const normalizedWinCondition = normalizeWinCondition(winCondition);
+  const normalizedDimensions = normalizeBoardDimensions(dimensions);
 
   return {
-    board: new Uint8Array(CELL_COUNT),
+    board: new Uint8Array(cellCount(normalizedDimensions)),
+    dimensions: normalizedDimensions,
     currentPlayer: 1,
     winCondition: normalizedWinCondition,
     completedLines: [],
@@ -164,10 +185,11 @@ export function createGame(
 export function replayMoves(
   moves: readonly ReplayMove[],
   winCondition: WinCondition = DEFAULT_WIN_CONDITION,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
 ): GameSnapshot {
   return moves.reduce(
     (game, move) => applyReplayMove(game, move),
-    createGame(winCondition),
+    createGame(winCondition, dimensions),
   );
 }
 
@@ -202,6 +224,7 @@ export function applyReplayMove(
 export function cloneGame(game: GameSnapshot): GameSnapshot {
   return {
     board: game.board.slice(),
+    dimensions: cloneBoardDimensions(game.dimensions),
     currentPlayer: game.currentPlayer,
     winCondition: cloneWinCondition(game.winCondition),
     completedLines: game.completedLines.map(cloneCompletedLine),
@@ -211,24 +234,35 @@ export function cloneGame(game: GameSnapshot): GameSnapshot {
   };
 }
 
-export function indexOf(height: number, row: number, col: number): number {
-  assertBounds(height, row, col);
-  return height + row * BOARD_HEIGHT + col * BOARD_HEIGHT * BOARD_ROWS;
+export function indexOf(
+  height: number,
+  row: number,
+  col: number,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+): number {
+  assertBounds(height, row, col, dimensions);
+  return (
+    height + row * dimensions.height + col * dimensions.height * dimensions.rows
+  );
 }
 
-export function cellFromIndex(index: number): {
+export function cellFromIndex(
+  index: number,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+): {
   height: number;
   row: number;
   col: number;
 } {
-  if (index < 0 || index >= CELL_COUNT) {
+  const cells = cellCount(dimensions);
+  if (index < 0 || index >= cells) {
     throw new RangeError(`Cell index ${index} is outside the board`);
   }
 
-  const height = index % BOARD_HEIGHT;
-  const rest = Math.floor(index / BOARD_HEIGHT);
-  const row = rest % BOARD_ROWS;
-  const col = Math.floor(rest / BOARD_ROWS);
+  const height = index % dimensions.height;
+  const rest = Math.floor(index / dimensions.height);
+  const row = rest % dimensions.rows;
+  const col = Math.floor(rest / dimensions.rows);
 
   return { height, row, col };
 }
@@ -238,16 +272,20 @@ export function getCell(
   height: number,
   row: number,
   col: number,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
 ): Cell {
-  return board[indexOf(height, row, col)] as Cell;
+  return board[indexOf(height, row, col, dimensions)] as Cell;
 }
 
-export function legalMoves(board: Uint8Array): Move[] {
+export function legalMoves(
+  board: Uint8Array,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+): Move[] {
   const moves: Move[] = [];
 
-  for (let col = 0; col < BOARD_COLUMNS; col += 1) {
-    for (let row = 0; row < BOARD_ROWS; row += 1) {
-      if (getCell(board, BOARD_HEIGHT - 1, row, col) === 0) {
+  for (let col = 0; col < dimensions.columns; col += 1) {
+    for (let row = 0; row < dimensions.rows; row += 1) {
+      if (getCell(board, dimensions.height - 1, row, col, dimensions) === 0) {
         moves.push({ row, col });
       }
     }
@@ -256,11 +294,15 @@ export function legalMoves(board: Uint8Array): Move[] {
   return moves;
 }
 
-export function getDropHeight(board: Uint8Array, move: Move): number {
-  assertColumn(move);
+export function getDropHeight(
+  board: Uint8Array,
+  move: Move,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+): number {
+  assertColumn(move, dimensions);
 
-  for (let height = 0; height < BOARD_HEIGHT; height += 1) {
-    if (getCell(board, height, move.row, move.col) === 0) {
+  for (let height = 0; height < dimensions.height; height += 1) {
+    if (getCell(board, height, move.row, move.col, dimensions) === 0) {
       return height;
     }
   }
@@ -277,16 +319,16 @@ export function applyMove(
     throw new Error("Cannot play a move after the game is over");
   }
 
-  assertColumn(move);
+  assertColumn(move, game.dimensions);
 
-  const height = getDropHeight(game.board, move);
+  const height = getDropHeight(game.board, move, game.dimensions);
   if (height < 0) {
     throw new Error(`Column row=${move.row}, col=${move.col} is full`);
   }
 
   const next = cloneGame(game);
   const player = game.currentPlayer;
-  const cellIndex = indexOf(height, move.row, move.col);
+  const cellIndex = indexOf(height, move.row, move.col, game.dimensions);
   next.board[cellIndex] = player;
 
   const placed: PlacedMove = {
@@ -302,6 +344,8 @@ export function applyMove(
   next.completedLines = findCompletedLineSegments(
     next.board,
     next.winCondition,
+    undefined,
+    next.dimensions,
   );
   const playerLines = next.completedLines.filter(
     (line) => line.player === player,
@@ -318,7 +362,7 @@ export function applyMove(
     return next;
   }
 
-  if (legalMoves(next.board).length === 0) {
+  if (legalMoves(next.board, next.dimensions).length === 0) {
     next.status = { state: "draw" };
     return next;
   }
@@ -338,19 +382,19 @@ export function applyBlocker(game: GameSnapshot, move: Move): GameSnapshot {
     throw new Error("Cannot play a blocker after the game is over");
   }
 
-  assertColumn(move);
+  assertColumn(move, game.dimensions);
 
-  const height = getDropHeight(game.board, move);
+  const height = getDropHeight(game.board, move, game.dimensions);
   if (height < 0) {
     throw new Error(`Column row=${move.row}, col=${move.col} is full`);
   }
 
   const next = cloneGame(game);
   const player = game.currentPlayer;
-  const cellIndex = indexOf(height, move.row, move.col);
+  const cellIndex = indexOf(height, move.row, move.col, game.dimensions);
   next.board[cellIndex] = BLOCKER_CELL;
 
-  if (legalMoves(next.board).length === 0) {
+  if (legalMoves(next.board, next.dimensions).length === 0) {
     throw new Error("Blocker must leave a legal piece move");
   }
 
@@ -381,7 +425,7 @@ export function applyDoubleAdjacentFirst(
   if (
     next.status.state === "playing" &&
     origin &&
-    legalDoubleAdjacentMoves(next.board, origin).length === 0
+    legalDoubleAdjacentMoves(next.board, origin, next.dimensions).length === 0
   ) {
     throw new Error("Double adjacent must leave a legal adjacent move");
   }
@@ -398,7 +442,7 @@ export function applyDoubleAdjacentSecond(
     throw new Error("Double adjacent must continue from its first piece");
   }
 
-  if (!isLegalDoubleAdjacentMove(game.board, move, origin)) {
+  if (!isLegalDoubleAdjacentMove(game.board, move, origin, game.dimensions)) {
     throw new Error("Second piece must land adjacent to the first piece");
   }
 
@@ -417,9 +461,10 @@ export function getPendingDoubleAdjacentOrigin(
 export function legalDoubleAdjacentMoves(
   board: Uint8Array,
   origin: PlacedMove,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
 ): Move[] {
-  return legalMoves(board).filter((move) =>
-    isLegalDoubleAdjacentMove(board, move, origin),
+  return legalMoves(board, dimensions).filter((move) =>
+    isLegalDoubleAdjacentMove(board, move, origin, dimensions),
   );
 }
 
@@ -427,8 +472,9 @@ export function isLegalDoubleAdjacentMove(
   board: Uint8Array,
   move: Move,
   origin: PlacedMove,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
 ): boolean {
-  const height = getDropHeight(board, move);
+  const height = getDropHeight(board, move, dimensions);
   if (height < 0) return false;
 
   return areCellsAdjacent(origin, { height, row: move.row, col: move.col });
@@ -454,13 +500,14 @@ export function findWinningLine(
   board: Uint8Array,
   move: PlacedMove,
   winCondition: WinCondition = DEFAULT_WIN_CONDITION,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
 ): number[] | null {
   if (move.kind === "blocker") return null;
 
   for (const direction of DIRECTIONS) {
-    const line = collectLine(board, move, direction);
+    const line = collectLine(board, move, direction, dimensions);
     if (line.length >= winCondition.lineLength) {
-      const center = indexOf(move.height, move.row, move.col);
+      const center = indexOf(move.height, move.row, move.col, dimensions);
       const centerOffset = line.indexOf(center);
       const start = Math.max(
         0,
@@ -480,31 +527,34 @@ export function findCompletedLines(
   board: Uint8Array,
   player: Player,
   winCondition: WinCondition = DEFAULT_WIN_CONDITION,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
 ): number[][] {
-  return findCompletedLineSegments(board, winCondition, player).map((line) => [
-    ...line.cells,
-  ]);
+  return findCompletedLineSegments(board, winCondition, player, dimensions).map(
+    (line) => [...line.cells],
+  );
 }
 
 export function findCompletedLineSegments(
   board: Uint8Array,
   winCondition: WinCondition = DEFAULT_WIN_CONDITION,
   playerFilter?: Player,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
 ): CompletedLine[] {
   const { lineLength } = normalizeWinCondition(winCondition);
   const lines: CompletedLine[] = [];
   const players: readonly Player[] = playerFilter ? [playerFilter] : [1, 2];
 
-  for (let height = 0; height < BOARD_HEIGHT; height += 1) {
-    for (let row = 0; row < BOARD_ROWS; row += 1) {
-      for (let col = 0; col < BOARD_COLUMNS; col += 1) {
+  for (let height = 0; height < dimensions.height; height += 1) {
+    for (let row = 0; row < dimensions.rows; row += 1) {
+      for (let col = 0; col < dimensions.columns; col += 1) {
         for (const direction of DIRECTIONS) {
           const [dh, dr, dc] = direction;
 
           for (const player of players) {
             if (
-              isInBounds(height - dh, row - dr, col - dc) &&
-              getCell(board, height - dh, row - dr, col - dc) === player
+              isInBounds(height - dh, row - dr, col - dc, dimensions) &&
+              getCell(board, height - dh, row - dr, col - dc, dimensions) ===
+                player
             ) {
               continue;
             }
@@ -515,10 +565,11 @@ export function findCompletedLineSegments(
             let nextCol = col;
 
             while (
-              isInBounds(nextHeight, nextRow, nextCol) &&
-              getCell(board, nextHeight, nextRow, nextCol) === player
+              isInBounds(nextHeight, nextRow, nextCol, dimensions) &&
+              getCell(board, nextHeight, nextRow, nextCol, dimensions) ===
+                player
             ) {
-              cells.push(indexOf(nextHeight, nextRow, nextCol));
+              cells.push(indexOf(nextHeight, nextRow, nextCol, dimensions));
               nextHeight += dh;
               nextRow += dr;
               nextCol += dc;
@@ -561,6 +612,51 @@ export function normalizeWinCondition(
   return { lineLength, linesToWin };
 }
 
+export function normalizeBoardDimensions(
+  dimensions: BoardDimensions,
+): BoardDimensions {
+  return {
+    height: assertIntegerInRange(
+      dimensions.height,
+      MIN_BOARD_HEIGHT,
+      MAX_BOARD_DIMENSION,
+      "Board height",
+    ),
+    rows: assertIntegerInRange(
+      dimensions.rows,
+      MIN_BOARD_ROWS,
+      MAX_BOARD_DIMENSION,
+      "Board rows",
+    ),
+    columns: assertIntegerInRange(
+      dimensions.columns,
+      MIN_BOARD_COLUMNS,
+      MAX_BOARD_DIMENSION,
+      "Board columns",
+    ),
+  };
+}
+
+export function cellCount(dimensions: BoardDimensions): number {
+  const normalized = normalizeBoardDimensions(dimensions);
+  return normalized.height * normalized.rows * normalized.columns;
+}
+
+export function isDefaultBoardDimensions(dimensions: BoardDimensions): boolean {
+  return sameBoardDimensions(dimensions, DEFAULT_BOARD_DIMENSIONS);
+}
+
+export function sameBoardDimensions(
+  first: BoardDimensions,
+  second: BoardDimensions,
+): boolean {
+  return (
+    first.height === second.height &&
+    first.rows === second.rows &&
+    first.columns === second.columns
+  );
+}
+
 export function otherPlayer(player: Player): Player {
   return player === 1 ? 2 : 1;
 }
@@ -569,10 +665,11 @@ function collectLine(
   board: Uint8Array,
   move: PlacedMove,
   [dh, dr, dc]: readonly [number, number, number],
+  dimensions: BoardDimensions,
 ): number[] {
-  const backward = collectRay(board, move, -dh, -dr, -dc).reverse();
-  const center = indexOf(move.height, move.row, move.col);
-  const forward = collectRay(board, move, dh, dr, dc);
+  const backward = collectRay(board, move, -dh, -dr, -dc, dimensions).reverse();
+  const center = indexOf(move.height, move.row, move.col, dimensions);
+  const forward = collectRay(board, move, dh, dr, dc, dimensions);
 
   return [...backward, center, ...forward];
 }
@@ -583,6 +680,7 @@ function collectRay(
   dh: number,
   dr: number,
   dc: number,
+  dimensions: BoardDimensions,
 ): number[] {
   const cells: number[] = [];
 
@@ -592,9 +690,9 @@ function collectRay(
 
   while (
     isInBounds(height, row, col) &&
-    getCell(board, height, row, col) === move.player
+    getCell(board, height, row, col, dimensions) === move.player
   ) {
-    cells.push(indexOf(height, row, col));
+    cells.push(indexOf(height, row, col, dimensions));
     height += dh;
     row += dr;
     col += dc;
@@ -625,6 +723,14 @@ function cloneWinCondition(winCondition: WinCondition): WinCondition {
   return {
     lineLength: winCondition.lineLength,
     linesToWin: winCondition.linesToWin,
+  };
+}
+
+function cloneBoardDimensions(dimensions: BoardDimensions): BoardDimensions {
+  return {
+    height: dimensions.height,
+    rows: dimensions.rows,
+    columns: dimensions.columns,
   };
 }
 
@@ -693,12 +799,15 @@ function isPendingDoubleAdjacentOrigin(
   );
 }
 
-function assertColumn(move: Move): void {
+function assertColumn(
+  move: Move,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+): void {
   if (
     move.row < 0 ||
-    move.row >= BOARD_ROWS ||
+    move.row >= dimensions.rows ||
     move.col < 0 ||
-    move.col >= BOARD_COLUMNS
+    move.col >= dimensions.columns
   ) {
     throw new RangeError(
       `Move row=${move.row}, col=${move.col} is outside the board`,
@@ -706,21 +815,31 @@ function assertColumn(move: Move): void {
   }
 }
 
-function assertBounds(height: number, row: number, col: number): void {
-  if (!isInBounds(height, row, col)) {
+function assertBounds(
+  height: number,
+  row: number,
+  col: number,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+): void {
+  if (!isInBounds(height, row, col, dimensions)) {
     throw new RangeError(
       `Cell h=${height}, row=${row}, col=${col} is outside the board`,
     );
   }
 }
 
-function isInBounds(height: number, row: number, col: number): boolean {
+function isInBounds(
+  height: number,
+  row: number,
+  col: number,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+): boolean {
   return (
     height >= 0 &&
-    height < BOARD_HEIGHT &&
+    height < dimensions.height &&
     row >= 0 &&
-    row < BOARD_ROWS &&
+    row < dimensions.rows &&
     col >= 0 &&
-    col < BOARD_COLUMNS
+    col < dimensions.columns
   );
 }

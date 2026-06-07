@@ -12,6 +12,7 @@ import {
   applyMove,
   areCellsAdjacent,
   cellFromIndex,
+  cellCount,
   createGame,
   findCompletedLines,
   getPendingDoubleAdjacentOrigin,
@@ -19,6 +20,7 @@ import {
   indexOf,
   isLegalDoubleAdjacentMove,
   legalMoves,
+  normalizeBoardDimensions,
   replayMoves,
 } from "./index";
 
@@ -67,6 +69,38 @@ describe("Axial game core", () => {
     const game = createGame();
 
     expect(legalMoves(game.board)).toHaveLength(BOARD_ROWS * BOARD_COLUMNS);
+  });
+
+  it("creates and replays larger configured boards", () => {
+    const dimensions = normalizeBoardDimensions({
+      height: 7,
+      rows: 8,
+      columns: 9,
+    });
+    let game = createGame(DEFAULT_WIN_CONDITION, dimensions);
+
+    expect(game.dimensions).toEqual(dimensions);
+    expect(game.board).toHaveLength(cellCount(dimensions));
+    expect(legalMoves(game.board, dimensions)).toHaveLength(
+      dimensions.rows * dimensions.columns,
+    );
+
+    game = applyMove(game, { row: 7, col: 8 });
+
+    expect(game.moveHistory[0]).toMatchObject({ height: 0, row: 7, col: 8 });
+
+    const replayed = replayMoves(
+      game.moveHistory.map(({ row, col }) => ({ row, col })),
+      DEFAULT_WIN_CONDITION,
+      dimensions,
+    );
+
+    expect(replayed.dimensions).toEqual(dimensions);
+    expect(replayed.moveHistory[0]).toMatchObject({
+      height: 0,
+      row: 7,
+      col: 8,
+    });
   });
 
   it("uses gravity when stacking pieces", () => {

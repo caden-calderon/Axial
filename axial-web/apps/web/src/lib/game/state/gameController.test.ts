@@ -1,7 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BLOCKER_CELL, indexOf } from '@axial/core';
+import { BLOCKER_CELL, cellCount, indexOf } from '@axial/core';
 import { GAME_OVER_MODAL_DELAY_MS } from '../animation';
-import { createGameController } from './gameController.svelte';
+import { createGameController, remainingAiThinkingDelayMs } from './gameController.svelte';
+
+describe('game controller AI timing', () => {
+	it('keeps visible thinking time meaningfully longer on stronger difficulties', () => {
+		const easy = remainingAiThinkingDelayMs('easy', 0);
+		const medium = remainingAiThinkingDelayMs('medium', 0);
+		const hard = remainingAiThinkingDelayMs('hard', 0);
+		const max = remainingAiThinkingDelayMs('nightmare', 0);
+
+		expect(easy).toBeGreaterThan(0);
+		expect(medium).toBeGreaterThan(easy);
+		expect(hard).toBeGreaterThan(medium);
+		expect(max).toBeGreaterThan(hard);
+		expect(remainingAiThinkingDelayMs('nightmare', max)).toBe(0);
+	});
+});
 
 describe('game controller appearance lock', () => {
 	it('locks piece shape and colors after the first placed piece until reset', () => {
@@ -41,6 +56,17 @@ describe('game controller appearance lock', () => {
 		expect(controller.appearanceLocked).toBe(true);
 	});
 
+	it('keeps the board color editable during active matches', () => {
+		const controller = createGameController();
+
+		controller.setBoardColor('#abc');
+		controller.playMove({ row: 0, col: 0 });
+		controller.setBoardColor('#123456');
+
+		expect(controller.boardColor).toBe('#123456');
+		expect(controller.appearanceLocked).toBe(true);
+	});
+
 	it('locks opponent and rules setup after the first placed piece', () => {
 		const controller = createGameController();
 
@@ -61,6 +87,25 @@ describe('game controller appearance lock', () => {
 		expect(controller.aiDifficulty).toBe('nightmare');
 		expect(controller.winCondition).toEqual({ lineLength: 5, linesToWin: 2 });
 		expect(controller.game.winCondition).toEqual({ lineLength: 5, linesToWin: 2 });
+		expect(controller.setupLocked).toBe(true);
+	});
+
+	it('edits board dimensions before play and locks them after the first move', () => {
+		const controller = createGameController();
+
+		controller.setBoardDimension('height', 7);
+		controller.setBoardDimension('rows', 8);
+		controller.setBoardDimension('columns', 9);
+
+		expect(controller.boardDimensions).toEqual({ height: 7, rows: 8, columns: 9 });
+		expect(controller.game.dimensions).toEqual({ height: 7, rows: 8, columns: 9 });
+		expect(controller.game.board).toHaveLength(cellCount(controller.boardDimensions));
+
+		controller.playMove({ row: 7, col: 8 });
+		controller.setBoardDimension('columns', 10);
+
+		expect(controller.boardDimensions).toEqual({ height: 7, rows: 8, columns: 9 });
+		expect(controller.moveError).toBe('Start a new match to change board size');
 		expect(controller.setupLocked).toBe(true);
 	});
 

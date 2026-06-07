@@ -3,7 +3,7 @@
 	import type { GameSnapshot, Move, PlacedMove } from '@axial/core';
 	import type { PlacementMode } from '../state/gameController.svelte';
 	import type { PieceColors, PieceShape } from '../state/pieceAppearance';
-	import type { SceneThemeName, UiThemeName } from '../theming/sceneThemes';
+	import type { UiThemeName } from '../theming/sceneThemes';
 	import AxialWorld from './AxialWorld.svelte';
 
 	let {
@@ -11,7 +11,7 @@
 		hoveredMove,
 		labelsVisible,
 		uiTheme,
-		sceneTheme,
+		boardColor,
 		pieceShape,
 		pieceColors,
 		placementMode,
@@ -23,7 +23,7 @@
 		hoveredMove: Move | null;
 		labelsVisible: boolean;
 		uiTheme: UiThemeName;
-		sceneTheme: SceneThemeName;
+		boardColor: string;
 		pieceShape: PieceShape;
 		pieceColors: PieceColors;
 		placementMode: PlacementMode;
@@ -40,7 +40,7 @@
 			{hoveredMove}
 			{labelsVisible}
 			{uiTheme}
-			{sceneTheme}
+			{boardColor}
 			{pieceShape}
 			{pieceColors}
 			{placementMode}

@@ -1,20 +1,21 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { untrack } from 'svelte';
 	import { T, useTask, useThrelte } from '@threlte/core';
-	import { Billboard, Text } from '@threlte/extras';
-	import { BOARD_COLUMNS, BOARD_HEIGHT, BOARD_ROWS } from '@axial/core';
-	import { MeshBasicMaterial } from 'three';
+	import type { BoardDimensions } from '@axial/core';
 	import type { ScenePalette, UiThemeName } from '../theming/sceneThemes';
-	import { BOARD_SIZE, CELL_SPACING, cellPosition, type Vec3 } from './geometry';
+	import { boardSize, CELL_SPACING, cellPosition, type Vec3 } from './geometry';
+	import BillboardLabel from './BillboardLabel.svelte';
 
 	let {
 		palette,
 		uiTheme,
-		boardRotation
+		boardRotation,
+		dimensions
 	}: {
 		palette: ScenePalette;
 		uiTheme: UiThemeName;
 		boardRotation: number;
+		dimensions: BoardDimensions;
 	} = $props();
 
 	type PerimeterRailId = 'west-y' | 'south-x' | 'east-y' | 'north-x';
@@ -49,13 +50,15 @@
 	};
 
 	const { camera } = useThrelte();
+	const initialDimensions = untrack(() => dimensions);
 	const labelOffset = CELL_SPACING * 0.68;
 	const lowerOffset = CELL_SPACING * 0.5;
 	const axisOffset = CELL_SPACING * 0.98;
 	const axisLetterOffset = CELL_SPACING * 1.7;
-	const xHalf = BOARD_SIZE[0] / 2;
-	const yHalf = BOARD_SIZE[1] / 2;
-	const zHalf = BOARD_SIZE[2] / 2;
+	const size = boardSize(initialDimensions);
+	const xHalf = size[0] / 2;
+	const yHalf = size[1] / 2;
+	const zHalf = size[2] / 2;
 	const perimeterAxisY = -yHalf + CELL_SPACING * 0.25;
 	const zRailCandidates: ZRailCandidate[] = [
 		{ id: 'z-west-south', sideX: -1, sideZ: -1 },
@@ -92,21 +95,17 @@
 	];
 	const perimeterLabels = createPerimeterLabels();
 	const axisLabelCandidates = createAxisLabelCandidates();
-	const zNumbers = Array.from({ length: BOARD_HEIGHT }, (_, index) => String(index + 1));
+	const zNumbers = Array.from({ length: initialDimensions.height }, (_, index) =>
+		String(index + 1)
+	);
 
 	let cameraLocalX = $state(1);
 	let cameraLocalZ = $state(1);
 	const labelColor = $derived(uiTheme === 'dark' ? '#dcecff' : palette.grid);
-	const fillOpacity = $derived(uiTheme === 'dark' ? 0.46 : 0.5);
-	const outlineOpacity = $derived(uiTheme === 'dark' ? 0.32 : 0.18);
-	const labelMaterial = new MeshBasicMaterial({
-		depthTest: false,
-		depthWrite: false,
-		transparent: true
-	});
-
-	onDestroy(() => labelMaterial.dispose());
-
+	const numberFillOpacity = $derived(uiTheme === 'dark' ? 0.28 : 0.34);
+	const numberOutlineOpacity = $derived(uiTheme === 'dark' ? 0.16 : 0.1);
+	const axisFillOpacity = $derived(uiTheme === 'dark' ? 0.36 : 0.42);
+	const axisOutlineOpacity = $derived(uiTheme === 'dark' ? 0.21 : 0.14);
 	useTask((delta) => {
 		const world = camera.current.position;
 		const cos = Math.cos(boardRotation);
@@ -165,18 +164,26 @@
 	}
 
 	function createXRailPositions(sideZ: Side, direction: Side): Vec3[] {
-		return Array.from({ length: BOARD_COLUMNS }, (_, index) => {
-			const col = direction === 1 ? index : BOARD_COLUMNS - 1 - index;
+		return Array.from({ length: initialDimensions.columns }, (_, index) => {
+			const col = direction === 1 ? index : initialDimensions.columns - 1 - index;
 
-			return [cellPosition(0, 0, col)[0], -yHalf - lowerOffset, sideZ * (zHalf + labelOffset)];
+			return [
+				cellPosition(0, 0, col, initialDimensions)[0],
+				-yHalf - lowerOffset,
+				sideZ * (zHalf + labelOffset)
+			];
 		});
 	}
 
 	function createYRailPositions(sideX: Side, direction: Side): Vec3[] {
-		return Array.from({ length: BOARD_ROWS }, (_, index) => {
-			const row = direction === 1 ? index : BOARD_ROWS - 1 - index;
+		return Array.from({ length: initialDimensions.rows }, (_, index) => {
+			const row = direction === 1 ? index : initialDimensions.rows - 1 - index;
 
-			return [sideX * (xHalf + labelOffset), -yHalf - lowerOffset, cellPosition(0, row, 0)[2]];
+			return [
+				sideX * (xHalf + labelOffset),
+				-yHalf - lowerOffset,
+				cellPosition(0, row, 0, initialDimensions)[2]
+			];
 		});
 	}
 
@@ -212,7 +219,7 @@
 	function zNumberPosition(candidate: ZRailCandidate, index: number): Vec3 {
 		return [
 			candidate.sideX * (xHalf + labelOffset),
-			cellPosition(index, 0, 0)[1],
+			cellPosition(index, 0, 0, initialDimensions)[1],
 			candidate.sideZ * (zHalf + lowerOffset)
 		];
 	}
@@ -247,48 +254,32 @@
 	{#each perimeterLabels as label (label.id)}
 		{@const visibility = perimeterNumberVisibility(label)}
 		{#if visibility > 0.01}
-			<Billboard position={label.position}>
-				<Text
-					text={label.text}
-					fontSize={0.2}
-					anchorX="center"
-					anchorY="middle"
-					material={labelMaterial}
-					color={labelColor}
-					fillOpacity={visibility * fillOpacity}
-					outlineColor={palette.gridEmissive}
-					outlineOpacity={visibility * outlineOpacity}
-					outlineBlur="12%"
-					outlineWidth="2%"
-					depthOffset={-4}
-					characters="XYZ1234567"
-					renderOrder={9}
-				/>
-			</Billboard>
+			<BillboardLabel
+				text={label.text}
+				position={label.position}
+				fontSize={0.2}
+				color={labelColor}
+				outlineColor={palette.gridEmissive}
+				fillOpacity={numberFillOpacity}
+				outlineOpacity={numberOutlineOpacity}
+				opacity={visibility}
+			/>
 		{/if}
 	{/each}
 
 	{#each axisLabelCandidates as label (label.id)}
 		{@const visibility = axisLabelVisibility(label)}
 		{#if visibility > 0.01}
-			<Billboard position={label.position}>
-				<Text
-					text={label.text}
-					fontSize={0.3}
-					anchorX="center"
-					anchorY="middle"
-					material={labelMaterial}
-					color={labelColor}
-					fillOpacity={visibility * (fillOpacity + 0.14)}
-					outlineColor={palette.gridEmissive}
-					outlineOpacity={visibility * (outlineOpacity + 0.08)}
-					outlineBlur="18%"
-					outlineWidth="2%"
-					depthOffset={-4}
-					characters="XYZ1234567"
-					renderOrder={9}
-				/>
-			</Billboard>
+			<BillboardLabel
+				text={label.text}
+				position={label.position}
+				fontSize={0.3}
+				color={labelColor}
+				outlineColor={palette.gridEmissive}
+				fillOpacity={axisFillOpacity}
+				outlineOpacity={axisOutlineOpacity}
+				opacity={visibility}
+			/>
 		{/if}
 	{/each}
 
@@ -296,44 +287,28 @@
 		{@const visibility = zRailVisibility(candidate)}
 		{#if visibility > 0.01}
 			{#each zNumbers as number, index (`${candidate.id}-${number}`)}
-				<Billboard position={zNumberPosition(candidate, index)}>
-					<Text
-						text={number}
-						fontSize={0.2}
-						anchorX="center"
-						anchorY="middle"
-						material={labelMaterial}
-						color={labelColor}
-						fillOpacity={visibility * fillOpacity * 0.9}
-						outlineColor={palette.gridEmissive}
-						outlineOpacity={visibility * outlineOpacity * 0.85}
-						outlineBlur="12%"
-						outlineWidth="2%"
-						depthOffset={-4}
-						characters="XYZ1234567"
-						renderOrder={9}
-					/>
-				</Billboard>
+				<BillboardLabel
+					text={number}
+					position={zNumberPosition(candidate, index)}
+					fontSize={0.2}
+					color={labelColor}
+					outlineColor={palette.gridEmissive}
+					fillOpacity={numberFillOpacity * 0.9}
+					outlineOpacity={numberOutlineOpacity * 0.85}
+					opacity={visibility}
+				/>
 			{/each}
 
-			<Billboard position={zAxisPosition(candidate)}>
-				<Text
-					text="Z"
-					fontSize={0.3}
-					anchorX="center"
-					anchorY="middle"
-					material={labelMaterial}
-					color={labelColor}
-					fillOpacity={visibility * (fillOpacity + 0.14)}
-					outlineColor={palette.gridEmissive}
-					outlineOpacity={visibility * (outlineOpacity + 0.08)}
-					outlineBlur="18%"
-					outlineWidth="2%"
-					depthOffset={-4}
-					characters="XYZ1234567"
-					renderOrder={9}
-				/>
-			</Billboard>
+			<BillboardLabel
+				text="Z"
+				position={zAxisPosition(candidate)}
+				fontSize={0.3}
+				color={labelColor}
+				outlineColor={palette.gridEmissive}
+				fillOpacity={axisFillOpacity}
+				outlineOpacity={axisOutlineOpacity}
+				opacity={visibility}
+			/>
 		{/if}
 	{/each}
 </T.Group>

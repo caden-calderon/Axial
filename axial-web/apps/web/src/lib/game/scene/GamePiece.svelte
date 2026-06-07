@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { T, useTask } from '@threlte/core';
-	import { RoundedBoxGeometry } from '@threlte/extras';
 	import { AdditiveBlending } from 'three';
-	import type { PlacedMove } from '@axial/core';
+	import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+	import type { BoardDimensions, PlacedMove } from '@axial/core';
 	import { PIECE_DROP_DURATION_MAX_SECONDS, PIECE_DROP_DURATION_MIN_SECONDS } from '../animation';
-	import { cellPosition, DROP_START_Y, PIECE_SIZE } from './geometry';
+	import { cellPosition, dropStartY, PIECE_SIZE } from './geometry';
 	import type { PieceColors, PieceShape } from '../state/pieceAppearance';
 
 	let {
@@ -12,19 +13,22 @@
 		moveIndex,
 		pieceShape,
 		pieceColors,
-		highlighted = false
+		highlighted = false,
+		dimensions
 	}: {
 		move: PlacedMove;
 		moveIndex: number;
 		pieceShape: PieceShape;
 		pieceColors: PieceColors;
 		highlighted?: boolean;
+		dimensions: BoardDimensions;
 	} = $props();
 
-	const target = $derived(cellPosition(move.height, move.row, move.col));
+	const target = $derived(cellPosition(move.height, move.row, move.col, dimensions));
+	const dropStart = $derived(dropStartY(dimensions));
 	const dropDuration = $derived(createDropDuration(move, moveIndex));
 	const isBlocker = $derived(move.kind === 'blocker');
-	let y = $state(DROP_START_Y);
+	let y = $state(dropStartY(untrack(() => dimensions)));
 	let scale = $state(0.94);
 	let opacity = $state(0);
 	let fallGlow = $state(1);
@@ -58,7 +62,7 @@
 		const progress = Math.min(elapsed / dropDuration, 1);
 		const eased = easeOutCubic(progress);
 
-		y = target[1] + (DROP_START_Y - target[1]) * (1 - eased);
+		y = target[1] + (dropStart - target[1]) * (1 - eased);
 		scale = 0.94 + easeOutCubic(Math.min(progress * 2.6, 1)) * 0.06;
 		opacity = easeOutCubic(clamp((progress - 0.02) / 0.28, 0, 1));
 		fallGlow = Math.pow(1 - progress, 1.12);
@@ -117,10 +121,9 @@
 	{#if highlighted}
 		<T.Mesh scale={highlightScale}>
 			{#if renderShape === 'cube'}
-				<RoundedBoxGeometry
-					args={[PIECE_SIZE * 1.02, PIECE_SIZE * 1.02, PIECE_SIZE * 1.02]}
-					radius={0.085}
-					smoothness={4}
+				<T
+					is={RoundedBoxGeometry}
+					args={[PIECE_SIZE * 1.02, PIECE_SIZE * 1.02, PIECE_SIZE * 1.02, 4, 0.085]}
 				/>
 			{:else if renderShape === 'orb'}
 				<T.SphereGeometry args={[PIECE_SIZE * 0.61, 32, 18]} />
@@ -139,11 +142,7 @@
 
 	<T.Mesh>
 		{#if renderShape === 'cube'}
-			<RoundedBoxGeometry
-				args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE]}
-				radius={0.07}
-				smoothness={4}
-			/>
+			<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 4, 0.07]} />
 		{:else if renderShape === 'orb'}
 			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 36, 22]} />
 		{:else}
@@ -168,11 +167,7 @@
 
 	<T.Mesh scale={0.58}>
 		{#if renderShape === 'cube'}
-			<RoundedBoxGeometry
-				args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE]}
-				radius={0.04}
-				smoothness={2}
-			/>
+			<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 2, 0.04]} />
 		{:else if renderShape === 'orb'}
 			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 24, 16]} />
 		{:else}
@@ -189,10 +184,9 @@
 
 	<T.Mesh>
 		{#if renderShape === 'cube'}
-			<RoundedBoxGeometry
-				args={[PIECE_SIZE * 1.012, PIECE_SIZE * 1.012, PIECE_SIZE * 1.012]}
-				radius={0.075}
-				smoothness={4}
+			<T
+				is={RoundedBoxGeometry}
+				args={[PIECE_SIZE * 1.012, PIECE_SIZE * 1.012, PIECE_SIZE * 1.012, 4, 0.075]}
 			/>
 		{:else if renderShape === 'orb'}
 			<T.SphereGeometry args={[PIECE_SIZE * 0.59, 28, 16]} />

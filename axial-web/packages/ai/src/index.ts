@@ -11,7 +11,10 @@ export {
   SEGMENT_AXIS_COUNTS,
   WINNING_SEGMENTS,
   cellToMoveIndex,
+  getClassicMoveIndices,
+  getClassicMoves,
   getSegmentTable,
+  moveCountForDimensions,
   moveFromIndex,
   moveToIndex,
   type ClassicMove,
@@ -59,7 +62,7 @@ export function chooseRandomMove(
 ): Move | null {
   if (game.status.state !== "playing") return null;
 
-  const moves = legalMoves(game.board);
+  const moves = legalMoves(game.board, game.dimensions);
   if (moves.length === 0) return null;
 
   const index = randomMoveIndex(moves.length, random);

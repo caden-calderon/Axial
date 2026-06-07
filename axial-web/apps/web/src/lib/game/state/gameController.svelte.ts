@@ -1,8 +1,8 @@
 import { browser } from '$app/environment';
-import { chooseMctsMove, chooseRandomMove } from '@axial/ai';
+import { untrack } from 'svelte';
 import {
+	DEFAULT_BOARD_DIMENSIONS,
 	DEFAULT_WIN_CONDITION,
-	MATCH_CONFIGS,
 	applyBlocker,
 	applyDoubleAdjacentFirst,
 	applyDoubleAdjacentSecond,
@@ -11,8 +11,10 @@ import {
 	createGame,
 	getPendingDoubleAdjacentOrigin,
 	legalMoves,
+	normalizeBoardDimensions,
 	normalizeWinCondition,
 	replayMoves,
+	type BoardDimensions,
 	type GameSnapshot,
 	type MatchMode,
 	type Move,
@@ -22,7 +24,7 @@ import {
 	type TacticalSpecialId,
 	type WinCondition
 } from '@axial/core';
-import { SCENE_THEME_OPTIONS, type SceneThemeName, type UiThemeName } from '../theming/sceneThemes';
+import { DEFAULT_BOARD_COLOR, normalizeBoardColor, type UiThemeName } from '../theming/sceneThemes';
 import {
 	DEFAULT_PIECE_COLORS,
 	normalizePieceColor,
@@ -36,17 +38,22 @@ import { createSessionRecord, recordCompletedGame, type SessionRecord } from './
 
 const STORAGE_KEYS = {
 	uiTheme: 'axial-theme',
-	sceneTheme: 'axial-scene-theme',
+	boardColor: 'axial-board-color',
 	labelsVisible: 'axial-axis-labels',
 	opponentMode: 'axial-opponent-mode',
 	aiDifficulty: 'axial-ai-difficulty',
 	matchMode: 'axial-match-mode',
+	boardHeight: 'axial-board-height',
+	boardRows: 'axial-board-rows',
+	boardColumns: 'axial-board-columns',
 	winLineLength: 'axial-win-line-length',
 	linesToWin: 'axial-lines-to-win',
 	pieceShape: 'axial-piece-shape',
 	playerOneColor: 'axial-piece-player-one',
 	playerTwoColor: 'axial-piece-player-two'
 } as const;
+
+const LEGACY_SCENE_THEME_KEY = 'axial-scene-theme';
 
 export type OpponentMode = 'local' | 'ai';
 export type AiDifficulty = 'easy' | 'medium' | 'hard' | 'nightmare';
@@ -101,7 +108,24 @@ const AI_RESULT_LABELS: Record<Player, string> = {
 	2: 'AI'
 };
 
-const AI_MOVE_DELAY_MS = 520;
+const AI_MINIMUM_THINK_MS = {
+	easy: 720,
+	medium: 980,
+	hard: 1280,
+	nightmare: 1720
+} as const satisfies Record<AiDifficulty, number>;
+
+type ClassicAiSearchOptions = {
+	simulations?: number;
+	maxTimeMs?: number;
+	exploration?: number;
+	seed?: number;
+	smartRolloutRate?: number;
+	earlyExitVisits?: number;
+	earlyExitRatio?: number;
+	useRave?: boolean;
+};
+
 const CLASSIC_AI_SEARCH_PRESETS = {
 	easy: {
 		simulations: 16,
@@ -135,7 +159,7 @@ const CLASSIC_AI_SEARCH_PRESETS = {
 		earlyExitRatio: 0.88,
 		useRave: true
 	}
-} as const satisfies Record<AiDifficulty, object>;
+} as const satisfies Record<AiDifficulty, ClassicAiSearchOptions>;
 
 type MoveSource = 'human' | 'ai';
 export type PlacementMode = 'piece' | 'blocker' | 'double-adjacent';
@@ -147,13 +171,20 @@ export const TACTICAL_SPECIAL_LOADOUT: TacticalSpecialCounts = {
 };
 
 export type GameController = ReturnType<typeof createGameController>;
+export type BoardDimensionKey = keyof BoardDimensions;
 
 export function createGameController() {
 	let winCondition = $state<WinCondition>({ ...DEFAULT_WIN_CONDITION });
-	let game = $state<GameSnapshot>(createGame(DEFAULT_WIN_CONDITION));
+	let boardDimensions = $state<BoardDimensions>({ ...DEFAULT_BOARD_DIMENSIONS });
+	let game = $state<GameSnapshot>(
+		createGame(
+			DEFAULT_WIN_CONDITION,
+			untrack(() => boardDimensions)
+		)
+	);
 	let hoveredMove = $state<Move | null>(null);
 	let uiTheme = $state<UiThemeName>('dark');
-	let sceneTheme = $state<SceneThemeName>('prism');
+	let boardColor = $state(DEFAULT_BOARD_COLOR);
 	let labelsVisible = $state(true);
 	let opponentMode = $state<OpponentMode>('local');
 	let aiDifficulty = $state<AiDifficulty>('hard');
@@ -168,7 +199,6 @@ export function createGameController() {
 	let gameOverModalTimeout: ReturnType<typeof setTimeout> | null = null;
 	let selectedSpecial = $state<TacticalSpecialId | null>(null);
 	let aiThinking = $state(false);
-	let aiMoveTimeout: ReturnType<typeof setTimeout> | null = null;
 	let aiSearchRequestId = 0;
 	let classicAiClient: ClassicAiClient | null = null;
 	let matchId = 0;
@@ -181,8 +211,6 @@ export function createGameController() {
 		game.status.state === 'won' ? `player-${game.status.winner}` : game.status.state
 	);
 
-	const arenaLabel = $derived(`${sceneLabel(sceneTheme)} Arena`);
-	const matchConfig = $derived(MATCH_CONFIGS[matchMode]);
 	const setupLocked = $derived(game.moveHistory.length > 0 || redoMoves.length > 0);
 	const appearanceLocked = $derived(setupLocked);
 	const canUndo = $derived(game.moveHistory.length > 0);
@@ -265,11 +293,19 @@ export function createGameController() {
 		if (!browser) return;
 
 		const savedUiTheme = parseUiTheme(localStorage.getItem(STORAGE_KEYS.uiTheme));
-		const savedSceneTheme = parseSceneTheme(localStorage.getItem(STORAGE_KEYS.sceneTheme));
+		const savedBoardColor = normalizeBoardColor(
+			localStorage.getItem(STORAGE_KEYS.boardColor),
+			legacyBoardColor(localStorage.getItem(LEGACY_SCENE_THEME_KEY))
+		);
 		const savedLabelsVisible = parseBoolean(localStorage.getItem(STORAGE_KEYS.labelsVisible));
 		const savedOpponentMode = parseOpponentMode(localStorage.getItem(STORAGE_KEYS.opponentMode));
 		const savedAiDifficulty = parseAiDifficulty(localStorage.getItem(STORAGE_KEYS.aiDifficulty));
 		const savedMatchMode = parseMatchMode(localStorage.getItem(STORAGE_KEYS.matchMode));
+		const savedBoardDimensions = parseBoardDimensions(
+			localStorage.getItem(STORAGE_KEYS.boardHeight),
+			localStorage.getItem(STORAGE_KEYS.boardRows),
+			localStorage.getItem(STORAGE_KEYS.boardColumns)
+		);
 		const savedWinCondition = parseWinCondition(
 			localStorage.getItem(STORAGE_KEYS.winLineLength),
 			localStorage.getItem(STORAGE_KEYS.linesToWin)
@@ -277,14 +313,17 @@ export function createGameController() {
 		const savedPieceShape = parsePieceShape(localStorage.getItem(STORAGE_KEYS.pieceShape));
 
 		if (savedUiTheme) uiTheme = savedUiTheme;
-		if (savedSceneTheme) sceneTheme = savedSceneTheme;
+		boardColor = savedBoardColor;
 		if (savedLabelsVisible !== null) labelsVisible = savedLabelsVisible;
 		if (savedOpponentMode) opponentMode = savedOpponentMode;
 		if (savedAiDifficulty) aiDifficulty = savedAiDifficulty;
 		if (savedMatchMode) matchMode = savedMatchMode;
+		if (savedBoardDimensions) boardDimensions = savedBoardDimensions;
 		if (savedWinCondition) {
 			winCondition = savedWinCondition;
-			game = createGame(winCondition);
+		}
+		if (savedBoardDimensions || savedWinCondition) {
+			game = createGame(winCondition, boardDimensions);
 		}
 		if (savedPieceShape) pieceShape = savedPieceShape;
 
@@ -375,7 +414,7 @@ export function createGameController() {
 		clearGameOverModalDelay();
 		matchId += 1;
 		recordedMatchId = null;
-		game = createGame(winCondition);
+		game = createGame(winCondition, boardDimensions);
 		hoveredMove = null;
 		moveError = '';
 		redoMoves = [];
@@ -392,7 +431,7 @@ export function createGameController() {
 		clearGameOverModalDelay();
 		const previousMoves = game.moveHistory.slice(0, -1).map(toMove);
 		redoMoves = [toMove(lastMove), ...redoMoves];
-		game = replayMoves(previousMoves, winCondition);
+		game = replayMoves(previousMoves, winCondition, boardDimensions);
 		hoveredMove = null;
 		moveError = '';
 		selectedSpecial = null;
@@ -409,7 +448,11 @@ export function createGameController() {
 		moveError = '';
 
 		try {
-			game = replayMoves([...game.moveHistory.map(toMove), nextMove], winCondition);
+			game = replayMoves(
+				[...game.moveHistory.map(toMove), nextMove],
+				winCondition,
+				boardDimensions
+			);
 			redoMoves = remainingMoves;
 			hoveredMove = null;
 			selectedSpecial = null;
@@ -427,7 +470,7 @@ export function createGameController() {
 		clearQueuedAiMove();
 		clearGameOverModalDelay();
 		redoMoves = [...game.moveHistory.map(toMove), ...redoMoves];
-		game = createGame(winCondition);
+		game = createGame(winCondition, boardDimensions);
 		hoveredMove = null;
 		moveError = '';
 		selectedSpecial = null;
@@ -445,9 +488,9 @@ export function createGameController() {
 		hoveredMove = move;
 	}
 
-	function setSceneTheme(nextTheme: SceneThemeName): void {
-		sceneTheme = nextTheme;
-		persist(STORAGE_KEYS.sceneTheme, nextTheme);
+	function setBoardColor(color: string): void {
+		boardColor = normalizeBoardColor(color, boardColor);
+		persist(STORAGE_KEYS.boardColor, boardColor);
 	}
 
 	function setOpponentMode(nextMode: OpponentMode): void {
@@ -488,6 +531,35 @@ export function createGameController() {
 		resetGame();
 	}
 
+	function setBoardDimension(key: BoardDimensionKey, value: number): void {
+		if (setupLocked) {
+			moveError = 'Start a new match to change board size';
+			return;
+		}
+
+		let normalized: BoardDimensions;
+		try {
+			normalized = normalizeBoardDimensions({
+				...boardDimensions,
+				[key]: value
+			});
+		} catch (error) {
+			moveError = error instanceof Error ? error.message : 'Unsupported board size';
+			return;
+		}
+
+		clearQueuedAiMove();
+		clearGameOverModalDelay();
+		boardDimensions = normalized;
+		game = createGame(winCondition, boardDimensions);
+		redoMoves = [];
+		selectedSpecial = null;
+		gameOverDismissed = false;
+		gameOverModalReady = false;
+		persistBoardDimensions(boardDimensions);
+		queueAiMove();
+	}
+
 	function setWinLineLength(lineLength: number): void {
 		setWinCondition({ ...winCondition, lineLength });
 	}
@@ -513,7 +585,7 @@ export function createGameController() {
 		clearQueuedAiMove();
 		clearGameOverModalDelay();
 		winCondition = normalized;
-		game = createGame(winCondition);
+		game = createGame(winCondition, boardDimensions);
 		redoMoves = [];
 		selectedSpecial = null;
 		gameOverDismissed = false;
@@ -638,13 +710,10 @@ export function createGameController() {
 		clearQueuedAiMove();
 		aiThinking = true;
 		const requestId = aiSearchRequestId;
-		aiMoveTimeout = setTimeout(() => {
-			aiMoveTimeout = null;
-			void runQueuedAiMove(requestId);
-		}, AI_MOVE_DELAY_MS);
+		void runQueuedAiMove(requestId, nowMs());
 	}
 
-	async function runQueuedAiMove(requestId: number): Promise<void> {
+	async function runQueuedAiMove(requestId: number, queuedAtMs: number): Promise<void> {
 		if (!isCurrentAiTurn(requestId)) {
 			aiThinking = false;
 			return;
@@ -664,12 +733,33 @@ export function createGameController() {
 				getClassicAiClient
 			);
 			if (move && isCurrentAiTurn(requestId) && matchId === requestMatchId) {
+				const remainingThinkMs = remainingAiThinkingDelayMs(
+					requestDifficulty,
+					nowMs() - queuedAtMs
+				);
+				if (remainingThinkMs > 0) {
+					await sleep(remainingThinkMs);
+				}
+
+				if (!isCurrentAiTurn(requestId) || matchId !== requestMatchId) return;
 				playMove(move, 'ai');
 			}
 		} catch (error) {
 			if (!isAbortError(error) && isCurrentAiTurn(requestId)) {
 				const move = chooseRandomMove(game);
-				if (move) playMove(move, 'ai');
+				if (move) {
+					const remainingThinkMs = remainingAiThinkingDelayMs(
+						requestDifficulty,
+						nowMs() - queuedAtMs
+					);
+					if (remainingThinkMs > 0) {
+						await sleep(remainingThinkMs);
+					}
+
+					if (isCurrentAiTurn(requestId) && matchId === requestMatchId) {
+						playMove(move, 'ai');
+					}
+				}
 			}
 		} finally {
 			if (requestId === aiSearchRequestId) {
@@ -680,10 +770,6 @@ export function createGameController() {
 
 	function clearQueuedAiMove(): void {
 		aiSearchRequestId += 1;
-		if (aiMoveTimeout) {
-			clearTimeout(aiMoveTimeout);
-			aiMoveTimeout = null;
-		}
 
 		classicAiClient?.cancelPending();
 		aiThinking = false;
@@ -731,9 +817,6 @@ export function createGameController() {
 		get aiThinking() {
 			return aiThinking;
 		},
-		get arenaLabel() {
-			return arenaLabel;
-		},
 		get appearanceLocked() {
 			return appearanceLocked;
 		},
@@ -748,6 +831,9 @@ export function createGameController() {
 		},
 		get blockerTargeting() {
 			return selectedSpecial === 'blocker-combo';
+		},
+		get boardDimensions() {
+			return boardDimensions;
 		},
 		get canRedo() {
 			return canRedo;
@@ -775,9 +861,6 @@ export function createGameController() {
 		},
 		get labelsVisible() {
 			return labelsVisible;
-		},
-		get matchConfig() {
-			return matchConfig;
 		},
 		get specialLoadoutSlots() {
 			return specialLoadoutSlots;
@@ -809,8 +892,8 @@ export function createGameController() {
 		get pieceShape() {
 			return pieceShape;
 		},
-		get sceneTheme() {
-			return sceneTheme;
+		get boardColor() {
+			return boardColor;
 		},
 		get sessionRecord() {
 			return sessionRecord;
@@ -850,12 +933,13 @@ export function createGameController() {
 		rewindGame,
 		setHover,
 		setAiDifficulty,
+		setBoardDimension,
 		setLinesToWin,
 		setMatchMode,
 		setOpponentMode,
 		setPieceColor,
 		setPieceShape,
-		setSceneTheme,
+		setBoardColor,
 		setWinLineLength,
 		toggleLabels,
 		toggleBlockerCombo,
@@ -867,12 +951,6 @@ export function createGameController() {
 
 function parseUiTheme(value: string | null): UiThemeName | null {
 	return value === 'dark' || value === 'light' ? value : null;
-}
-
-function parseSceneTheme(value: string | null): SceneThemeName | null {
-	return SCENE_THEME_OPTIONS.some((option) => option.value === value)
-		? (value as SceneThemeName)
-		: null;
 }
 
 function parseBoolean(value: string | null): boolean | null {
@@ -909,6 +987,24 @@ function parseWinCondition(
 	}
 }
 
+function parseBoardDimensions(
+	heightValue: string | null,
+	rowsValue: string | null,
+	columnsValue: string | null
+): BoardDimensions | null {
+	if (heightValue === null && rowsValue === null && columnsValue === null) return null;
+
+	const height = heightValue === null ? DEFAULT_BOARD_DIMENSIONS.height : Number(heightValue);
+	const rows = rowsValue === null ? DEFAULT_BOARD_DIMENSIONS.rows : Number(rowsValue);
+	const columns = columnsValue === null ? DEFAULT_BOARD_DIMENSIONS.columns : Number(columnsValue);
+
+	try {
+		return normalizeBoardDimensions({ height, rows, columns });
+	} catch {
+		return null;
+	}
+}
+
 async function chooseAiMove(
 	game: GameSnapshot,
 	matchMode: MatchMode,
@@ -916,7 +1012,9 @@ async function chooseAiMove(
 	aiDifficulty: AiDifficulty,
 	getClassicAiClient: () => ClassicAiClient
 ): Promise<Move | null> {
-	if (matchMode !== 'classic') return chooseRandomMove(game);
+	if (matchMode !== 'classic') {
+		return chooseRandomMove(game);
+	}
 
 	const options = {
 		...classicAiSearchOptionsForGame(aiDifficulty, game),
@@ -927,8 +1025,16 @@ async function chooseAiMove(
 		return (await getClassicAiClient().requestMove(game, options))?.move ?? chooseRandomMove(game);
 	} catch (error) {
 		if (isAbortError(error)) throw error;
-		return chooseMctsMove(game, options) ?? chooseRandomMove(game);
+		return (await chooseMctsFallbackMove(game, options)) ?? chooseRandomMove(game);
 	}
+}
+
+async function chooseMctsFallbackMove(
+	game: GameSnapshot,
+	options: ClassicAiSearchOptions
+): Promise<Move | null> {
+	const { chooseMctsMove } = await import('@axial/ai');
+	return chooseMctsMove(game, options);
 }
 
 function classicAiSearchOptionsForGame(aiDifficulty: AiDifficulty, game: GameSnapshot) {
@@ -944,6 +1050,10 @@ function classicAiSearchOptionsForGame(aiDifficulty: AiDifficulty, game: GameSna
 		maxTimeMs: Math.round(preset.maxTimeMs * multiplier),
 		earlyExitVisits: Math.round(preset.earlyExitVisits * Math.min(multiplier, 1.45))
 	};
+}
+
+export function remainingAiThinkingDelayMs(aiDifficulty: AiDifficulty, elapsedMs: number): number {
+	return Math.max(0, AI_MINIMUM_THINK_MS[aiDifficulty] - elapsedMs);
 }
 
 function aiSeedForGame(game: GameSnapshot, matchId: number): number {
@@ -975,8 +1085,36 @@ function persist(key: string, value: string): void {
 	if (browser) localStorage.setItem(key, value);
 }
 
-function sceneLabel(sceneTheme: SceneThemeName): string {
-	return SCENE_THEME_OPTIONS.find((option) => option.value === sceneTheme)?.label ?? 'Prism';
+function persistBoardDimensions(dimensions: BoardDimensions): void {
+	persist(STORAGE_KEYS.boardHeight, String(dimensions.height));
+	persist(STORAGE_KEYS.boardRows, String(dimensions.rows));
+	persist(STORAGE_KEYS.boardColumns, String(dimensions.columns));
+}
+
+function chooseRandomMove(game: GameSnapshot): Move | null {
+	if (game.status.state !== 'playing') return null;
+
+	const moves = legalMoves(game.board, game.dimensions);
+	if (moves.length === 0) return null;
+
+	const move = moves[randomMoveIndex(moves.length)];
+	return move ? { row: move.row, col: move.col } : null;
+}
+
+function randomMoveIndex(moveCount: number): number {
+	if (moveCount <= 0) return -1;
+	return Math.floor(Math.random() * moveCount);
+}
+
+function legacyBoardColor(value: string | null): string {
+	switch (value) {
+		case 'prism':
+			return '#f5d46f';
+		case 'frost':
+			return '#67d8ff';
+		default:
+			return DEFAULT_BOARD_COLOR;
+	}
 }
 
 function remainingSpecialCharges(
@@ -1043,7 +1181,7 @@ function isCompletingBlockerCombo(game: GameSnapshot): boolean {
 }
 
 function canStartBlockerCombo(game: GameSnapshot): boolean {
-	return legalMoves(game.board).some((move) => {
+	return legalMoves(game.board, game.dimensions).some((move) => {
 		try {
 			applyBlocker(game, move);
 			return true;
@@ -1054,13 +1192,23 @@ function canStartBlockerCombo(game: GameSnapshot): boolean {
 }
 
 function canStartDoubleAdjacent(game: GameSnapshot): boolean {
-	return legalMoves(game.board).some((move) => {
+	return legalMoves(game.board, game.dimensions).some((move) => {
 		try {
 			applyDoubleAdjacentFirst(game, move);
 			return true;
 		} catch {
 			return false;
 		}
+	});
+}
+
+function nowMs(): number {
+	return typeof performance === 'undefined' ? Date.now() : performance.now();
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => {
+		setTimeout(resolve, ms);
 	});
 }
 

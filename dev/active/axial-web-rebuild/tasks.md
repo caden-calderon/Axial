@@ -20,6 +20,7 @@
 - [x] Implement legal moves, gravity drops, win detection, draw detection.
 - [x] Add initial game-core tests.
 - [x] Add configurable win conditions for connect 4/connect 5 and 1-3 completed lines.
+- [x] Add pre-match configurable board dimensions from the 6 x 6 x 7 baseline up to 10 x 10 x 10.
 - [x] Track completed lines as stable game-state markers during active multi-line matches.
 - [ ] Add golden-position fixtures from the Python project.
 
@@ -79,10 +80,12 @@
 - [x] Wire Classic AI opponent mode to bounded MCTS search while keeping Tactical AI random/deferred.
 - [x] Move Classic MCTS into a Web Worker.
 - [x] Add cancellation path for stale Classic AI worker requests.
+- [x] Add difficulty-aware visible thinking delay for Classic AI replies.
 - [ ] Add progress messages from long-running Classic AI search.
 - [x] Add difficulty presets.
 - [x] Keep Classic AI rule-aware for configurable connect length and line-count win targets.
 - [x] Improve Classic AI heuristic/MCTS behavior for 2-3-line targets by valuing and blocking non-terminal line progress.
+- [x] Generalize Classic AI search geometry for expanded board dimensions.
 - [ ] Benchmark AI strength and latency.
 - [ ] Train or build a Classic-mode opponent that can beat Caden.
 
@@ -126,10 +129,14 @@
 - [x] Add a fullscreen toolbar control for browsers that support the Fullscreen API.
 - [x] Add a pre-match Classic/Tactical rules selector.
 - [x] Add pre-match connect-length and lines-to-win controls for both modes.
+- [x] Add pre-match board-size controls and remove the repeated setup stat tiles from the expanded pill.
 - [x] Lock opponent mode and rules after the first placement until a new match/reset.
 - [x] Remove inactive center-turn-pill arrow/side-expand affordance after Tactical actions moved to the top-right Pieces mode.
 - [x] Differentiate the Double Adjacent icon from the general Pieces/loadout icon.
 - [x] Restore desktop top-right control pill height while preserving the compact mobile toolbar.
+- [x] Replace preset grid themes with exact board-color picker and grouped Appearance controls.
+- [x] Add synchronized sequential glow to the AXIAL/dimensions HUD and center turn pill, and restore
+  separate gradient P1/P2 color pills.
 - [ ] Build richer glass/acrylic board material.
 - [x] Build first pass of emissive/glossy player piece materials.
 - [ ] Add selective bloom or glow pass.
@@ -139,11 +146,16 @@
 
 ## Immediate Next Engineering Candidates
 
-- [ ] Analyze the large Three.js/Threlte game chunk warning and decide on code-splitting, lazy loading, dependency trimming, or accepting the current bundle with documentation.
+- [x] Analyze the large Three.js/Threlte game chunk warning and decide on code-splitting, lazy loading, dependency trimming, or accepting the current bundle with documentation.
+  - 2026-06-07: removed accidental `@threlte/extras` and normal-path `@axial/ai` imports from the page route. Client page chunk dropped from `993.16 kB` minified / `273.01 kB` gzip to `831.24 kB` minified / `215.85 kB` gzip. Remaining warning is dominated by the expected Three/Threlte WebGL payload and is accepted for now.
 - [ ] Audit `apps/web/src/lib/game` for dead code, duplicated component logic, stale helpers, and UI/scene/state boundaries that should be cleaned before more features land.
+  - 2026-06-07 follow-up: removed unused `@threlte/extras` dependency/lock entries, split `GameStatusPanel` into focused section components, and removed a stale `matchConfig` controller getter/import.
 - [ ] Audit `packages/core` and `packages/ai` for unused exports, duplicated rules/search logic, and tests that should be tightened.
+  - 2026-06-07 follow-up: generalized Classic AI geometry for non-default board dimensions and
+    added focused dynamic-board AI tests. Larger-board strength/latency benchmarking remains open.
 - [ ] Keep initial cleanup refactors behavior-preserving unless Caden's next requested changes touch the same area.
-- [ ] Re-run focused unit/e2e/build checks after cleanup and before pushing.
+- [x] Re-run focused unit/e2e/build checks after cleanup and before pushing.
+  - 2026-06-07 follow-up: `pnpm check`, `pnpm lint`, `pnpm build`, `pnpm --filter @axial/core test:unit`, `pnpm --filter @axial/ai test:unit`, `pnpm --filter @axial/web test:unit -- --run`, `pnpm --filter @axial/web test:e2e`, and local Playwright fallback visual smokes passed.
 
 ## Tactical Variants
 
@@ -180,6 +192,7 @@
 - [ ] Add graphics quality presets for glow/postprocessing, shadows/contact cues, and low-power mode.
 - [ ] Improve the glass/acrylic board material and selective bloom so glow feels intentional rather than uniformly bright.
 - [x] Run a desktop/mobile visual pass for text fit, control placement, camera framing, and click/tap ergonomics.
+- [x] Polish game-over modal alignment and add an entrance animation after the line-draw delay.
 - [ ] Keep training/neural AI work paused until the playable web remake feels polished enough to be the main version.
 
 ## Phase 4: Neural AI

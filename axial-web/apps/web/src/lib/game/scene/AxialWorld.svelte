@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { T } from '@threlte/core';
-	import { OrbitControls } from '@threlte/extras';
 	import {
 		getDropHeight,
 		isLegalDoubleAdjacentMove,
@@ -15,17 +14,18 @@
 	import BoardLabels from './BoardLabels.svelte';
 	import ColumnPicker from './ColumnPicker.svelte';
 	import CompletedLineMarker from './CompletedLineMarker.svelte';
+	import OrbitCameraControls from './OrbitCameraControls.svelte';
 	import { type Vec3 } from './geometry';
 	import type { PlacementMode } from '../state/gameController.svelte';
 	import type { PieceColors, PieceShape } from '../state/pieceAppearance';
-	import { SCENE_THEMES, type SceneThemeName, type UiThemeName } from '../theming/sceneThemes';
+	import { resolveScenePalette, type UiThemeName } from '../theming/sceneThemes';
 
 	let {
 		game,
 		hoveredMove,
 		labelsVisible,
 		uiTheme,
-		sceneTheme,
+		boardColor,
 		pieceShape,
 		pieceColors,
 		placementMode,
@@ -37,7 +37,7 @@
 		hoveredMove: Move | null;
 		labelsVisible: boolean;
 		uiTheme: UiThemeName;
-		sceneTheme: SceneThemeName;
+		boardColor: string;
 		pieceShape: PieceShape;
 		pieceColors: PieceColors;
 		placementMode: PlacementMode;
@@ -46,7 +46,9 @@
 		onPlay: (move: Move) => void;
 	} = $props();
 
-	const palette = $derived(SCENE_THEMES[sceneTheme][uiTheme]);
+	const palette = $derived(resolveScenePalette(uiTheme, boardColor));
+	const dimensions = $derived(game.dimensions);
+	const dimensionKey = $derived(`${dimensions.height}:${dimensions.rows}:${dimensions.columns}`);
 	const previewColor = $derived(
 		placementMode === 'blocker'
 			? '#60756f'
@@ -55,12 +57,17 @@
 				: pieceColors.playerTwo
 	);
 	const previewHeight = $derived(
-		hoveredMove && isMovePlayable(hoveredMove) ? getDropHeight(game.board, hoveredMove) : -1
+		hoveredMove && isMovePlayable(hoveredMove)
+			? getDropHeight(game.board, hoveredMove, dimensions)
+			: -1
 	);
 	let isCompact = $state(false);
 	const cameraPosition: Vec3 = $derived(isCompact ? [8.8, 8.4, 18] : [5.8, 5.7, 9.4]);
 	const cameraFov = $derived(isCompact ? 46 : 42);
-	const boardScale = $derived(isCompact ? 0.62 : 0.88);
+	const boardFitScale = $derived(
+		Math.min(1, 7 / Math.max(dimensions.height, dimensions.rows, dimensions.columns))
+	);
+	const boardScale = $derived((isCompact ? 0.62 : 0.88) * boardFitScale);
 	const lastMoveIndex = $derived(game.moveHistory.length - 1);
 
 	const boardRotation = -0.34;
@@ -80,7 +87,7 @@
 		return (
 			placementMode !== 'double-adjacent' ||
 			(doubleAdjacentAnchor !== null &&
-				isLegalDoubleAdjacentMove(game.board, move, doubleAdjacentAnchor))
+				isLegalDoubleAdjacentMove(game.board, move, doubleAdjacentAnchor, dimensions))
 		);
 	}
 </script>
@@ -89,7 +96,7 @@
 <T.Fog attach="fog" args={[palette.fog, 10, 21]} />
 
 <T.PerspectiveCamera makeDefault position={cameraPosition} fov={cameraFov}>
-	<OrbitControls
+	<OrbitCameraControls
 		enableDamping
 		dampingFactor={0.075}
 		enablePan={false}
@@ -119,11 +126,13 @@
 />
 
 <T.Group rotation.y={boardRotation} scale={boardScale}>
-	<BoardGrid {palette} {uiTheme} />
+	{#key dimensionKey}
+		<BoardGrid {palette} {uiTheme} {dimensions} />
 
-	{#if labelsVisible}
-		<BoardLabels {palette} {uiTheme} {boardRotation} />
-	{/if}
+		{#if labelsVisible}
+			<BoardLabels {palette} {uiTheme} {boardRotation} {dimensions} />
+		{/if}
+	{/key}
 
 	{#if hoveredMove && previewHeight >= 0 && game.status.state === 'playing'}
 		<DropPreview
@@ -132,6 +141,7 @@
 			{pieceShape}
 			color={previewColor}
 			kind={placementMode}
+			{dimensions}
 		/>
 	{/if}
 
@@ -142,10 +152,11 @@
 			{pieceShape}
 			{pieceColors}
 			highlighted={index === lastMoveIndex}
+			{dimensions}
 		/>
 	{/each}
 
 	{#each game.completedLines as line (line.id)}
-		<CompletedLineMarker {line} {pieceColors} />
+		<CompletedLineMarker {line} {pieceColors} {dimensions} />
 	{/each}
 </T.Group>

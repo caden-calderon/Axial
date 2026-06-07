@@ -85,8 +85,8 @@
 <main
 	class="game-shell"
 	data-theme={controller.uiTheme}
-	data-scene={controller.sceneTheme}
 	data-status={controller.statusTone}
+	style:--accent={controller.boardColor}
 >
 	<div class="aurora"></div>
 	<AxialScene
@@ -94,7 +94,7 @@
 		hoveredMove={controller.hoveredMove}
 		labelsVisible={controller.labelsVisible}
 		uiTheme={controller.uiTheme}
-		sceneTheme={controller.sceneTheme}
+		boardColor={controller.boardColor}
 		pieceShape={controller.pieceShape}
 		pieceColors={controller.pieceColors}
 		placementMode={controller.placementMode}
@@ -103,18 +103,22 @@
 		onPlay={controller.playMove}
 	/>
 
-	<GameHud currentLabel={controller.currentLabel} currentPlayer={controller.currentPlayer} />
+	<GameHud
+		currentLabel={controller.currentLabel}
+		currentPlayer={controller.currentPlayer}
+		boardDimensions={controller.boardDimensions}
+	/>
 
 	<GameStatusPanel
-		arenaLabel={controller.arenaLabel}
 		statusTitle={controller.statusTitle}
 		moveCount={controller.game.moveHistory.length}
-		sceneTheme={controller.sceneTheme}
+		boardColor={controller.boardColor}
 		uiTheme={controller.uiTheme}
 		labelsVisible={controller.labelsVisible}
 		opponentMode={controller.opponentMode}
 		aiDifficulty={controller.aiDifficulty}
 		matchMode={controller.matchMode}
+		boardDimensions={controller.boardDimensions}
 		winCondition={controller.winCondition}
 		aiThinking={controller.aiThinking}
 		pieceShape={controller.pieceShape}
@@ -142,13 +146,14 @@
 		onOpponentModeChange={controller.setOpponentMode}
 		onAiDifficultyChange={controller.setAiDifficulty}
 		onMatchModeChange={controller.setMatchMode}
+		onBoardDimensionChange={controller.setBoardDimension}
 		onWinLineLengthChange={controller.setWinLineLength}
 		onLinesToWinChange={controller.setLinesToWin}
 		onToggleBlockerCombo={controller.toggleBlockerCombo}
 		onToggleDoubleAdjacent={controller.toggleDoubleAdjacent}
 		onPieceShapeChange={controller.setPieceShape}
 		onPieceColorChange={controller.setPieceColor}
-		onSceneThemeChange={controller.setSceneTheme}
+		onBoardColorChange={controller.setBoardColor}
 		onToggleLabels={controller.toggleLabels}
 		onToggleTheme={controller.toggleTheme}
 	/>

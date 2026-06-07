@@ -1,11 +1,14 @@
 import {
+  DEFAULT_BOARD_DIMENSIONS,
+  cellFromIndex,
   otherPlayer,
+  type BoardDimensions,
   type GameSnapshot,
   type Move,
   type Player,
 } from "@axial/core";
 import { ClassicSearchState } from "./state";
-import { CLASSIC_MOVES, moveFromIndex, type MoveIndex } from "./geometry";
+import { moveFromIndex, type MoveIndex } from "./geometry";
 
 export type MoveScore = {
   moveIndex: MoveIndex;
@@ -27,9 +30,6 @@ const WIN_SCORE = 1_000_000;
 const BLOCK_SCORE = 800_000;
 const FORCING_SCORE = 180_000;
 const BLOCK_FORCING_SCORE = 120_000;
-const CENTER_ROW = 2.5;
-const CENTER_COL = 3;
-const CENTER_HEIGHT = 2.5;
 
 export function chooseHeuristicMove(game: GameSnapshot): Move | null {
   return analyzeHeuristicMove(game)?.move ?? null;
@@ -46,7 +46,7 @@ export function analyzeHeuristicMove(
 
   return {
     ...result,
-    move: publicMoveFromIndex(result.moveIndex),
+    move: publicMoveFromIndex(result.moveIndex, state.dimensions),
   };
 }
 
@@ -111,7 +111,9 @@ export function scoreLegalMoves(
   return state
     .legalMoveIndices()
     .map((moveIndex) => scoreMove(state, moveIndex, player))
-    .sort(compareMoveScores);
+    .sort((first, second) =>
+      compareMoveScores(first, second, state.dimensions),
+    );
 }
 
 export function scoreMove(
@@ -209,7 +211,7 @@ export function evaluatePosition(
     const cell = state.board[cellIndex];
     if (cell !== 1 && cell !== 2) continue;
 
-    const pieceScore = centerScoreForCell(cellIndex);
+    const pieceScore = centerScoreForCell(state, cellIndex);
     score += cell === player ? pieceScore : -pieceScore;
   }
 
@@ -226,7 +228,9 @@ export function findWinningMoves(
     if (wouldWin(state, moveIndex, player)) wins.push(moveIndex);
   }
 
-  return wins.sort(compareMoveIndicesByShape);
+  return wins.sort((first, second) =>
+    compareMoveIndicesByShape(first, second, state.dimensions),
+  );
 }
 
 export function findForcingMoves(
@@ -255,7 +259,11 @@ export function findForcingMoves(
 
   return forcing.sort((first, second) => {
     if (first.threats !== second.threats) return second.threats - first.threats;
-    return compareMoveIndicesByShape(first.moveIndex, second.moveIndex);
+    return compareMoveIndicesByShape(
+      first.moveIndex,
+      second.moveIndex,
+      state.dimensions,
+    );
   });
 }
 
@@ -299,17 +307,26 @@ export function countLineCompletionsForMove(
   return Math.max(0, after - before);
 }
 
-export function compareMoveScores(first: MoveScore, second: MoveScore): number {
+export function compareMoveScores(
+  first: MoveScore,
+  second: MoveScore,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+): number {
   if (first.score !== second.score) return second.score - first.score;
-  return compareMoveIndicesByShape(first.moveIndex, second.moveIndex);
+  return compareMoveIndicesByShape(
+    first.moveIndex,
+    second.moveIndex,
+    dimensions,
+  );
 }
 
 export function compareMoveIndicesByShape(
   firstIndex: MoveIndex,
   secondIndex: MoveIndex,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
 ): number {
-  const firstCenter = planarCenterDistance(firstIndex);
-  const secondCenter = planarCenterDistance(secondIndex);
+  const firstCenter = planarCenterDistance(firstIndex, dimensions);
+  const secondCenter = planarCenterDistance(secondIndex, dimensions);
   if (firstCenter !== secondCenter) return firstCenter - secondCenter;
   return firstIndex - secondIndex;
 }
@@ -334,7 +351,7 @@ function scoredResult(
     ...scoreLegalMoves(state, player).filter(
       (candidate) => !moveIndices.includes(candidate.moveIndex),
     ),
-  ].sort(compareMoveScores);
+  ].sort((first, second) => compareMoveScores(first, second, state.dimensions));
   const best = candidates[0];
 
   return {
@@ -428,28 +445,39 @@ function lineThreatScore(
 
 function centerScoreForLastMove(state: ClassicSearchState): number {
   const lastMove = state.moveStack.at(-1);
-  return lastMove ? centerScoreForCell(lastMove.cellIndex) * 3 : 0;
+  return lastMove ? centerScoreForCell(state, lastMove.cellIndex) * 3 : 0;
 }
 
-function centerScoreForCell(cellIndex: number): number {
-  const height = cellIndex % 6;
-  const rest = Math.floor(cellIndex / 6);
-  const row = rest % 6;
-  const col = Math.floor(rest / 6);
+function centerScoreForCell(
+  state: ClassicSearchState,
+  cellIndex: number,
+): number {
+  const { height, row, col } = cellFromIndex(cellIndex, state.dimensions);
+  const centerHeight = (state.dimensions.height - 1) / 2;
+  const centerRow = (state.dimensions.rows - 1) / 2;
+  const centerCol = (state.dimensions.columns - 1) / 2;
   const distance =
-    Math.abs(row - CENTER_ROW) * 1.35 +
-    Math.abs(col - CENTER_COL) * 1.15 +
-    Math.abs(height - CENTER_HEIGHT) * 0.2;
+    Math.abs(row - centerRow) * 1.35 +
+    Math.abs(col - centerCol) * 1.15 +
+    Math.abs(height - centerHeight) * 0.2;
 
   return Math.max(0, 10 - distance * 2);
 }
 
-function planarCenterDistance(moveIndex: MoveIndex): number {
-  const move = CLASSIC_MOVES[moveIndex];
-  return Math.abs(move.row - CENTER_ROW) + Math.abs(move.col - CENTER_COL);
+function planarCenterDistance(
+  moveIndex: MoveIndex,
+  dimensions: BoardDimensions,
+): number {
+  const move = moveFromIndex(moveIndex, dimensions);
+  const centerRow = (dimensions.rows - 1) / 2;
+  const centerCol = (dimensions.columns - 1) / 2;
+  return Math.abs(move.row - centerRow) + Math.abs(move.col - centerCol);
 }
 
-function publicMoveFromIndex(moveIndex: MoveIndex): Move {
-  const move = moveFromIndex(moveIndex);
+function publicMoveFromIndex(
+  moveIndex: MoveIndex,
+  dimensions: BoardDimensions,
+): Move {
+  const move = moveFromIndex(moveIndex, dimensions);
   return { row: move.row, col: move.col };
 }

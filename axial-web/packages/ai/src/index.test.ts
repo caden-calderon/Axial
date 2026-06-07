@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   applyMove,
   CELL_COUNT,
+  cellCount,
   createGame,
   indexOf,
   replayMoves,
+  type BoardDimensions,
   type GameSnapshot,
 } from "@axial/core";
 import {
@@ -18,12 +20,20 @@ import {
   chooseRandomMove,
   countLineCompletionsForMove,
   createSeededRandom,
+  getClassicMoves,
   getSegmentTable,
+  moveCountForDimensions,
   moveFromIndex,
   moveToIndex,
   playAiMatch,
   runEvaluation,
 } from "./index";
+
+const LARGE_TEST_DIMENSIONS = {
+  height: 7,
+  rows: 8,
+  columns: 9,
+} as const satisfies BoardDimensions;
 
 describe("Axial AI move selection", () => {
   it("chooses the first legal move at the bottom of the random range", () => {
@@ -62,6 +72,18 @@ describe("Axial AI move selection", () => {
 
     expect(chooseRandomMove(game, () => 0)).toBeNull();
   });
+
+  it("chooses legal random moves on a larger board", () => {
+    expect(
+      chooseRandomMove(
+        createGame(undefined, LARGE_TEST_DIMENSIONS),
+        () => 0.999999,
+      ),
+    ).toEqual({
+      row: 7,
+      col: 8,
+    });
+  });
 });
 
 describe("Classic AI geometry", () => {
@@ -71,6 +93,17 @@ describe("Classic AI geometry", () => {
     expect(moveFromIndex(3)).toEqual({ index: 3, row: 0, col: 3 });
     expect(moveFromIndex(41)).toEqual({ index: 41, row: 5, col: 6 });
     expect(moveToIndex({ row: 5, col: 6 })).toBe(41);
+  });
+
+  it("builds row-major policy geometry for larger boards", () => {
+    expect(moveCountForDimensions(LARGE_TEST_DIMENSIONS)).toBe(72);
+    expect(getClassicMoves(LARGE_TEST_DIMENSIONS)).toHaveLength(72);
+    expect(moveFromIndex(71, LARGE_TEST_DIMENSIONS)).toEqual({
+      index: 71,
+      row: 7,
+      col: 8,
+    });
+    expect(moveToIndex({ row: 7, col: 8 }, LARGE_TEST_DIMENSIONS)).toBe(71);
   });
 
   it("precomputes every Classic length-four winning segment", () => {
@@ -95,6 +128,14 @@ describe("Classic AI geometry", () => {
       "two-axis": 200,
       "three-axis": 48,
     });
+  });
+
+  it("precomputes larger-board segment tables with matching cell coverage", () => {
+    const table = getSegmentTable(4, LARGE_TEST_DIMENSIONS);
+
+    expect(table.dimensions).toEqual(LARGE_TEST_DIMENSIONS);
+    expect(table.segments.length).toBeGreaterThan(WINNING_SEGMENTS.length);
+    expect(table.cellSegments).toHaveLength(cellCount(LARGE_TEST_DIMENSIONS));
   });
 });
 
@@ -173,11 +214,47 @@ describe("Classic search state", () => {
       indexOf(2, 1, 0),
     );
   });
+
+  it("tracks gravity and wins on larger boards", () => {
+    const state = new ClassicSearchState(
+      undefined,
+      undefined,
+      LARGE_TEST_DIMENSIONS,
+    );
+    const moveIndex = moveToIndex({ row: 7, col: 8 }, LARGE_TEST_DIMENSIONS);
+
+    expect(state.dropCellIndex(moveIndex)).toBe(
+      indexOf(0, 7, 8, LARGE_TEST_DIMENSIONS),
+    );
+    state.makeMove(moveIndex, 1);
+    expect(state.dropCellIndex(moveIndex)).toBe(
+      indexOf(1, 7, 8, LARGE_TEST_DIMENSIONS),
+    );
+    state.unmakeMove();
+
+    state.makeMove(moveToIndex({ row: 3, col: 0 }, LARGE_TEST_DIMENSIONS), 1);
+    state.makeMove(moveToIndex({ row: 3, col: 1 }, LARGE_TEST_DIMENSIONS), 1);
+    state.makeMove(moveToIndex({ row: 3, col: 2 }, LARGE_TEST_DIMENSIONS), 1);
+    expect(state.winner).toBeNull();
+    state.makeMove(moveToIndex({ row: 3, col: 3 }, LARGE_TEST_DIMENSIONS), 1);
+
+    expect(state.winner).toBe(1);
+    expect(state.winningLine).toHaveLength(4);
+  });
 });
 
 describe("Classic heuristic AI", () => {
   it("chooses the planar center on an empty board", () => {
     expect(chooseHeuristicMove(createGame())).toEqual({ row: 2, col: 3 });
+  });
+
+  it("chooses a center-biased move on a larger board", () => {
+    expect(
+      chooseHeuristicMove(createGame(undefined, LARGE_TEST_DIMENSIONS)),
+    ).toEqual({
+      row: 3,
+      col: 4,
+    });
   });
 
   it("takes an immediate winning move", () => {
@@ -213,6 +290,25 @@ describe("Classic heuristic AI", () => {
 
     expect(result?.reason).toBe("win");
     expect(result?.move).toEqual({ row: 2, col: 4 });
+  });
+
+  it("takes immediate winning moves on larger boards", () => {
+    const game = replayMoves(
+      [
+        { row: 3, col: 0 },
+        { row: 0, col: 0 },
+        { row: 3, col: 1 },
+        { row: 0, col: 1 },
+        { row: 3, col: 2 },
+        { row: 0, col: 2 },
+      ],
+      undefined,
+      LARGE_TEST_DIMENSIONS,
+    );
+    const result = analyzeHeuristicMove(game);
+
+    expect(result?.reason).toBe("win");
+    expect(result?.move).toEqual({ row: 3, col: 3 });
   });
 
   it("banks a non-terminal completed line in multi-line mode", () => {
@@ -300,6 +396,25 @@ describe("Classic MCTS AI", () => {
     expect(first?.move).toEqual(second?.move);
     expect(first?.simulations).toBe(40);
     expect(first?.stats[0]?.visits).toBeGreaterThan(0);
+  });
+
+  it("runs seeded search on larger boards with legal move indices", () => {
+    const result = analyzeMctsMove(
+      createGame(undefined, LARGE_TEST_DIMENSIONS),
+      {
+        simulations: 8,
+        seed: 123,
+        useRave: true,
+      },
+    );
+
+    expect(result?.move.row).toBeGreaterThanOrEqual(0);
+    expect(result?.move.row).toBeLessThan(LARGE_TEST_DIMENSIONS.rows);
+    expect(result?.move.col).toBeGreaterThanOrEqual(0);
+    expect(result?.move.col).toBeLessThan(LARGE_TEST_DIMENSIONS.columns);
+    expect(result?.moveIndex).toBe(
+      moveToIndex(result!.move, LARGE_TEST_DIMENSIONS),
+    );
   });
 });
 

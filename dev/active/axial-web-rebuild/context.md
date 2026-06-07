@@ -13,6 +13,9 @@ Research and architecture notes for the Classic AI direction now live in `dev/ac
 ## Game Facts
 
 - Board: 6 x 6 x 7, with 252 cells.
+- Board dimensions now start at the 6 x 6 x 7 baseline and can be increased pre-match up to
+  10 x 10 x 10 from the web setup panel. Dimensions lock after the first move or while redo
+  history exists.
 - Objective defaults to connect 4 horizontally, vertically, planar diagonally, or 3D diagonally.
 - Active web rules now support pre-match win-condition variants for both Classic and Tactical: connect 4 or connect 5, with 1, 2, or 3 completed lines required to win.
 - Legal moves: 42 surface columns `(row, col)`; gravity selects the first empty height.
@@ -48,16 +51,18 @@ Implemented gameplay/UX:
 
 - Playable 6 x 6 x 7 board with projected column picking.
 - Drop preview and animated beveled cube pieces.
-- Scene themes, dark/light mode, and toggleable axis labels.
+- Exact board-grid color picker, dark/light mode, and toggleable axis labels.
 - Undo, redo, rematch, and replay-from-start via canonical move history.
 - Game-over modal with winner, move count, rematch, replay, and review actions.
 - Collapsible top-right control panel with smooth downward expansion.
 - Expanded match console with Match, Appearance, and Session sections.
 - Session record tracks Player 1 wins, Player 2 wins, and draws once per completed match.
-- AI opponent mode is unlocked. Classic mode now uses a bounded TypeScript MCTS/search opponent in a Web Worker; Tactical mode still uses random normal moves because special-piece AI is deferred.
-- Classic AI has pre-match difficulty presets: Easy, Medium, Hard, and Max. Hard preserves the current default strength; Max uses a larger worker-only budget.
+- AI opponent mode is unlocked. Classic mode now uses a bounded TypeScript MCTS/search opponent in a Web Worker on default and expanded board sizes; Tactical mode still uses random normal moves because special-piece AI is deferred.
+- Classic AI has pre-match difficulty presets: Easy, Medium, Hard, and Max. Hard preserves the current default strength; Max uses a larger worker-only budget. AI replies also have difficulty-aware minimum visible thinking time so stronger settings feel more deliberate even when the worker finds an obvious move quickly.
 - Match setup exposes `Classic` and `Tactical` modes and locks opponent/rules after the first placement.
 - Match setup exposes win-rule controls for connect length and completed lines needed; those settings are persisted and lock after the first placement.
+- Match setup exposes board dimensions as clickable pre-match number controls. Bigger boards reset
+  the fresh game immediately and persist locally.
 - The latest placed move gets a pulsing 3D glow so returning to the board makes the most recent placement easy to find.
 - Completed lines are now visible before the match ends. The core snapshot exposes stable completed-line IDs, and the scene renders each line with a draw-through animation, traveling glow bead, final pulse, and idle glowing marker.
 - The game-over modal is delayed after wins so the completed-line draw animation can finish before the result overlay appears.
@@ -69,14 +74,17 @@ Implemented gameplay/UX:
 - Double Adjacent places one owned gravity piece, then requires a second owned gravity piece whose final landing cell is adjacent in the 26-neighbor 3D sense.
 - Tactical replay history records special metadata on sub-actions so undo/redo and future AI/training can reconstruct same-player continuations.
 - Piece appearance controls support cube, orb, and crystal shapes plus per-player color pickers.
+- Board appearance uses an exact color picker instead of fixed scene presets. The Void purple remains the default board accent, and the old preset storage value is only used as a one-time color migration fallback.
 - Piece shape and player colors lock after the first placed piece, including undo/review states; starting a new match unlocks them.
 - Supported browsers expose a fullscreen toolbar button. Mobile users can also install Axial from the browser/home-screen flow for the more app-like experience.
 
 ## Visual/UI Decisions
 
-- Corner logo is a clean AXIAL wordmark with `6 x 6 x 7` dimensions underneath.
+- Corner logo is a clean AXIAL wordmark with current board dimensions underneath. The wordmark,
+  dimensions, and centered desktop turn pill share a synchronized sequential glyph glow tied to the
+  active board accent, with reduced-motion users getting static text.
 - Turn labels use neutral language: `Your turn` and `Opponent's turn`.
-- Desktop turn pill is top-centered, uses the same acrylic surface treatment as the controls, and is fixed-width so it does not resize between `Your turn` and `Opponent's turn`.
+- Desktop turn pill is top-centered, uses the same acrylic surface treatment as the controls, and is fixed-width so it does not resize between turn labels. The pill is intentionally shorter than the earlier version and uses larger status text.
 - Mobile hides the turn pill and keeps the control pill tucked into the top-right corner.
 - Collapsed controls keep the same rounded shape and clip hidden panel content to zero height, so the icon row is truly centered vertically.
 - Tactical turns use a `Pieces` mode in the top-right control pill: the leftmost toolbar button swaps normal controls for special-piece actions, while the dropdown opens either the normal setup menu or piece details depending on the active toolbar mode.
@@ -87,14 +95,17 @@ Implemented gameplay/UX:
 - Light mode is warmer/desaturated, with stronger board-grid contrast and glow accents.
 - Dark mode uses a solid scene field to keep the board readable and avoid colored background circles competing with pieces/lines.
 - Axis labels behave as a readable overlay: bottom numbers on clockwise perimeter rails; X/Y fixed side candidates; Z fixed corner rail candidates; camera-based fades prevent duplicate clutter.
-- Expanded controls now behave like a match console: a compact live strip, local/AI mode surface, Classic/Tactical rules selector, current setup cards, live appearance controls, and a session record.
+- Expanded controls now behave like a match console: a compact live strip, local/AI mode surface, Classic/Tactical rules selector, current setup cards, grouped appearance controls, and a session record.
 - AI mode is represented in the Match section. Classic AI uses bounded worker-backed MCTS; Tactical AI is intentionally still a random normal-move baseline until Tactical search is designed.
 - Board dimensions, connect length, clock state, and Tactical kit counts are shown as current setup facts; match mode is editable only before the active match starts.
 - Board dimensions, connect length, target line count, and Tactical kit counts are shown as current setup facts; match mode and win condition are editable only before the active match starts.
 - Game-over actions are labeled by intent: `New match` clears the board, `Review from start` rewinds the completed move list for redo stepping, and `Keep board` dismisses the result.
+- Game-over modal action alignment was cleaned up, and the modal now eases in with a short
+  backdrop/dialog animation after the completed-line delay.
 - Text selection is disabled on the game shell so dragging across the HUD/panel does not create browser text highlights.
 - Piece style and player colors are live appearance settings persisted in local storage and applied to placed pieces and drop previews.
 - Piece style and color choices behave like pre-match loadout choices: they are editable on a fresh board, then locked for the active match once any piece has been placed.
+- Appearance setup is grouped as Board color, Piece look, and Theme. Board color remains editable live; piece shape/colors lock after the first placement. Player color pickers are two separate gradient pills, while the board-color picker remains a single full-width pill. The session footer no longer repeats the old arena/theme text.
 - Tactical/special-piece brainstorming and implementation notes are captured in `dev/active/axial-web-rebuild/variant-modes.md`.
 
 ## Recent Verification
@@ -117,9 +128,99 @@ Latest checks passed from `axial-web/apps/web` unless noted:
 
 Known non-blocking build warnings:
 
-- Large Three.js/Threlte game chunk.
+- Large Three.js/Threlte game chunk. The 2026-06-07 cleanup pass reduced the client page
+  chunk from `993.16 kB` minified / `273.01 kB` gzip to `831.24 kB` minified /
+  `215.85 kB` gzip, but the route still exceeds Vite's default 500 kB warning threshold.
+  After the synchronized HUD glow polish pass, the route is `836.43 kB` minified /
+  `216.72 kB` gzip.
+
+Bundle cleanup decision from the 2026-06-07 pass:
+
+- Removed the broad `@threlte/extras` route import by replacing the extras barrel usages with
+  local scene helpers: a small OrbitControls wrapper, canvas-backed billboard labels, and direct
+  Three `RoundedBoxGeometry`.
+- Removed the now-unused `@threlte/extras` package dependency and lockfile entries after source
+  imports were fully eliminated.
+- Removed the normal-path runtime `@axial/ai` import from the page controller. Classic MCTS stays
+  worker-backed, and the rare main-thread MCTS fallback now loads dynamically only if the worker
+  path fails.
+- Sourcemap inspection after cleanup shows the remaining route bulk is dominated by Three core,
+  Three module glue, Three OrbitControls, Threlte core, and Axial's actual page/scene/UI code.
+  Manual chunking or lazy-loading the scene would mostly move the same first-play WebGL payload
+  into another required chunk, so defer larger splitting until there is a non-game first route,
+  a deliberate loading shell, or a quality-tier architecture.
 
 Visual verification used local Playwright screenshots because the Browser plugin was listed but the required Node REPL `js` execution tool was not exposed by tool discovery.
+
+UI boundary cleanup from the 2026-06-07 follow-up:
+
+- Split `GameStatusPanel.svelte` into focused UI sections:
+  `PanelLiveStrip.svelte`, `MatchSettingsPanel.svelte`, `AppearancePanel.svelte`,
+  `SessionRecordPanel.svelte`, and `TacticalLoadoutPanel.svelte`.
+- Removed the stale `matchConfig` controller getter/import. Tactical test-only getters remain for
+  explicit special-action assertions.
+- Kept the refactor behavior-preserving; shared panel styling still comes from the existing global
+  panel classes.
+
+Board-dimension update from the 2026-06-07 follow-up:
+
+- `@axial/core` now carries `dimensions` on `GameSnapshot`; `createGame`, `replayMoves`, legal
+  moves, gravity, indexing, win-line scanning, and double-adjacent checks accept dynamic
+  dimensions while keeping the 6 x 6 x 7 constants as default compatibility.
+- Web scene geometry, labels, projected column picking, pieces, previews, and completed-line
+  markers now render from `game.dimensions`.
+- `@axial/ai` Classic geometry is now dimension-aware: row-major policy moves, cell-to-move
+  mapping, segment tables, search-state heights, center bias, heuristic ordering, rollouts, and
+  MCTS result conversion all use `game.dimensions`. Classic AI no longer falls back to random only
+  because the board is larger.
+
+Latest cleanup verification:
+
+- `pnpm check`
+- `pnpm lint`
+- `pnpm build`
+- `pnpm --filter @axial/core test:unit`
+- `pnpm --filter @axial/ai test:unit`
+- `pnpm --filter @axial/web test:unit -- --run`
+- `pnpm --filter @axial/web test:e2e`
+- Local Playwright fallback smoke against `http://localhost:5174/`: desktop board loaded, one
+  move placed successfully, mobile board framed correctly, and no page errors, console errors, or
+  failed requests were observed. Screenshots were written to `/tmp/axial-cleanup-desktop.png` and
+  `/tmp/axial-cleanup-mobile.png`.
+- Local Playwright fallback orbit-control smoke against preview `http://localhost:4173/`: board
+  drag completed with no page errors, console errors, or failed requests. Screenshot was written to
+  `/tmp/axial-cleanup-orbit-drag.png`.
+- Local Playwright fallback smoke against current dev server `http://localhost:5173/`: desktop,
+  Tactical Pieces mode, mobile collapsed, and mobile expanded all rendered with one canvas and no
+  page errors, console errors, or failed requests. Screenshots were written to
+  `/tmp/axial-cleanup-section-split-desktop-2.png`,
+  `/tmp/axial-cleanup-section-split-tactical-2.png`,
+  `/tmp/axial-cleanup-section-split-mobile-2.png`, and
+  `/tmp/axial-cleanup-section-split-mobile-expanded.png`.
+- Local Playwright fallback smoke for the board-size/modal pass against `http://localhost:5173/`:
+  desktop expanded panel changed the board to 7 x 7 x 8, mobile expanded did the same, and a real
+  seven-move Player 1 win opened the polished result modal. No page errors, console errors, or
+  failed requests were observed. Screenshots were written to
+  `/tmp/axial-expanded-pill-dimensions.png`, `/tmp/axial-mobile-expanded-dimensions.png`, and
+  `/tmp/axial-result-modal-polished-2.png`.
+- Local Playwright fallback smoke for the appearance/AI geometry pass against
+  `http://localhost:5173/`: desktop and mobile expanded panels showed the grouped Board color /
+  Piece look / Theme controls with custom `#4be0ff`, no repeated arena footer text, and no page
+  errors, console errors, or failed requests. Desktop AI mode on a 7 x 7 x 8 board advanced through
+  a worker-backed reply to `2 MOVES`. Screenshots were written to
+  `/tmp/axial-appearance-custom-color-desktop.png`, `/tmp/axial-large-board-ai-reply.png`, and
+  `/tmp/axial-appearance-custom-color-mobile.png`.
+- Local Playwright fallback smoke for the AI timing/HUD/appearance polish pass against
+  `http://localhost:5173/`: mobile expanded panel showed separate gradient P1/P2 pills, no Board
+  color subheader, and glyph-split AXIAL/dimension HUD text. Max Classic AI did not respond within
+  the first 900ms after a human move and completed the worker-backed reply after about 3.9s with no
+  page errors, console errors, or failed requests. Screenshots were written to
+  `/tmp/axial-ai-hud-appearance-polish-mobile.png` and
+  `/tmp/axial-ai-thinking-delay-desktop.png`.
+- Local Playwright fallback smoke for the synchronized HUD glow pass against
+  `http://localhost:5173/`: AXIAL, board dimensions, and the centered turn pill all used the same
+  `0s`, `0.12s`, `0.24s` glyph delay sequence; the center pill rendered shorter with larger text.
+  Screenshot was written to `/tmp/axial-hud-sync-turn-chip.png`.
 
 Useful screenshots in `axial-web/apps/web/` include:
 
@@ -175,6 +276,8 @@ Useful screenshots in `axial-web/apps/web/` include:
 - First implementation landed in `@axial/ai`: precomputed 954 winning segments, row-major move indices, mutable Classic search state, heuristic tactical selector, seeded evaluation harness, and deterministic MCTS with RAVE-style statistics.
 - Classic AI opponent mode now calls bounded MCTS through a Vite Web Worker with `96` simulations capped at about `220ms`.
 - Classic AI search now reads `game.winCondition`, including connect-5 and multi-line targets, through dynamic segment tables.
+- Classic AI search now reads `game.dimensions`; expanded board sizes use dimension-aware segment
+  tables, move indices, center scoring, and MCTS rollouts instead of the old random fallback.
 - Classic AI now gives multi-line modes stronger strategy weight: non-terminal line completions are valuable, opponent line progress is blocked, line-completion forks influence forcing moves, rollouts pursue/block line progress, and search budgets scale upward for connect-5 / 2-3-line variants.
 - The app has a cancellable Classic AI client: reset/undo/mode changes terminate stale worker requests before they can play old moves.
 - The Match panel exposes AI strength when AI mode is selected; the setting persists and locks with the rest of setup after the first move.

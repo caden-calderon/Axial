@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { T, useTask } from '@threlte/core';
 	import { AdditiveBlending, Quaternion, Vector3 } from 'three';
-	import { cellFromIndex, type CompletedLine } from '@axial/core';
+	import { cellFromIndex, type BoardDimensions, type CompletedLine } from '@axial/core';
 	import {
 		COMPLETED_LINE_DRAW_DURATION_SECONDS,
 		COMPLETED_LINE_SETTLE_DURATION_SECONDS
@@ -11,10 +11,12 @@
 
 	let {
 		line,
-		pieceColors
+		pieceColors,
+		dimensions
 	}: {
 		line: CompletedLine;
 		pieceColors: PieceColors;
+		dimensions: BoardDimensions;
 	} = $props();
 
 	const cells = $derived(line.cells.map(cellCenter));
@@ -49,8 +51,8 @@
 	});
 
 	function cellCenter(cellIndex: number): Vec3 {
-		const cell = cellFromIndex(cellIndex);
-		return cellPosition(cell.height, cell.row, cell.col);
+		const cell = cellFromIndex(cellIndex, dimensions);
+		return cellPosition(cell.height, cell.row, cell.col, dimensions);
 	}
 
 	function extendedEndpoint(points: readonly Vec3[], side: -1 | 1): Vec3 {

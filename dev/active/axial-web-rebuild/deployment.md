@@ -111,7 +111,7 @@ Manual smoke:
 3. Confirm the `AXIAL` HUD, board dimensions, board canvas, and right control panel appear.
 4. Start a local Classic move and confirm a piece appears with last-move glow.
 5. Switch to AI mode before the first move, place a piece, and confirm the AI replies.
-6. Toggle light/dark mode and one scene theme.
+6. Toggle light/dark mode and adjust the board color picker.
 7. On a phone-width viewport, confirm the board, HUD, compact controls, fullscreen button, and install metadata work without text overlap.
 8. On a mobile device, use the browser install/add-to-home-screen flow and confirm Axial opens in an app-like display mode when launched from the home screen.
 

@@ -24,6 +24,13 @@ Important boundaries:
 - Keep 3D/rendering in `apps/web/src/lib/game/scene`.
 - Keep scene palette metadata in `apps/web/src/lib/game/theming`.
 - Keep controller/persistence/replay orchestration in `apps/web/src/lib/game/state`.
+- Keep heavy visual dependencies out of the page controller. Classic MCTS should run through the
+  worker in normal play, with any main-thread fallback loaded dynamically.
+- Avoid broad visual dependency barrels when the app only needs a few Three helpers; prefer local
+  scene helpers or explicit Three example modules when that keeps the bundle shape clearer.
+- Keep the top-right status panel shell small. Match setup, appearance controls, tactical loadout
+  details, and session stats should live in focused UI section components rather than one large
+  mixed markup file.
 
 ## Active Implementation Choices
 
@@ -31,30 +38,46 @@ Important boundaries:
 - Undo/redo/replay use canonical row/column move history and `replayMoves`.
 - Control UI is an acrylic top-right panel that expands downward with stable width/radius.
 - Expanded controls are organized as a match console: live state, Match, Appearance, and Session.
-- Match setup currently exposes local play, a random baseline AI opponent, and a pre-match `Classic`/`Tactical` rules selector; editable dimensions, timers, and AI difficulty are deferred until behavior exists.
+  The panel body is split into focused section components while the shell owns expansion and
+  toolbar mode state.
+- Match setup exposes local play, Classic AI, pre-match `Classic`/`Tactical` rules, board dimensions, win rules, and AI difficulty.
 - Tactical mode currently has a fixed three-piece kit per player: two Blocker Combos and one Double Adjacent.
 - Tactical sub-actions are replay-visible with special metadata so undo/redo and future AI training can reconstruct same-player continuations.
 - Tactical actions are exposed through a `Pieces` mode in the top-right control pill; the dropdown shows either normal setup/status or piece details depending on whether Pieces mode is active.
 - The centered desktop turn pill is a status-only chip with no arrow/expansion affordance; Tactical piece actions live in the top-right Pieces toolbar mode.
 - Desktop control pills share the centered turn pill's full-height acrylic scale, while mobile keeps the tighter compact control height.
 - Game-over modal actions distinguish `New match`, `Review from start`, and `Keep board`.
-- Appearance setup includes live scene theme, piece shape, per-player piece colors, light/dark mode, and axis-number visibility.
-- Piece shape and player colors are pre-match loadout settings: they are editable on a fresh board, then locked after the first placed piece until `New match`/reset.
+- Classic AI uses difficulty-aware minimum visible thinking time in addition to its worker search
+  budget: Easy stays brisk, while Max waits long enough to feel deliberate even when the worker
+  finds a fast obvious move.
+- Appearance setup includes exact board-grid color, piece shape, separate per-player gradient color
+  pills, light/dark mode, and axis-number visibility.
+- Board color is live and persisted. Piece shape and player colors are pre-match loadout settings:
+  they are editable on a fresh board, then locked after the first placed piece until
+  `New match`/reset.
 - Opponent mode and match rules are also pre-match setup choices and lock after the first placement.
+- Board dimensions are pre-match setup choices. The baseline is 6 x 6 x 7, each dimension can be
+  increased up to 10, and dimension changes reset only a fresh board; active/review boards stay
+  locked.
 - Win rules are pre-match setup choices for both Classic and Tactical: players can choose connect 4 or connect 5, and require 1, 2, or 3 completed lines to win. The core game snapshot carries the selected win condition so replay, undo/redo, and AI evaluate the same rules.
 - Completed lines are first-class visual state during active play. They should be recomputed from board ownership, keyed with stable IDs, and rendered as persistent in-board markers so multi-line modes communicate progress before the final win.
 - Result overlays should not interrupt critical board-state animation; after a winning line appears, the game-over modal waits for the completed-line draw/settle timing before opening.
+- Result overlays should feel like part of the win sequence: the modal uses a short backdrop/dialog
+  entrance animation and aligned action buttons after the completed-line delay.
 - The SvelteKit app now uses `@sveltejs/adapter-cloudflare` directly instead of `adapter-auto`; Cloudflare Pages build settings, DNS notes, release workflow, and production smoke checklist live in `dev/active/axial-web-rebuild/deployment.md`.
 - The game shell disables browser text selection to preserve a game-like interaction feel.
 - Mobile app-like play is supported through PWA install metadata and a fullscreen toolbar control where the browser exposes the Fullscreen API.
-- Desktop turn pill is independent from the AXIAL wordmark and fixed-width at top center.
+- Desktop turn pill is independent from the AXIAL wordmark and fixed-width at top center, with a
+  shorter pill width and larger status text than the first centered version.
+- The AXIAL wordmark, board-dimension HUD text, and centered desktop turn pill use a synchronized
+  subtle sequential glyph glow tied to the active board accent.
 - Mobile keeps controls smaller, tucked top-right, and hides the turn pill.
 - Variant mode design is tracked in `dev/active/axial-web-rebuild/variant-modes.md`; classic rules remain the default.
 
 ## Near-Term Priorities
 
-1. Analyze the large web chunk warning and decide whether code-splitting, lazy loading, dependency trimming, or a measured "accept for now" decision is appropriate.
-2. Audit `apps/web/src/lib/game`, `packages/core`, and `packages/ai` for dead code, duplicated logic, stale helpers, and component boundaries that should be cleaned before more features land.
+1. Continue the cleanup audit in `apps/web/src/lib/game`, `packages/core`, and `packages/ai` for dead code, duplicated logic, stale helpers, and component boundaries that should be cleaned before more features land. The first web UI pass removed the unused `@threlte/extras` dependency, split the status panel into focused sections, and trimmed a stale controller getter.
+2. Treat the remaining large Three.js/Threlte chunk warning as measured and acceptable for now: the 2026-06-07 cleanup removed accidental `@threlte/extras` and normal-path `@axial/ai` imports, reducing the client page chunk from `993.16 kB` minified / `273.01 kB` gzip to roughly `833 kB` minified / `216 kB` gzip after the follow-up section split. Revisit code-splitting when Axial gains a non-game first route, an intentional loading shell, or graphics-quality tiers.
 3. Keep refactors behavior-preserving unless Caden explicitly asks for gameplay changes in the same area.
 4. Respond to Caden-directed UI/gameplay changes after the cleanup pass has produced a clear map of risks and quick wins.
 5. Add progress messages for longer Classic AI searches.
@@ -64,9 +87,10 @@ Important boundaries:
 9. Keep the old Python MCTS runnable only as a reference/baseline through the root `uv` environment.
 10. Add PyTorch/training dependencies only when neural self-play work resumes.
 11. Treat AlphaZero/PyTorch/ONNX as a later measured upgrade once the teacher/evaluation harness can prove neural guidance improves strength.
-12. Keep Tactical/special-piece AI deferred until Classic-mode AI is locked.
-13. Add editable loadout UX for choosing the three Tactical specials when returning to Tactical polish.
-14. Keep the production deploy loop healthy with local checks, Cloudflare deployment review, and production smoke tests before/after significant changes.
+12. Benchmark and tune Classic AI latency/strength on expanded board sizes now that search geometry is dimension-aware.
+13. Keep Tactical/special-piece AI deferred until Classic-mode AI is locked.
+14. Add editable loadout UX for choosing the three Tactical specials when returning to Tactical polish.
+15. Keep the production deploy loop healthy with local checks, Cloudflare deployment review, and production smoke tests before/after significant changes.
 
 ## Testing Expectations
 

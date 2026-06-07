@@ -32,13 +32,15 @@
 
 <div class="game-over-backdrop">
 	<dialog class="game-over-dialog" aria-labelledby="game-over-title" open>
-		<div class="result-mark" data-result={status.state}>
-			<Trophy size={26} strokeWidth={1.7} />
-		</div>
+		<div class="result-header">
+			<div class="result-mark" data-result={status.state}>
+				<Trophy size={26} strokeWidth={1.7} />
+			</div>
 
-		<p class="result-kicker">Game over</p>
-		<h2 id="game-over-title">{title}</h2>
-		<p class="result-detail">{resultDetail}</p>
+			<p class="result-kicker">Game over</p>
+			<h2 id="game-over-title">{title}</h2>
+			<p class="result-detail">{resultDetail}</p>
+		</div>
 
 		<div class="modal-actions">
 			<button
@@ -47,8 +49,8 @@
 				aria-label="Start a new match with an empty board"
 				onclick={onNewMatch}
 			>
-				<RotateCcw size={17} strokeWidth={1.9} />
-				<span>
+				<span class="button-icon"><RotateCcw size={17} strokeWidth={1.9} /></span>
+				<span class="button-copy">
 					<strong>New match</strong>
 					<small>Clear the board</small>
 				</span>
@@ -59,8 +61,8 @@
 				aria-label="Rewind this match to the start and step through it with redo"
 				onclick={onReviewFromStart}
 			>
-				<Play size={17} strokeWidth={1.9} />
-				<span>
+				<span class="button-icon"><Play size={17} strokeWidth={1.9} /></span>
+				<span class="button-copy">
 					<strong>Review from start</strong>
 					<small>Step with redo</small>
 				</span>
@@ -71,8 +73,8 @@
 				aria-label="Dismiss the result and keep the final board visible"
 				onclick={onKeepBoard}
 			>
-				<Eye size={17} strokeWidth={1.9} />
-				<span>
+				<span class="button-icon"><Eye size={17} strokeWidth={1.9} /></span>
+				<span class="button-copy">
 					<strong>Keep board</strong>
 					<small>Dismiss result</small>
 				</span>
@@ -97,11 +99,12 @@
 			),
 			color-mix(in oklab, #000 34%, transparent);
 		backdrop-filter: blur(8px);
+		animation: result-backdrop-in 260ms ease-out both;
 	}
 
 	.game-over-dialog {
 		position: static;
-		width: min(24rem, calc(100vw - 2rem));
+		width: min(28rem, calc(100vw - 2rem));
 		margin: 0;
 		padding: 1.1rem;
 		border: 1px solid color-mix(in oklab, var(--text) 20%, transparent);
@@ -110,19 +113,29 @@
 		color: var(--text);
 		box-shadow: 0 24px 70px var(--shadow);
 		text-align: center;
+		transform-origin: 50% 54%;
+		animation: result-dialog-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+
+	.result-header {
+		display: grid;
+		justify-items: center;
+		gap: 0.22rem;
+		margin-bottom: 1rem;
 	}
 
 	.result-mark {
 		display: inline-grid;
 		width: 3.2rem;
 		height: 3.2rem;
-		margin-bottom: 0.85rem;
+		margin-bottom: 0.5rem;
 		place-items: center;
 		border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
 		border-radius: 999px;
 		background: color-mix(in oklab, var(--accent) 16%, transparent);
 		color: var(--accent);
 		box-shadow: 0 0 28px color-mix(in oklab, var(--accent) 18%, transparent);
+		animation: result-mark-in 560ms cubic-bezier(0.16, 1, 0.3, 1) 90ms both;
 	}
 
 	.result-mark[data-result='draw'] {
@@ -133,7 +146,7 @@
 	}
 
 	.result-kicker {
-		margin: 0 0 0.2rem;
+		margin: 0;
 		color: var(--muted);
 		font-size: 0.72rem;
 		font-weight: 760;
@@ -148,7 +161,7 @@
 	}
 
 	.result-detail {
-		margin: 0.35rem 0 1rem;
+		margin: 0.14rem 0 0;
 		color: var(--muted);
 		font-size: 0.88rem;
 		font-weight: 650;
@@ -165,13 +178,14 @@
 	}
 
 	.modal-button {
-		display: inline-flex;
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
 		min-width: 0;
 		min-height: 3.1rem;
 		align-items: center;
-		justify-content: center;
-		gap: 0.42rem;
-		padding: 0 0.7rem;
+		justify-content: stretch;
+		gap: 0.52rem;
+		padding: 0 0.78rem;
 		border: 1px solid color-mix(in oklab, var(--text) 14%, transparent);
 		border-radius: 8px;
 		background: color-mix(in oklab, var(--surface) 58%, transparent);
@@ -179,17 +193,27 @@
 		cursor: pointer;
 		font-size: 0.82rem;
 		font-weight: 760;
+		text-align: left;
 		transition:
 			transform 160ms ease,
 			background 160ms ease,
 			border-color 160ms ease;
 	}
 
-	.modal-button span {
+	.button-icon {
+		display: inline-grid;
+		width: 1.7rem;
+		height: 1.7rem;
+		place-items: center;
+		border-radius: 999px;
+		background: color-mix(in oklab, var(--surface) 48%, transparent);
+		color: color-mix(in oklab, var(--text) 84%, var(--accent));
+	}
+
+	.button-copy {
 		display: grid;
 		min-width: 0;
 		gap: 0.1rem;
-		text-align: left;
 	}
 
 	.modal-button strong,
@@ -222,9 +246,59 @@
 		background: color-mix(in oklab, var(--accent) 22%, var(--surface));
 	}
 
+	.modal-button.primary .button-icon {
+		color: var(--text);
+		background: color-mix(in oklab, var(--accent) 30%, transparent);
+	}
+
 	@media (max-width: 440px) {
 		.modal-actions {
 			grid-template-columns: 1fr;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.game-over-backdrop,
+		.game-over-dialog,
+		.result-mark {
+			animation: none;
+		}
+	}
+
+	@keyframes result-backdrop-in {
+		from {
+			opacity: 0;
+			backdrop-filter: blur(0);
+		}
+		to {
+			opacity: 1;
+			backdrop-filter: blur(8px);
+		}
+	}
+
+	@keyframes result-dialog-in {
+		from {
+			opacity: 0;
+			transform: translateY(0.9rem) scale(0.965);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0) scale(1);
+		}
+	}
+
+	@keyframes result-mark-in {
+		0% {
+			opacity: 0;
+			transform: scale(0.82);
+		}
+		62% {
+			opacity: 1;
+			transform: scale(1.08);
+		}
+		100% {
+			opacity: 1;
+			transform: scale(1);
 		}
 	}
 </style>

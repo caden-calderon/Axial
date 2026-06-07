@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { T } from '@threlte/core';
 	import {
 		AdditiveBlending,
@@ -13,9 +13,10 @@
 		PointsMaterial,
 		ShaderMaterial
 	} from 'three';
+	import type { BoardDimensions } from '@axial/core';
 	import type { UiThemeName, ScenePalette } from '../theming/sceneThemes';
 	import {
-		BOARD_SIZE,
+		boardSize,
 		createGridGlowStreakGeometry,
 		createGridLinePositions,
 		createGridNodePositions,
@@ -24,27 +25,40 @@
 
 	let {
 		palette,
-		uiTheme
+		uiTheme,
+		dimensions
 	}: {
 		palette: ScenePalette;
 		uiTheme: UiThemeName;
+		dimensions: BoardDimensions;
 	} = $props();
 
+	const initialDimensions = untrack(() => dimensions);
 	const lineGeometry = new BufferGeometry();
-	lineGeometry.setAttribute('position', new Float32BufferAttribute(createGridLinePositions(), 3));
+	lineGeometry.setAttribute(
+		'position',
+		new Float32BufferAttribute(createGridLinePositions(initialDimensions), 3)
+	);
 
 	const edgeGeometry = new BufferGeometry();
 	edgeGeometry.setAttribute(
 		'position',
-		new Float32BufferAttribute(createOuterEdgeLinePositions(), 3)
+		new Float32BufferAttribute(createOuterEdgeLinePositions(initialDimensions), 3)
 	);
 
-	const innerStreakGeometry = createFadedLineGeometry(createGridGlowStreakGeometry(0.38));
+	const innerStreakGeometry = createFadedLineGeometry(
+		createGridGlowStreakGeometry(0.38, initialDimensions)
+	);
 
-	const outerStreakGeometry = createFadedLineGeometry(createGridGlowStreakGeometry(0.78));
+	const outerStreakGeometry = createFadedLineGeometry(
+		createGridGlowStreakGeometry(0.78, initialDimensions)
+	);
 
 	const nodeGeometry = new BufferGeometry();
-	nodeGeometry.setAttribute('position', new Float32BufferAttribute(createGridNodePositions(), 3));
+	nodeGeometry.setAttribute(
+		'position',
+		new Float32BufferAttribute(createGridNodePositions(initialDimensions), 3)
+	);
 
 	const lineMaterial = new LineBasicMaterial({
 		transparent: true,
@@ -93,6 +107,7 @@
 	const shellOpacity = $derived(uiTheme === 'dark' ? 0.045 : 0.055);
 	const gridLineBlending = $derived(uiTheme === 'dark' ? AdditiveBlending : NormalBlending);
 	const gridGlowBlending = AdditiveBlending;
+	const shellSize = boardSize(initialDimensions);
 
 	$effect(() => {
 		lineMaterial.color.set(palette.grid);
@@ -189,7 +204,7 @@
 
 <T.Group>
 	<T.Mesh renderOrder={0}>
-		<T.BoxGeometry args={BOARD_SIZE} />
+		<T.BoxGeometry args={shellSize} />
 		<T.MeshPhysicalMaterial
 			color={palette.grid}
 			emissive={palette.gridEmissive}

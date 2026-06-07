@@ -1,4 +1,5 @@
 import {
+  type BoardDimensions,
   otherPlayer,
   type GameSnapshot,
   type Move,
@@ -11,11 +12,7 @@ import {
   findWinningMoves,
   selectHeuristicMove,
 } from "./heuristic";
-import {
-  CLASSIC_MOVES,
-  moveFromIndex,
-  type MoveIndex,
-} from "./geometry";
+import { moveFromIndex, type MoveIndex } from "./geometry";
 import { ClassicSearchState } from "./state";
 
 export type MctsOptions = {
@@ -84,13 +81,13 @@ export function analyzeMctsMove(
 
   if (tactical.reason !== "heuristic") {
     return {
-      move: publicMoveFromIndex(tactical.moveIndex),
+      move: publicMoveFromIndex(tactical.moveIndex, rootState.dimensions),
       moveIndex: tactical.moveIndex,
       simulations: 0,
       elapsedMs: 0,
       reason: "tactical",
       stats: tactical.candidates.map((candidate) => ({
-        move: publicMoveFromIndex(candidate.moveIndex),
+        move: publicMoveFromIndex(candidate.moveIndex, rootState.dimensions),
         moveIndex: candidate.moveIndex,
         visits: 0,
         winRate: 0,
@@ -154,7 +151,7 @@ class MctsSearch {
 
     if (!best) {
       return {
-        move: publicMoveFromIndex(fallbackMoveIndex),
+        move: publicMoveFromIndex(fallbackMoveIndex, this.rootState.dimensions),
         moveIndex: fallbackMoveIndex,
         simulations: this.simulations,
         elapsedMs,
@@ -254,7 +251,11 @@ class MctsSearch {
           bestChild !== null &&
           bestChild.moveIndex !== null &&
           child.moveIndex !== null &&
-          compareMoveIndicesByShape(child.moveIndex, bestChild.moveIndex) < 0)
+          compareMoveIndicesByShape(
+            child.moveIndex,
+            bestChild.moveIndex,
+            this.rootState.dimensions,
+          ) < 0)
       ) {
         bestScore = score;
         bestChild = child;
@@ -317,7 +318,7 @@ class MctsSearch {
   private rootStats(): MctsMoveStat[] {
     return [...this.root.children.values()]
       .map((child) => ({
-        move: publicMoveFromIndex(child.moveIndex!),
+        move: publicMoveFromIndex(child.moveIndex!, this.rootState.dimensions),
         moveIndex: child.moveIndex!,
         visits: child.visits,
         winRate: child.visits > 0 ? child.value / child.visits : 0,
@@ -327,7 +328,11 @@ class MctsSearch {
         if (first.visits !== second.visits) return second.visits - first.visits;
         if (first.winRate !== second.winRate)
           return second.winRate - first.winRate;
-        return compareMoveIndicesByShape(first.moveIndex, second.moveIndex);
+        return compareMoveIndicesByShape(
+          first.moveIndex,
+          second.moveIndex,
+          this.rootState.dimensions,
+        );
       });
   }
 }
@@ -341,7 +346,11 @@ function orderedMoves(state: ClassicSearchState, player: Player): MoveIndex[] {
     }))
     .sort((first, second) => {
       if (first.score !== second.score) return second.score - first.score;
-      return compareMoveIndicesByShape(first.moveIndex, second.moveIndex);
+      return compareMoveIndicesByShape(
+        first.moveIndex,
+        second.moveIndex,
+        state.dimensions,
+      );
     })
     .map((score) => score.moveIndex);
 }
@@ -406,7 +415,11 @@ function chooseRolloutMove(
       }))
       .sort((first, second) => {
         if (first.score !== second.score) return second.score - first.score;
-        return compareMoveIndicesByShape(first.moveIndex, second.moveIndex);
+        return compareMoveIndicesByShape(
+          first.moveIndex,
+          second.moveIndex,
+          state.dimensions,
+        );
       });
     const topCount = Math.min(4, scored.length);
     const topIndex = randomIndex(topCount, random);
@@ -442,8 +455,11 @@ function performanceNow(): number {
   return globalThis.performance?.now() ?? Date.now();
 }
 
-function publicMoveFromIndex(moveIndex: MoveIndex): Move {
-  const move = moveFromIndex(moveIndex);
+function publicMoveFromIndex(
+  moveIndex: MoveIndex,
+  dimensions: BoardDimensions,
+): Move {
+  const move = moveFromIndex(moveIndex, dimensions);
   return { row: move.row, col: move.col };
 }
 
@@ -477,12 +493,11 @@ function fastMoveScore(
     state.winCondition.linesToWin - state.completedLineCount(opponent),
   );
   let score =
-    centerMoveScore(moveIndex) +
+    centerMoveScore(state, moveIndex) +
     state.completedLineCount(player) * 18_000 -
     state.completedLineCount(opponent) * 24_000 +
     ownLineCompletions * (remainingOwnLines <= 1 ? 95_000 : 42_000) +
-    opponentLineCompletions *
-      (remainingOpponentLines <= 1 ? 82_000 : 36_000);
+    opponentLineCompletions * (remainingOpponentLines <= 1 ? 82_000 : 36_000);
 
   for (const segmentId of state.segmentTable.cellSegments[cellIndex]) {
     if (state.blockedCounts[segmentId] > 0) continue;
@@ -522,7 +537,7 @@ function bestLineCompletionMove(
       (completions === bestCompletions &&
         completions > 0 &&
         bestMove !== null &&
-        compareMoveIndicesByShape(moveIndex, bestMove) < 0)
+        compareMoveIndicesByShape(moveIndex, bestMove, state.dimensions) < 0)
     ) {
       bestMove = moveIndex;
       bestCompletions = completions;
@@ -532,8 +547,14 @@ function bestLineCompletionMove(
   return bestCompletions > 0 ? bestMove : null;
 }
 
-function centerMoveScore(moveIndex: MoveIndex): number {
-  const move = CLASSIC_MOVES[moveIndex];
-  const distance = Math.abs(move.row - 2.5) * 1.3 + Math.abs(move.col - 3);
+function centerMoveScore(
+  state: ClassicSearchState,
+  moveIndex: MoveIndex,
+): number {
+  const move = moveFromIndex(moveIndex, state.dimensions);
+  const centerRow = (state.dimensions.rows - 1) / 2;
+  const centerCol = (state.dimensions.columns - 1) / 2;
+  const distance =
+    Math.abs(move.row - centerRow) * 1.3 + Math.abs(move.col - centerCol);
   return Math.max(0, 100 - distance * 16);
 }

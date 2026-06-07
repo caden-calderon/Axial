@@ -1,54 +1,44 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { BOARD_COLUMNS, BOARD_HEIGHT, BOARD_ROWS, type Player } from '@axial/core';
 	import {
-		Bot,
-		Box,
 		Boxes,
 		ChevronUp,
-		Circle,
-		CircleDot,
 		CopyPlus,
-		Gem,
-		Lock,
 		Maximize2,
 		Minimize2,
 		Moon,
-		Palette,
-		Pipette,
 		Redo2,
 		RotateCcw,
 		Shield,
-		Sparkles,
 		Sun,
-		Trophy,
-		Undo2,
-		Users
+		Undo2
 	} from '@lucide/svelte';
-	import type { MatchMode, TacticalSpecialId, WinCondition } from '@axial/core';
-	import { PIECE_SHAPE_OPTIONS, type PieceColors, type PieceShape } from '../state/pieceAppearance';
-	import {
-		AI_DIFFICULTY_OPTIONS,
-		LINES_TO_WIN_OPTIONS,
-		WIN_LINE_LENGTH_OPTIONS,
-		type AiDifficulty,
-		type OpponentMode,
-		type TacticalSpecialCounts
+	import type { BoardDimensions, MatchMode, TacticalSpecialId, WinCondition } from '@axial/core';
+	import type { PieceColors, PieceShape } from '../state/pieceAppearance';
+	import type {
+		AiDifficulty,
+		OpponentMode,
+		BoardDimensionKey,
+		TacticalSpecialCounts
 	} from '../state/gameController.svelte';
 	import type { SessionRecord } from '../state/sessionRecord';
-	import type { SceneThemeName, UiThemeName } from '../theming/sceneThemes';
-	import SceneSelector from './SceneSelector.svelte';
+	import type { UiThemeName } from '../theming/sceneThemes';
+	import AppearancePanel from './AppearancePanel.svelte';
+	import MatchSettingsPanel from './MatchSettingsPanel.svelte';
+	import PanelLiveStrip from './PanelLiveStrip.svelte';
+	import SessionRecordPanel from './SessionRecordPanel.svelte';
+	import TacticalLoadoutPanel from './TacticalLoadoutPanel.svelte';
 
 	let {
-		arenaLabel,
 		statusTitle,
 		moveCount,
-		sceneTheme,
+		boardColor,
 		uiTheme,
 		labelsVisible,
 		opponentMode,
 		aiDifficulty,
 		matchMode,
+		boardDimensions,
 		winCondition,
 		aiThinking,
 		pieceShape,
@@ -76,25 +66,26 @@
 		onOpponentModeChange,
 		onAiDifficultyChange,
 		onMatchModeChange,
+		onBoardDimensionChange,
 		onWinLineLengthChange,
 		onLinesToWinChange,
 		onToggleBlockerCombo,
 		onToggleDoubleAdjacent,
 		onPieceShapeChange,
 		onPieceColorChange,
-		onSceneThemeChange,
+		onBoardColorChange,
 		onToggleLabels,
 		onToggleTheme
 	}: {
-		arenaLabel: string;
 		statusTitle: string;
 		moveCount: number;
-		sceneTheme: SceneThemeName;
+		boardColor: string;
 		uiTheme: UiThemeName;
 		labelsVisible: boolean;
 		opponentMode: OpponentMode;
 		aiDifficulty: AiDifficulty;
 		matchMode: MatchMode;
+		boardDimensions: BoardDimensions;
 		winCondition: WinCondition;
 		aiThinking: boolean;
 		pieceShape: PieceShape;
@@ -122,20 +113,20 @@
 		onOpponentModeChange: (mode: OpponentMode) => void;
 		onAiDifficultyChange: (difficulty: AiDifficulty) => void;
 		onMatchModeChange: (mode: MatchMode) => void;
+		onBoardDimensionChange: (key: BoardDimensionKey, value: number) => void;
 		onWinLineLengthChange: (lineLength: number) => void;
 		onLinesToWinChange: (linesToWin: number) => void;
 		onToggleBlockerCombo: () => void;
 		onToggleDoubleAdjacent: () => void;
 		onPieceShapeChange: (shape: PieceShape) => void;
-		onPieceColorChange: (player: Player, color: string) => void;
-		onSceneThemeChange: (theme: SceneThemeName) => void;
+		onPieceColorChange: (player: 1 | 2, color: string) => void;
+		onBoardColorChange: (color: string) => void;
 		onToggleLabels: () => void;
 		onToggleTheme: () => void;
 	} = $props();
 
 	let expanded = $state(true);
 	let piecesMode = $state(false);
-	const boardDimensions = `${BOARD_HEIGHT}x${BOARD_ROWS}x${BOARD_COLUMNS}`;
 	const moveLabel = $derived(`${moveCount} ${moveCount === 1 ? 'move' : 'moves'}`);
 	const specialStatus = $derived(
 		matchMode === 'tactical'
@@ -146,10 +137,6 @@
 	onMount(() => {
 		expanded = window.innerWidth >= 720;
 	});
-
-	function colorValue(event: Event): string {
-		return (event.currentTarget as HTMLInputElement).value;
-	}
 
 	function togglePiecesMode(): void {
 		if (matchMode !== 'tactical') return;
@@ -291,341 +278,52 @@
 		<div class="panel-body-clip">
 			<div class="panel-body">
 				{#if piecesMode && matchMode === 'tactical'}
-					<div class="live-strip" aria-live="polite">
-						<div>
-							<span>Pieces</span>
-							<strong>{statusTitle}</strong>
-						</div>
-						<small>{specialStatus}</small>
-					</div>
-
-					<section class="panel-section piece-info-section">
-						<div class="section-heading">
-							<Boxes size={15} strokeWidth={2} />
-							<span>Loadout</span>
-						</div>
-
-						<div class="piece-info-list">
-							<button
-								type="button"
-								class:armed={selectedSpecial === 'blocker-combo' || mustCompleteBlockerCombo}
-								disabled={!canUseBlockerCombo && selectedSpecial !== 'blocker-combo'}
-								onclick={onToggleBlockerCombo}
-							>
-								<span class="piece-info-icon"><Shield size={16} strokeWidth={2.1} /></span>
-								<span>
-									<strong>Blocker</strong>
-									<small>Place a neutral blocker, then your regular piece.</small>
-								</span>
-								<em>{mustCompleteBlockerCombo ? '!' : activeSpecialCounts['blocker-combo']}</em>
-							</button>
-							<button
-								type="button"
-								class:armed={selectedSpecial === 'double-adjacent' || mustCompleteDoubleAdjacent}
-								disabled={!canUseDoubleAdjacent && selectedSpecial !== 'double-adjacent'}
-								onclick={onToggleDoubleAdjacent}
-							>
-								<span class="piece-info-icon"><CopyPlus size={16} strokeWidth={2.1} /></span>
-								<span>
-									<strong>Double Adjacent</strong>
-									<small>Place a second owned piece next to the first.</small>
-								</span>
-								<em>{mustCompleteDoubleAdjacent ? '!' : activeSpecialCounts['double-adjacent']}</em>
-							</button>
-						</div>
-					</section>
+					<TacticalLoadoutPanel
+						{statusTitle}
+						{specialStatus}
+						{activeSpecialCounts}
+						{selectedSpecial}
+						{canUseBlockerCombo}
+						{canUseDoubleAdjacent}
+						{mustCompleteBlockerCombo}
+						{mustCompleteDoubleAdjacent}
+						{onToggleBlockerCombo}
+						{onToggleDoubleAdjacent}
+					/>
 				{:else}
-					<div class="live-strip" aria-live="polite">
-						<div>
-							<span>Now</span>
-							<strong>{statusTitle}</strong>
-						</div>
-						<small>{moveLabel}</small>
-					</div>
+					<PanelLiveStrip label="Now" title={statusTitle} meta={moveLabel} />
 
-					<section class="panel-section">
-						<div class="section-heading">
-							<Users size={15} strokeWidth={2} />
-							<span>Match</span>
-						</div>
+					<MatchSettingsPanel
+						{opponentMode}
+						{aiDifficulty}
+						{matchMode}
+						{boardDimensions}
+						{winCondition}
+						{aiThinking}
+						{setupLocked}
+						{onOpponentModeChange}
+						{onAiDifficultyChange}
+						{onMatchModeChange}
+						{onBoardDimensionChange}
+						{onWinLineLengthChange}
+						{onLinesToWinChange}
+					/>
 
-						<div class="mode-switch" role="group" aria-label="Opponent mode">
-							<button
-								type="button"
-								class:selected={opponentMode === 'local'}
-								aria-pressed={opponentMode === 'local'}
-								disabled={setupLocked}
-								title={setupLocked ? 'Start a new match to change opponent mode' : 'Local mode'}
-								onclick={() => onOpponentModeChange('local')}
-							>
-								<Users size={14} strokeWidth={2} />
-								<span>Local</span>
-							</button>
-							<button
-								type="button"
-								class:selected={opponentMode === 'ai'}
-								class:thinking={aiThinking}
-								aria-pressed={opponentMode === 'ai'}
-								disabled={setupLocked}
-								title={setupLocked ? 'Start a new match to change opponent mode' : 'AI mode'}
-								onclick={() => onOpponentModeChange('ai')}
-							>
-								<Bot size={14} strokeWidth={2} />
-								<span>AI</span>
-							</button>
-						</div>
+					<AppearancePanel
+						{boardColor}
+						{uiTheme}
+						{labelsVisible}
+						{pieceShape}
+						{pieceColors}
+						{appearanceLocked}
+						{onPieceShapeChange}
+						{onPieceColorChange}
+						{onBoardColorChange}
+						{onToggleLabels}
+						{onToggleTheme}
+					/>
 
-						<div class="mode-switch rules-switch" role="group" aria-label="Match rules">
-							<button
-								type="button"
-								class:selected={matchMode === 'classic'}
-								aria-pressed={matchMode === 'classic'}
-								disabled={setupLocked}
-								title={setupLocked ? 'Start a new match to change rules' : 'Classic rules'}
-								onclick={() => onMatchModeChange('classic')}
-							>
-								<Sparkles size={14} strokeWidth={2} />
-								<span>Classic</span>
-							</button>
-							<button
-								type="button"
-								class:selected={matchMode === 'tactical'}
-								aria-pressed={matchMode === 'tactical'}
-								disabled={setupLocked}
-								title={setupLocked ? 'Start a new match to change rules' : 'Tactical rules'}
-								onclick={() => onMatchModeChange('tactical')}
-							>
-								<Shield size={14} strokeWidth={2} />
-								<span>Tactical</span>
-							</button>
-						</div>
-
-						<div class="rule-customizer" class:locked={setupLocked}>
-							<div class="rule-control">
-								<span>
-									<CircleDot size={13} strokeWidth={2} />
-									Connect
-								</span>
-								<div class="mode-switch connect-switch" role="group" aria-label="Connect length">
-									{#each WIN_LINE_LENGTH_OPTIONS as option (option.value)}
-										<button
-											type="button"
-											class:selected={winCondition.lineLength === option.value}
-											aria-pressed={winCondition.lineLength === option.value}
-											disabled={setupLocked}
-											title={setupLocked ? 'Start a new match to change win rules' : option.label}
-											onclick={() => onWinLineLengthChange(option.value)}
-										>
-											<span>{option.shortLabel}</span>
-										</button>
-									{/each}
-								</div>
-							</div>
-							<div class="rule-control">
-								<span>
-									<Trophy size={13} strokeWidth={2} />
-									Lines
-								</span>
-								<div class="mode-switch line-count-switch" role="group" aria-label="Lines to win">
-									{#each LINES_TO_WIN_OPTIONS as option (option.value)}
-										<button
-											type="button"
-											class:selected={winCondition.linesToWin === option.value}
-											aria-pressed={winCondition.linesToWin === option.value}
-											disabled={setupLocked}
-											title={setupLocked ? 'Start a new match to change win rules' : option.label}
-											onclick={() => onLinesToWinChange(option.value)}
-										>
-											<span>{option.shortLabel}</span>
-										</button>
-									{/each}
-								</div>
-							</div>
-						</div>
-
-						{#if opponentMode === 'ai'}
-							<div class="mode-switch difficulty-switch" role="group" aria-label="AI strength">
-								{#each AI_DIFFICULTY_OPTIONS as option (option.value)}
-									<button
-										type="button"
-										class:selected={aiDifficulty === option.value}
-										aria-pressed={aiDifficulty === option.value}
-										disabled={setupLocked}
-										title={setupLocked ? 'Start a new match to change AI strength' : option.label}
-										onclick={() => onAiDifficultyChange(option.value)}
-									>
-										<span>{option.shortLabel}</span>
-									</button>
-								{/each}
-							</div>
-						{/if}
-
-						<div class="setup-grid">
-							<div class="setup-stat">
-								<Boxes size={14} strokeWidth={2} />
-								<span>{boardDimensions}</span>
-								<small>Board</small>
-							</div>
-							<div class="setup-stat">
-								<CircleDot size={14} strokeWidth={2} />
-								<span>{winCondition.lineLength}</span>
-								<small>Connect</small>
-							</div>
-							<div class="setup-stat">
-								<Trophy size={14} strokeWidth={2} />
-								<span>{winCondition.linesToWin}</span>
-								<small>Lines</small>
-							</div>
-							<div class="setup-stat">
-								<Shield size={14} strokeWidth={2} />
-								<span>{specialStatus}</span>
-								<small>Special</small>
-							</div>
-						</div>
-					</section>
-
-					<section class="panel-section">
-						<div class="section-heading">
-							<Palette size={15} strokeWidth={2} />
-							<span>Appearance</span>
-							{#if appearanceLocked}
-								<span
-									class="lock-indicator"
-									aria-label="Piece appearance locked until a new match"
-									title="Start a new match to edit pieces"
-								>
-									<Lock size={12} strokeWidth={2.2} />
-								</span>
-							{/if}
-						</div>
-
-						<SceneSelector value={sceneTheme} onChange={onSceneThemeChange} />
-
-						<div class="piece-customizer" class:locked={appearanceLocked}>
-							<div class="shape-switch" role="group" aria-label="Piece shape">
-								{#each PIECE_SHAPE_OPTIONS as option (option.value)}
-									<button
-										type="button"
-										class:selected={pieceShape === option.value}
-										aria-pressed={pieceShape === option.value}
-										disabled={appearanceLocked}
-										title={appearanceLocked
-											? 'Start a new match to edit pieces'
-											: `${option.label} pieces`}
-										onclick={() => onPieceShapeChange(option.value)}
-									>
-										{#if option.value === 'cube'}
-											<Box size={14} strokeWidth={2} />
-										{:else if option.value === 'orb'}
-											<Circle size={14} strokeWidth={2} />
-										{:else}
-											<Gem size={14} strokeWidth={2} />
-										{/if}
-										<span>{option.label}</span>
-									</button>
-								{/each}
-							</div>
-
-							<div class="piece-color-grid">
-								<label
-									class="piece-color"
-									class:locked={appearanceLocked}
-									style={`--piece-color: ${pieceColors.playerOne}`}
-									title={appearanceLocked
-										? 'Start a new match to edit pieces'
-										: 'Player 1 piece color'}
-								>
-									<span class="color-dot"></span>
-									<span>P1</span>
-									<Pipette size={12} strokeWidth={2.1} />
-									<input
-										type="color"
-										value={pieceColors.playerOne}
-										aria-label="Player 1 piece color"
-										disabled={appearanceLocked}
-										oninput={(event) => onPieceColorChange(1, colorValue(event))}
-									/>
-								</label>
-								<label
-									class="piece-color"
-									class:locked={appearanceLocked}
-									style={`--piece-color: ${pieceColors.playerTwo}`}
-									title={appearanceLocked
-										? 'Start a new match to edit pieces'
-										: 'Player 2 piece color'}
-								>
-									<span class="color-dot"></span>
-									<span>P2</span>
-									<Pipette size={12} strokeWidth={2.1} />
-									<input
-										type="color"
-										value={pieceColors.playerTwo}
-										aria-label="Player 2 piece color"
-										disabled={appearanceLocked}
-										oninput={(event) => onPieceColorChange(2, colorValue(event))}
-									/>
-								</label>
-							</div>
-						</div>
-
-						<div class="mode-switch two-tone" role="group" aria-label="Interface theme">
-							<button
-								type="button"
-								class:selected={uiTheme === 'dark'}
-								aria-pressed={uiTheme === 'dark'}
-								onclick={() => uiTheme !== 'dark' && onToggleTheme()}
-							>
-								<Moon size={14} strokeWidth={2} />
-								<span>Dark</span>
-							</button>
-							<button
-								type="button"
-								class:selected={uiTheme === 'light'}
-								aria-pressed={uiTheme === 'light'}
-								onclick={() => uiTheme !== 'light' && onToggleTheme()}
-							>
-								<Sun size={14} strokeWidth={2} />
-								<span>Light</span>
-							</button>
-						</div>
-
-						<label class="toggle-row">
-							<span>Axis numbers</span>
-							<input
-								type="checkbox"
-								checked={labelsVisible}
-								aria-label="Toggle axis numbers"
-								onchange={() => onToggleLabels()}
-							/>
-						</label>
-					</section>
-
-					<section class="panel-section session-section">
-						<div class="section-heading">
-							<Trophy size={15} strokeWidth={2} />
-							<span>Session</span>
-						</div>
-
-						<div class="record-grid">
-							<div>
-								<strong>{sessionRecord.playerOneWins}</strong>
-								<span>{opponentMode === 'ai' ? 'You' : 'P1'}</span>
-							</div>
-							<div>
-								<strong>{sessionRecord.playerTwoWins}</strong>
-								<span>{opponentMode === 'ai' ? 'AI' : 'P2'}</span>
-							</div>
-							<div>
-								<strong>{sessionRecord.draws}</strong>
-								<span>Draw</span>
-							</div>
-						</div>
-
-						<div class="session-foot">
-							<span>{arenaLabel}</span>
-							<span>{sceneTheme}</span>
-						</div>
-					</section>
+					<SessionRecordPanel {sessionRecord} {opponentMode} />
 				{/if}
 
 				{#if moveError}

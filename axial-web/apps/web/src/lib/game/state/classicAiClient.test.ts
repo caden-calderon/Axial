@@ -55,6 +55,31 @@ describe('Classic AI worker client', () => {
 		});
 	});
 
+	it('falls back to the request board width when a worker omits moveIndex', async () => {
+		const worker = new FakeWorker();
+		const client = createClassicAiClient(() => worker);
+		const request = client.requestMove(createGame(undefined, { height: 7, rows: 8, columns: 9 }), {
+			simulations: 12,
+			seed: 4
+		});
+
+		worker.send({
+			id: worker.messages[0].id,
+			ok: true,
+			move: { row: 7, col: 8 },
+			moveIndex: null,
+			reason: 'search',
+			simulations: 12,
+			elapsedMs: 14,
+			stats: []
+		});
+
+		await expect(request).resolves.toMatchObject({
+			move: { row: 7, col: 8 },
+			moveIndex: 71
+		});
+	});
+
 	it('rejects failed worker responses', async () => {
 		const worker = new FakeWorker();
 		const client = createClassicAiClient(() => worker);

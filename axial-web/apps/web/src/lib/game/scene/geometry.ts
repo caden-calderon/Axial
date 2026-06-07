@@ -1,14 +1,12 @@
-import { BOARD_COLUMNS, BOARD_HEIGHT, BOARD_ROWS, type Move, type PlacedMove } from '@axial/core';
+import {
+	DEFAULT_BOARD_DIMENSIONS,
+	type BoardDimensions,
+	type Move,
+	type PlacedMove
+} from '@axial/core';
 
 export const CELL_SPACING = 0.9;
 export const PIECE_SIZE = CELL_SPACING * 0.58;
-export const HIT_COLUMN_HEIGHT = BOARD_HEIGHT * CELL_SPACING;
-export const DROP_START_Y = (BOARD_HEIGHT / 2 + 5.4) * CELL_SPACING;
-export const BOARD_SIZE: Vec3 = [
-	BOARD_COLUMNS * CELL_SPACING,
-	BOARD_HEIGHT * CELL_SPACING,
-	BOARD_ROWS * CELL_SPACING
-];
 
 export type Vec3 = [number, number, number];
 
@@ -17,51 +15,77 @@ export type FadedLineGeometryData = {
 	alphas: number[];
 };
 
-export function cellPosition(height: number, row: number, col: number): Vec3 {
+export function boardSize(dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS): Vec3 {
 	return [
-		(col + 0.5 - BOARD_COLUMNS / 2) * CELL_SPACING,
-		(height + 0.5 - BOARD_HEIGHT / 2) * CELL_SPACING,
-		(row + 0.5 - BOARD_ROWS / 2) * CELL_SPACING
+		dimensions.columns * CELL_SPACING,
+		dimensions.height * CELL_SPACING,
+		dimensions.rows * CELL_SPACING
 	];
 }
 
-export function dropStartPosition(move: PlacedMove): Vec3 {
-	const [x, , z] = cellPosition(move.height, move.row, move.col);
-	return [x, DROP_START_Y, z];
+export function dropStartY(dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS): number {
+	return (dimensions.height / 2 + 5.4) * CELL_SPACING;
 }
 
-export function columnHitPosition(move: Move): Vec3 {
-	const [x, , z] = cellPosition(0, move.row, move.col);
+export function cellPosition(
+	height: number,
+	row: number,
+	col: number,
+	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS
+): Vec3 {
+	return [
+		(col + 0.5 - dimensions.columns / 2) * CELL_SPACING,
+		(height + 0.5 - dimensions.height / 2) * CELL_SPACING,
+		(row + 0.5 - dimensions.rows / 2) * CELL_SPACING
+	];
+}
+
+export function dropStartPosition(
+	move: PlacedMove,
+	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS
+): Vec3 {
+	const [x, , z] = cellPosition(move.height, move.row, move.col, dimensions);
+	return [x, dropStartY(dimensions), z];
+}
+
+export function columnHitPosition(
+	move: Move,
+	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS
+): Vec3 {
+	const [x, , z] = cellPosition(0, move.row, move.col, dimensions);
 	return [x, 0, z];
 }
 
-export function createGridLinePositions(): number[] {
+export function createGridLinePositions(
+	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS
+): number[] {
 	const positions: number[] = [];
-	const xMin = -BOARD_SIZE[0] / 2;
-	const xMax = BOARD_SIZE[0] / 2;
-	const yMin = -BOARD_SIZE[1] / 2;
-	const yMax = BOARD_SIZE[1] / 2;
-	const zMin = -BOARD_SIZE[2] / 2;
-	const zMax = BOARD_SIZE[2] / 2;
+	const size = boardSize(dimensions);
+	const xMin = -size[0] / 2;
+	const xMax = size[0] / 2;
+	const yMin = -size[1] / 2;
+	const yMax = size[1] / 2;
+	const zMin = -size[2] / 2;
+	const zMax = size[2] / 2;
 
-	for (let y = 0; y <= BOARD_HEIGHT; y += 1) {
-		const yPos = boundary(y, BOARD_HEIGHT);
+	for (let y = 0; y <= dimensions.height; y += 1) {
+		const yPos = boundary(y, dimensions.height);
 
-		for (let row = 0; row <= BOARD_ROWS; row += 1) {
-			const zPos = boundary(row, BOARD_ROWS);
+		for (let row = 0; row <= dimensions.rows; row += 1) {
+			const zPos = boundary(row, dimensions.rows);
 			pushLine(positions, [xMin, yPos, zPos], [xMax, yPos, zPos]);
 		}
 
-		for (let col = 0; col <= BOARD_COLUMNS; col += 1) {
-			const xPos = boundary(col, BOARD_COLUMNS);
+		for (let col = 0; col <= dimensions.columns; col += 1) {
+			const xPos = boundary(col, dimensions.columns);
 			pushLine(positions, [xPos, yPos, zMin], [xPos, yPos, zMax]);
 		}
 	}
 
-	for (let col = 0; col <= BOARD_COLUMNS; col += 1) {
-		const xPos = boundary(col, BOARD_COLUMNS);
-		for (let row = 0; row <= BOARD_ROWS; row += 1) {
-			const zPos = boundary(row, BOARD_ROWS);
+	for (let col = 0; col <= dimensions.columns; col += 1) {
+		const xPos = boundary(col, dimensions.columns);
+		for (let row = 0; row <= dimensions.rows; row += 1) {
+			const zPos = boundary(row, dimensions.rows);
 			pushLine(positions, [xPos, yMin, zPos], [xPos, yMax, zPos]);
 		}
 	}
@@ -69,14 +93,17 @@ export function createGridLinePositions(): number[] {
 	return positions;
 }
 
-export function createOuterEdgeLinePositions(): number[] {
+export function createOuterEdgeLinePositions(
+	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS
+): number[] {
 	const positions: number[] = [];
-	const xMin = -BOARD_SIZE[0] / 2;
-	const xMax = BOARD_SIZE[0] / 2;
-	const yMin = -BOARD_SIZE[1] / 2;
-	const yMax = BOARD_SIZE[1] / 2;
-	const zMin = -BOARD_SIZE[2] / 2;
-	const zMax = BOARD_SIZE[2] / 2;
+	const size = boardSize(dimensions);
+	const xMin = -size[0] / 2;
+	const xMax = size[0] / 2;
+	const yMin = -size[1] / 2;
+	const yMax = size[1] / 2;
+	const zMin = -size[2] / 2;
+	const zMax = size[2] / 2;
 
 	for (const y of [yMin, yMax]) {
 		for (const z of [zMin, zMax]) {
@@ -97,17 +124,19 @@ export function createOuterEdgeLinePositions(): number[] {
 	return positions;
 }
 
-export function createGridNodePositions(): number[] {
+export function createGridNodePositions(
+	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS
+): number[] {
 	const positions: number[] = [];
 
-	for (let col = 0; col <= BOARD_COLUMNS; col += 1) {
-		const x = boundary(col, BOARD_COLUMNS);
+	for (let col = 0; col <= dimensions.columns; col += 1) {
+		const x = boundary(col, dimensions.columns);
 
-		for (let height = 0; height <= BOARD_HEIGHT; height += 1) {
-			const y = boundary(height, BOARD_HEIGHT);
+		for (let height = 0; height <= dimensions.height; height += 1) {
+			const y = boundary(height, dimensions.height);
 
-			for (let row = 0; row <= BOARD_ROWS; row += 1) {
-				const z = boundary(row, BOARD_ROWS);
+			for (let row = 0; row <= dimensions.rows; row += 1) {
+				const z = boundary(row, dimensions.rows);
 				positions.push(x, y, z);
 			}
 		}
@@ -116,24 +145,28 @@ export function createGridNodePositions(): number[] {
 	return positions;
 }
 
-export function createGridGlowStreakPositions(length: number): number[] {
+export function createGridGlowStreakPositions(
+	length: number,
+	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS
+): number[] {
 	const positions: number[] = [];
-	const xMin = -BOARD_SIZE[0] / 2;
-	const xMax = BOARD_SIZE[0] / 2;
-	const yMin = -BOARD_SIZE[1] / 2;
-	const yMax = BOARD_SIZE[1] / 2;
-	const zMin = -BOARD_SIZE[2] / 2;
-	const zMax = BOARD_SIZE[2] / 2;
+	const size = boardSize(dimensions);
+	const xMin = -size[0] / 2;
+	const xMax = size[0] / 2;
+	const yMin = -size[1] / 2;
+	const yMax = size[1] / 2;
+	const zMin = -size[2] / 2;
+	const zMax = size[2] / 2;
 	const halfLength = length / 2;
 
-	for (let col = 0; col <= BOARD_COLUMNS; col += 1) {
-		const x = boundary(col, BOARD_COLUMNS);
+	for (let col = 0; col <= dimensions.columns; col += 1) {
+		const x = boundary(col, dimensions.columns);
 
-		for (let height = 0; height <= BOARD_HEIGHT; height += 1) {
-			const y = boundary(height, BOARD_HEIGHT);
+		for (let height = 0; height <= dimensions.height; height += 1) {
+			const y = boundary(height, dimensions.height);
 
-			for (let row = 0; row <= BOARD_ROWS; row += 1) {
-				const z = boundary(row, BOARD_ROWS);
+			for (let row = 0; row <= dimensions.rows; row += 1) {
+				const z = boundary(row, dimensions.rows);
 				pushLine(
 					positions,
 					[clamp(x - halfLength, xMin, xMax), y, z],
@@ -156,24 +189,28 @@ export function createGridGlowStreakPositions(length: number): number[] {
 	return positions;
 }
 
-export function createGridGlowStreakGeometry(length: number): FadedLineGeometryData {
+export function createGridGlowStreakGeometry(
+	length: number,
+	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS
+): FadedLineGeometryData {
 	const positions: number[] = [];
 	const alphas: number[] = [];
-	const xMin = -BOARD_SIZE[0] / 2;
-	const xMax = BOARD_SIZE[0] / 2;
-	const yMin = -BOARD_SIZE[1] / 2;
-	const yMax = BOARD_SIZE[1] / 2;
-	const zMin = -BOARD_SIZE[2] / 2;
-	const zMax = BOARD_SIZE[2] / 2;
+	const size = boardSize(dimensions);
+	const xMin = -size[0] / 2;
+	const xMax = size[0] / 2;
+	const yMin = -size[1] / 2;
+	const yMax = size[1] / 2;
+	const zMin = -size[2] / 2;
+	const zMax = size[2] / 2;
 
-	for (let col = 0; col <= BOARD_COLUMNS; col += 1) {
-		const x = boundary(col, BOARD_COLUMNS);
+	for (let col = 0; col <= dimensions.columns; col += 1) {
+		const x = boundary(col, dimensions.columns);
 
-		for (let height = 0; height <= BOARD_HEIGHT; height += 1) {
-			const y = boundary(height, BOARD_HEIGHT);
+		for (let height = 0; height <= dimensions.height; height += 1) {
+			const y = boundary(height, dimensions.height);
 
-			for (let row = 0; row <= BOARD_ROWS; row += 1) {
-				const z = boundary(row, BOARD_ROWS);
+			for (let row = 0; row <= dimensions.rows; row += 1) {
+				const z = boundary(row, dimensions.rows);
 				const center: Vec3 = [x, y, z];
 
 				pushFadedLine(positions, alphas, center, [clamp(x - length, xMin, xMax), y, z]);

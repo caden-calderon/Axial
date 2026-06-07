@@ -1,16 +1,18 @@
 import {
-  BOARD_COLUMNS,
-  BOARD_HEIGHT,
-  BOARD_ROWS,
-  CELL_COUNT,
+  DEFAULT_BOARD_DIMENSIONS,
   DIRECTIONS,
   WIN_LENGTH,
+  cellCount,
   cellFromIndex,
   indexOf,
+  normalizeBoardDimensions,
+  type BoardDimensions,
   type Move,
 } from "@axial/core";
 
-export const CLASSIC_MOVE_COUNT = BOARD_ROWS * BOARD_COLUMNS;
+export const CLASSIC_MOVE_COUNT = moveCountForDimensions(
+  DEFAULT_BOARD_DIMENSIONS,
+);
 
 export type MoveIndex = number;
 
@@ -33,29 +35,29 @@ export type WinningSegment = {
 };
 
 export type SegmentTable = {
+  dimensions: BoardDimensions;
   lineLength: number;
   segments: readonly WinningSegment[];
   cellSegments: readonly (readonly number[])[];
   axisCounts: Readonly<Record<SegmentAxis, number>>;
 };
 
-const segmentTableCache = new Map<number, SegmentTable>();
+const movesCache = new Map<string, readonly ClassicMove[]>();
+const moveIndicesCache = new Map<string, readonly MoveIndex[]>();
+const segmentTableCache = new Map<string, SegmentTable>();
 
-export const CLASSIC_MOVES: readonly ClassicMove[] = Object.freeze(
-  Array.from({ length: CLASSIC_MOVE_COUNT }, (_, index) =>
-    Object.freeze({
-      index,
-      row: Math.floor(index / BOARD_COLUMNS),
-      col: index % BOARD_COLUMNS,
-    }),
-  ),
+export const CLASSIC_MOVES: readonly ClassicMove[] = getClassicMoves(
+  DEFAULT_BOARD_DIMENSIONS,
 );
 
-export const CLASSIC_MOVE_INDICES: readonly MoveIndex[] = Object.freeze(
-  CLASSIC_MOVES.map((move) => move.index),
+export const CLASSIC_MOVE_INDICES: readonly MoveIndex[] = getClassicMoveIndices(
+  DEFAULT_BOARD_DIMENSIONS,
 );
 
-export const DEFAULT_SEGMENT_TABLE = getSegmentTable(WIN_LENGTH);
+export const DEFAULT_SEGMENT_TABLE = getSegmentTable(
+  WIN_LENGTH,
+  DEFAULT_BOARD_DIMENSIONS,
+);
 
 export const WINNING_SEGMENTS = DEFAULT_SEGMENT_TABLE.segments;
 
@@ -63,13 +65,63 @@ export const CELL_SEGMENTS = DEFAULT_SEGMENT_TABLE.cellSegments;
 
 export const SEGMENT_AXIS_COUNTS = DEFAULT_SEGMENT_TABLE.axisCounts;
 
-export function moveToIndex(move: Move): MoveIndex {
-  assertMove(move);
-  return move.row * BOARD_COLUMNS + move.col;
+export function moveCountForDimensions(
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+): number {
+  const normalized = normalizeBoardDimensions(dimensions);
+  return normalized.rows * normalized.columns;
 }
 
-export function moveFromIndex(index: MoveIndex): ClassicMove {
-  const move = CLASSIC_MOVES[index];
+export function getClassicMoves(
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+): readonly ClassicMove[] {
+  const normalized = normalizeBoardDimensions(dimensions);
+  const key = dimensionKey(normalized);
+  const cached = movesCache.get(key);
+  if (cached) return cached;
+
+  const moves = Object.freeze(
+    Array.from({ length: moveCountForDimensions(normalized) }, (_, index) =>
+      Object.freeze({
+        index,
+        row: Math.floor(index / normalized.columns),
+        col: index % normalized.columns,
+      }),
+    ),
+  );
+  movesCache.set(key, moves);
+  return moves;
+}
+
+export function getClassicMoveIndices(
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+): readonly MoveIndex[] {
+  const normalized = normalizeBoardDimensions(dimensions);
+  const key = dimensionKey(normalized);
+  const cached = moveIndicesCache.get(key);
+  if (cached) return cached;
+
+  const indices = Object.freeze(
+    getClassicMoves(normalized).map((move) => move.index),
+  );
+  moveIndicesCache.set(key, indices);
+  return indices;
+}
+
+export function moveToIndex(
+  move: Move,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+): MoveIndex {
+  const normalized = normalizeBoardDimensions(dimensions);
+  assertMove(move, normalized);
+  return move.row * normalized.columns + move.col;
+}
+
+export function moveFromIndex(
+  index: MoveIndex,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+): ClassicMove {
+  const move = getClassicMoves(dimensions)[index];
   if (!move) {
     throw new RangeError(`Move index ${index} is outside the Classic board`);
   }
@@ -77,44 +129,64 @@ export function moveFromIndex(index: MoveIndex): ClassicMove {
   return move;
 }
 
-export function cellToMoveIndex(cellIndex: number): MoveIndex {
-  const { row, col } = cellFromIndex(cellIndex);
-  return row * BOARD_COLUMNS + col;
+export function cellToMoveIndex(
+  cellIndex: number,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+): MoveIndex {
+  const normalized = normalizeBoardDimensions(dimensions);
+  const { row, col } = cellFromIndex(cellIndex, normalized);
+  return row * normalized.columns + col;
 }
 
-export function getSegmentTable(lineLength: number = WIN_LENGTH): SegmentTable {
-  const cached = segmentTableCache.get(lineLength);
+export function getSegmentTable(
+  lineLength: number = WIN_LENGTH,
+  dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+): SegmentTable {
+  const normalized = normalizeBoardDimensions(dimensions);
+  const key = `${lineLength}:${dimensionKey(normalized)}`;
+  const cached = segmentTableCache.get(key);
   if (cached) return cached;
 
-  const segments = Object.freeze(buildWinningSegments(lineLength));
+  const segments = Object.freeze(buildWinningSegments(lineLength, normalized));
   const table = Object.freeze({
+    dimensions: Object.freeze({ ...normalized }),
     lineLength,
     segments,
-    cellSegments: Object.freeze(buildCellSegments(segments)),
+    cellSegments: Object.freeze(buildCellSegments(segments, normalized)),
     axisCounts: buildAxisCounts(segments),
   });
-  segmentTableCache.set(lineLength, table);
+  segmentTableCache.set(key, table);
 
   return table;
 }
 
-function buildWinningSegments(lineLength: number): WinningSegment[] {
+function buildWinningSegments(
+  lineLength: number,
+  dimensions: BoardDimensions,
+): WinningSegment[] {
   const segments: WinningSegment[] = [];
 
-  for (let height = 0; height < BOARD_HEIGHT; height += 1) {
-    for (let row = 0; row < BOARD_ROWS; row += 1) {
-      for (let col = 0; col < BOARD_COLUMNS; col += 1) {
+  for (let height = 0; height < dimensions.height; height += 1) {
+    for (let row = 0; row < dimensions.rows; row += 1) {
+      for (let col = 0; col < dimensions.columns; col += 1) {
         for (const direction of DIRECTIONS) {
           const [dh, dr, dc] = direction;
           const endHeight = height + dh * (lineLength - 1);
           const endRow = row + dr * (lineLength - 1);
           const endCol = col + dc * (lineLength - 1);
 
-          if (!isInBounds(endHeight, endRow, endCol)) continue;
+          if (!isInBounds(endHeight, endRow, endCol, dimensions)) continue;
 
-          const cells = Object.freeze(Array.from({ length: lineLength }, (_, offset) =>
-            indexOf(height + dh * offset, row + dr * offset, col + dc * offset),
-          ));
+          const cells = Object.freeze(
+            Array.from({ length: lineLength }, (_, offset) =>
+              indexOf(
+                height + dh * offset,
+                row + dr * offset,
+                col + dc * offset,
+                dimensions,
+              ),
+            ),
+          );
 
           segments.push({
             id: segments.length,
@@ -152,8 +224,12 @@ function buildAxisCounts(
 
 function buildCellSegments(
   segments: readonly WinningSegment[],
+  dimensions: BoardDimensions,
 ): readonly (readonly number[])[] {
-  const byCell = Array.from({ length: CELL_COUNT }, () => [] as number[]);
+  const byCell = Array.from(
+    { length: cellCount(dimensions) },
+    () => [] as number[],
+  );
 
   for (const segment of segments) {
     for (const cell of segment.cells) {
@@ -177,26 +253,35 @@ function segmentAxis([dh, dr, dc]: readonly [
   return "column";
 }
 
-function isInBounds(height: number, row: number, col: number): boolean {
+function isInBounds(
+  height: number,
+  row: number,
+  col: number,
+  dimensions: BoardDimensions,
+): boolean {
   return (
     height >= 0 &&
-    height < BOARD_HEIGHT &&
+    height < dimensions.height &&
     row >= 0 &&
-    row < BOARD_ROWS &&
+    row < dimensions.rows &&
     col >= 0 &&
-    col < BOARD_COLUMNS
+    col < dimensions.columns
   );
 }
 
-function assertMove(move: Move): void {
+function assertMove(move: Move, dimensions: BoardDimensions): void {
   if (
     move.row < 0 ||
-    move.row >= BOARD_ROWS ||
+    move.row >= dimensions.rows ||
     move.col < 0 ||
-    move.col >= BOARD_COLUMNS
+    move.col >= dimensions.columns
   ) {
     throw new RangeError(
       `Move row=${move.row}, col=${move.col} is outside the Classic board`,
     );
   }
+}
+
+function dimensionKey(dimensions: BoardDimensions): string {
+  return `${dimensions.height}:${dimensions.rows}:${dimensions.columns}`;
 }

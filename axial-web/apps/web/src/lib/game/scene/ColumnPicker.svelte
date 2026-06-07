@@ -1,14 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { useThrelte } from '@threlte/core';
-	import {
-		BOARD_COLUMNS,
-		BOARD_HEIGHT,
-		BOARD_ROWS,
-		getDropHeight,
-		type GameSnapshot,
-		type Move
-	} from '@axial/core';
+	import { getDropHeight, type GameSnapshot, type Move } from '@axial/core';
 	import { Vector3 } from 'three';
 	import { cellPosition, type Vec3 } from './geometry';
 
@@ -29,10 +22,12 @@
 	} = $props();
 
 	const { camera, canvas, dom } = useThrelte();
-	const columns = Array.from({ length: BOARD_COLUMNS * BOARD_ROWS }, (_, index) => ({
-		row: index % BOARD_ROWS,
-		col: Math.floor(index / BOARD_ROWS)
-	}));
+	const columns = $derived(
+		Array.from({ length: game.dimensions.columns * game.dimensions.rows }, (_, index) => ({
+			row: index % game.dimensions.rows,
+			col: Math.floor(index / game.dimensions.rows)
+		}))
+	);
 
 	let pointerDown: { x: number; y: number; time: number } | null = null;
 	let hoverKey = '';
@@ -89,12 +84,18 @@
 		for (const column of columns) {
 			if (isMovePlayable && !isMovePlayable(column)) continue;
 
-			const dropHeight = getDropHeight(game.board, column);
+			const dropHeight = getDropHeight(game.board, column, game.dimensions);
 			if (dropHeight < 0) continue;
 
-			const bottom = project(cellPosition(0, column.row, column.col), rect);
-			const top = project(cellPosition(BOARD_HEIGHT - 1, column.row, column.col), rect);
-			const target = project(cellPosition(dropHeight, column.row, column.col), rect);
+			const bottom = project(cellPosition(0, column.row, column.col, game.dimensions), rect);
+			const top = project(
+				cellPosition(game.dimensions.height - 1, column.row, column.col, game.dimensions),
+				rect
+			);
+			const target = project(
+				cellPosition(dropHeight, column.row, column.col, game.dimensions),
+				rect
+			);
 			const segmentScore = distanceToSegment(pointer, bottom, top);
 			const targetScore = distance(pointer, target) * 0.82;
 			const score = Math.min(segmentScore, targetScore);

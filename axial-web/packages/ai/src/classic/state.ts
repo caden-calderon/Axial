@@ -1,20 +1,23 @@
 import {
   BLOCKER_CELL,
-  BOARD_HEIGHT,
-  CELL_COUNT,
+  DEFAULT_BOARD_DIMENSIONS,
   DEFAULT_WIN_CONDITION,
+  cellCount,
+  cellFromIndex,
   indexOf,
+  normalizeBoardDimensions,
   normalizeWinCondition,
   otherPlayer,
+  type BoardDimensions,
   type Cell,
   type GameSnapshot,
   type Player,
   type WinCondition,
 } from "@axial/core";
 import {
-  CLASSIC_MOVE_COUNT,
   cellToMoveIndex,
   getSegmentTable,
+  moveCountForDimensions,
   moveFromIndex,
   type MoveIndex,
   type SegmentTable,
@@ -32,6 +35,7 @@ type StackEntry = {
 };
 
 export class ClassicSearchState {
+  readonly dimensions: BoardDimensions;
   readonly winCondition: WinCondition;
   readonly segmentTable: SegmentTable;
   readonly board: Uint8Array;
@@ -48,13 +52,23 @@ export class ClassicSearchState {
   playerTwoLineCount: number;
 
   constructor(
-    board: Uint8Array = new Uint8Array(CELL_COUNT),
+    board?: Uint8Array,
     winCondition: WinCondition = DEFAULT_WIN_CONDITION,
+    dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
   ) {
+    this.dimensions = normalizeBoardDimensions(dimensions);
     this.winCondition = normalizeWinCondition(winCondition);
-    this.segmentTable = getSegmentTable(this.winCondition.lineLength);
-    this.board = board.slice();
-    this.heights = new Uint8Array(CLASSIC_MOVE_COUNT);
+    this.segmentTable = getSegmentTable(
+      this.winCondition.lineLength,
+      this.dimensions,
+    );
+    this.board = board ? board.slice() : new Uint8Array(this.cellCount);
+    if (this.board.length !== this.cellCount) {
+      throw new RangeError(
+        `Board has ${this.board.length} cells, expected ${this.cellCount}`,
+      );
+    }
+    this.heights = new Uint8Array(this.moveCount);
     this.playerOneCounts = new Uint8Array(this.segmentTable.segments.length);
     this.playerTwoCounts = new Uint8Array(this.segmentTable.segments.length);
     this.blockedCounts = new Uint8Array(this.segmentTable.segments.length);
@@ -70,13 +84,18 @@ export class ClassicSearchState {
   }
 
   static fromGame(game: GameSnapshot): ClassicSearchState {
-    return new ClassicSearchState(game.board, game.winCondition);
+    return new ClassicSearchState(
+      game.board,
+      game.winCondition,
+      game.dimensions,
+    );
   }
 
   clone(): ClassicSearchState {
     const next = new ClassicSearchState(
-      new Uint8Array(CELL_COUNT),
+      new Uint8Array(this.cellCount),
       this.winCondition,
+      this.dimensions,
     );
     next.board.set(this.board);
     next.heights.set(this.heights);
@@ -96,8 +115,8 @@ export class ClassicSearchState {
   legalMoveIndices(): MoveIndex[] {
     const moves: MoveIndex[] = [];
 
-    for (let index = 0; index < CLASSIC_MOVE_COUNT; index += 1) {
-      if (this.heights[index] < BOARD_HEIGHT) moves.push(index);
+    for (let index = 0; index < this.moveCount; index += 1) {
+      if (this.heights[index] < this.dimensions.height) moves.push(index);
     }
 
     return moves;
@@ -106,13 +125,13 @@ export class ClassicSearchState {
   isLegalMove(moveIndex: MoveIndex): boolean {
     return (
       moveIndex >= 0 &&
-      moveIndex < CLASSIC_MOVE_COUNT &&
-      this.heights[moveIndex] < BOARD_HEIGHT
+      moveIndex < this.moveCount &&
+      this.heights[moveIndex] < this.dimensions.height
     );
   }
 
   isDraw(): boolean {
-    return this.winner === null && this.occupiedCells >= CELL_COUNT;
+    return this.winner === null && this.occupiedCells >= this.cellCount;
   }
 
   dropCellIndex(moveIndex: MoveIndex): number {
@@ -120,16 +139,20 @@ export class ClassicSearchState {
       throw new Error(`Move index ${moveIndex} is not legal`);
     }
 
-    const move = moveFromIndex(moveIndex);
-    return indexOf(this.heights[moveIndex], move.row, move.col);
+    const move = moveFromIndex(moveIndex, this.dimensions);
+    return indexOf(
+      this.heights[moveIndex],
+      move.row,
+      move.col,
+      this.dimensions,
+    );
   }
 
   isPlayableCell(cellIndex: number): boolean {
     if (this.board[cellIndex] !== 0) return false;
 
-    const moveIndex = cellToMoveIndex(cellIndex);
-    const move = moveFromIndex(moveIndex);
-    const height = cellIndex % BOARD_HEIGHT;
+    const moveIndex = cellToMoveIndex(cellIndex, this.dimensions);
+    const { height } = cellFromIndex(cellIndex, this.dimensions);
 
     return height === this.heights[moveIndex] && this.isLegalMove(moveIndex);
   }
@@ -183,8 +206,16 @@ export class ClassicSearchState {
       : otherPlayer(rootPlayer);
   }
 
+  get cellCount(): number {
+    return cellCount(this.dimensions);
+  }
+
+  get moveCount(): number {
+    return moveCountForDimensions(this.dimensions);
+  }
+
   private rebuildDerivedState(): void {
-    this.heights.fill(BOARD_HEIGHT);
+    this.heights.fill(this.dimensions.height);
     this.playerOneCounts.fill(0);
     this.playerTwoCounts.fill(0);
     this.blockedCounts.fill(0);
@@ -195,15 +226,15 @@ export class ClassicSearchState {
     this.playerOneLineCount = 0;
     this.playerTwoLineCount = 0;
 
-    for (let moveIndex = 0; moveIndex < CLASSIC_MOVE_COUNT; moveIndex += 1) {
-      const move = moveFromIndex(moveIndex);
-      let firstEmptyHeight = BOARD_HEIGHT;
+    for (let moveIndex = 0; moveIndex < this.moveCount; moveIndex += 1) {
+      const move = moveFromIndex(moveIndex, this.dimensions);
+      let firstEmptyHeight = this.dimensions.height;
 
-      for (let height = 0; height < BOARD_HEIGHT; height += 1) {
-        const cellIndex = indexOf(height, move.row, move.col);
+      for (let height = 0; height < this.dimensions.height; height += 1) {
+        const cellIndex = indexOf(height, move.row, move.col, this.dimensions);
         const cell = this.board[cellIndex] as Cell;
 
-        if (cell === 0 && firstEmptyHeight === BOARD_HEIGHT) {
+        if (cell === 0 && firstEmptyHeight === this.dimensions.height) {
           firstEmptyHeight = height;
         }
 

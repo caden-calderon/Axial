@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { T, useTask } from '@threlte/core';
-	import { RoundedBoxGeometry } from '@threlte/extras';
 	import { AdditiveBlending } from 'three';
-	import type { Move } from '@axial/core';
+	import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+	import type { BoardDimensions, Move } from '@axial/core';
 	import { cellPosition, PIECE_SIZE } from './geometry';
 	import type { PlacementMode } from '../state/gameController.svelte';
 	import type { PieceShape } from '../state/pieceAppearance';
@@ -12,16 +12,18 @@
 		height,
 		pieceShape,
 		color,
-		kind = 'piece'
+		kind = 'piece',
+		dimensions
 	}: {
 		move: Move;
 		height: number;
 		pieceShape: PieceShape;
 		color: string;
 		kind?: PlacementMode;
+		dimensions: BoardDimensions;
 	} = $props();
 
-	const target = $derived(cellPosition(height, move.row, move.col));
+	const target = $derived(cellPosition(height, move.row, move.col, dimensions));
 	const previewShape = $derived(kind === 'blocker' ? 'cube' : pieceShape);
 	const fillOpacity = $derived(kind === 'blocker' ? 0.22 : 0.16);
 	const ringOpacity = $derived(kind === 'blocker' ? 0.68 : 0.56);
@@ -37,11 +39,7 @@
 <T.Group position={target}>
 	<T.Mesh scale={pulse}>
 		{#if previewShape === 'cube'}
-			<RoundedBoxGeometry
-				args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE]}
-				radius={0.07}
-				smoothness={4}
-			/>
+			<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 4, 0.07]} />
 		{:else if previewShape === 'orb'}
 			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 28, 18]} />
 		{:else}
@@ -57,11 +55,7 @@
 	</T.Mesh>
 	<T.Mesh scale={pulse * 1.02}>
 		{#if previewShape === 'cube'}
-			<RoundedBoxGeometry
-				args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE]}
-				radius={0.07}
-				smoothness={4}
-			/>
+			<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 4, 0.07]} />
 		{:else if previewShape === 'orb'}
 			<T.SphereGeometry args={[PIECE_SIZE * 0.59, 28, 18]} />
 		{:else}
