@@ -26,6 +26,16 @@ export type HeuristicMoveResult = {
   candidates: MoveScore[];
 };
 
+export type ForcingMove = {
+  moveIndex: MoveIndex;
+  threats: number;
+  immediateThreats: number;
+  lineThreats: number;
+  kind: "fork" | "line-race";
+};
+
+export type TacticalMoveMode = "forced-only" | "include-line-races";
+
 const WIN_SCORE = 1_000_000;
 const BLOCK_SCORE = 800_000;
 const FORCING_SCORE = 180_000;
@@ -59,38 +69,8 @@ export function selectHeuristicMove(
   const legalMoves = state.legalMoveIndices();
   if (legalMoves.length === 0) return null;
 
-  const opponent = otherPlayer(player);
-  const immediateWins = findWinningMoves(state, player);
-  if (immediateWins.length > 0) {
-    return scoredResult(state, player, immediateWins, "win", WIN_SCORE);
-  }
-
-  const immediateBlocks = findWinningMoves(state, opponent);
-  if (immediateBlocks.length > 0) {
-    return scoredResult(state, player, immediateBlocks, "block", BLOCK_SCORE);
-  }
-
-  const forcingMoves = findForcingMoves(state, player);
-  if (forcingMoves.length > 0) {
-    return scoredResult(
-      state,
-      player,
-      forcingMoves.map((move) => move.moveIndex),
-      "forcing",
-      FORCING_SCORE,
-    );
-  }
-
-  const opponentForcingMoves = findForcingMoves(state, opponent);
-  if (opponentForcingMoves.length > 0) {
-    return scoredResult(
-      state,
-      player,
-      opponentForcingMoves.map((move) => move.moveIndex),
-      "block-forcing",
-      BLOCK_FORCING_SCORE,
-    );
-  }
+  const tactical = selectTacticalMove(state, player, "include-line-races");
+  if (tactical) return tactical;
 
   const candidates = scoreLegalMoves(state, player);
   const best = candidates[0];
@@ -102,6 +82,47 @@ export function selectHeuristicMove(
     reason: best.reason,
     candidates,
   };
+}
+
+export function selectTacticalMove(
+  state: ClassicSearchState,
+  player: Player,
+  mode: TacticalMoveMode = "include-line-races",
+): Omit<HeuristicMoveResult, "move"> | null {
+  const opponent = otherPlayer(player);
+  const immediateWins = findWinningMoves(state, player);
+  if (immediateWins.length > 0) {
+    return scoredResult(state, player, immediateWins, "win", WIN_SCORE);
+  }
+
+  const immediateBlocks = findWinningMoves(state, opponent);
+  if (immediateBlocks.length > 0) {
+    return scoredResult(state, player, immediateBlocks, "block", BLOCK_SCORE);
+  }
+
+  const forcingMoves = tacticalForcingMoves(state, player, mode);
+  if (forcingMoves.length > 0) {
+    return scoredResult(
+      state,
+      player,
+      forcingMoves.map((move) => move.moveIndex),
+      "forcing",
+      FORCING_SCORE,
+    );
+  }
+
+  const opponentForcingMoves = tacticalForcingMoves(state, opponent, mode);
+  if (opponentForcingMoves.length > 0) {
+    return scoredResult(
+      state,
+      player,
+      opponentForcingMoves.map((move) => move.moveIndex),
+      "block-forcing",
+      BLOCK_FORCING_SCORE,
+    );
+  }
+
+  return null;
 }
 
 export function scoreLegalMoves(
@@ -240,12 +261,12 @@ export function findWinningMoves(
 export function findForcingMoves(
   state: ClassicSearchState,
   player: Player,
-): { moveIndex: MoveIndex; threats: number }[] {
-  const forcing: { moveIndex: MoveIndex; threats: number }[] = [];
+): ForcingMove[] {
+  const forcing: ForcingMove[] = [];
 
   for (const moveIndex of state.legalMoveIndices()) {
     state.makeMove(moveIndex, player);
-    const threats = countImmediateThreats(state, player);
+    const immediateThreats = countImmediateThreats(state, player);
     const lineThreats = countLineCompletionThreats(state, player);
     const linesNeeded = Math.max(
       1,
@@ -253,22 +274,47 @@ export function findForcingMoves(
     );
     state.unmakeMove();
 
-    if (
-      threats >= 2 ||
-      (state.winCondition.linesToWin > 1 && lineThreats >= linesNeeded + 1)
-    ) {
-      forcing.push({ moveIndex, threats: Math.max(threats, lineThreats) });
+    const createsFork = immediateThreats >= 2;
+    const createsLineRace =
+      state.winCondition.linesToWin > 1 && lineThreats >= linesNeeded + 1;
+
+    if (createsFork || createsLineRace) {
+      forcing.push({
+        moveIndex,
+        threats: Math.max(immediateThreats, lineThreats),
+        immediateThreats,
+        lineThreats,
+        kind: createsFork ? "fork" : "line-race",
+      });
     }
   }
 
   return forcing.sort((first, second) => {
+    if (first.kind !== second.kind) return first.kind === "fork" ? -1 : 1;
     if (first.threats !== second.threats) return second.threats - first.threats;
+    if (first.immediateThreats !== second.immediateThreats) {
+      return second.immediateThreats - first.immediateThreats;
+    }
+    if (first.lineThreats !== second.lineThreats) {
+      return second.lineThreats - first.lineThreats;
+    }
     return compareMoveIndicesByShape(
       first.moveIndex,
       second.moveIndex,
       state.dimensions,
     );
   });
+}
+
+function tacticalForcingMoves(
+  state: ClassicSearchState,
+  player: Player,
+  mode: TacticalMoveMode,
+): ForcingMove[] {
+  const moves = findForcingMoves(state, player);
+  if (mode === "include-line-races") return moves;
+
+  return moves.filter((move) => move.kind === "fork");
 }
 
 export function countImmediateThreats(

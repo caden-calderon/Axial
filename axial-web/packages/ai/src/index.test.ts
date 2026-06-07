@@ -27,6 +27,7 @@ import {
   moveToIndex,
   playAiMatch,
   runEvaluation,
+  selectLookaheadMove,
 } from "./index";
 
 const LARGE_TEST_DIMENSIONS = {
@@ -34,6 +35,31 @@ const LARGE_TEST_DIMENSIONS = {
   rows: 8,
   columns: 9,
 } as const satisfies BoardDimensions;
+
+function gameFromSearchState(
+  state: ClassicSearchState,
+  currentPlayer: 1 | 2,
+): GameSnapshot {
+  return {
+    ...createGame(state.winCondition, state.dimensions),
+    board: state.board.slice(),
+    currentPlayer,
+    status: { state: "playing", currentPlayer },
+  };
+}
+
+function createHeightOneForkSupportState(): ClassicSearchState {
+  const state = new ClassicSearchState();
+
+  state.makeMove(moveToIndex({ row: 2, col: 1 }), 2);
+  state.makeMove(moveToIndex({ row: 2, col: 2 }), 1);
+  state.makeMove(moveToIndex({ row: 2, col: 4 }), 2);
+  state.makeMove(moveToIndex({ row: 2, col: 5 }), 1);
+  state.makeMove(moveToIndex({ row: 2, col: 2 }), 1);
+  state.makeMove(moveToIndex({ row: 2, col: 4 }), 1);
+
+  return state;
+}
 
 describe("Axial AI move selection", () => {
   it("chooses the first legal move at the bottom of the random range", () => {
@@ -362,6 +388,74 @@ describe("Classic heuristic AI", () => {
     expect(result?.reason).toBe("block");
     expect(result?.move).toEqual({ row: 2, col: 3 });
   });
+
+  it("blocks an opponent open-two fork before it becomes unblockable", () => {
+    const game = replayMoves([
+      { row: 2, col: 2 },
+      { row: 0, col: 0 },
+      { row: 2, col: 3 },
+    ]);
+    const result = analyzeHeuristicMove(game);
+
+    expect(result?.reason).toBe("block-forcing");
+    expect(result?.move).toEqual(expect.objectContaining({ row: 2 }));
+    expect([1, 4]).toContain(result?.move.col);
+  });
+
+  it("blocks open-ended fork setups on larger boards", () => {
+    const game = replayMoves(
+      [
+        { row: 3, col: 3 },
+        { row: 0, col: 0 },
+        { row: 3, col: 4 },
+      ],
+      undefined,
+      LARGE_TEST_DIMENSIONS,
+    );
+    const result = analyzeHeuristicMove(game);
+
+    expect(result?.reason).toBe("block-forcing");
+    expect(result?.move).toEqual(expect.objectContaining({ row: 3 }));
+    expect([2, 5]).toContain(result?.move.col);
+  });
+
+  it("blocks connect-five fork setups before four-in-a-row becomes unblockable", () => {
+    const game = replayMoves(
+      [
+        { row: 2, col: 2 },
+        { row: 0, col: 0 },
+        { row: 2, col: 3 },
+        { row: 0, col: 1 },
+        { row: 2, col: 4 },
+      ],
+      { lineLength: 5, linesToWin: 1 },
+    );
+    const result = analyzeHeuristicMove(game);
+
+    expect(result?.reason).toBe("block-forcing");
+    expect(result?.move).toEqual(expect.objectContaining({ row: 2 }));
+    expect([1, 5]).toContain(result?.move.col);
+  });
+});
+
+describe("Classic tactical lookahead", () => {
+  it("avoids filling support for an opponent height-one fork", () => {
+    const state = createHeightOneForkSupportState();
+    const dangerousSupport = moveToIndex({ row: 2, col: 3 });
+
+    const result = selectLookaheadMove(state, 2, {
+      depth: 2,
+      maxMoves: 10,
+      rootMaxMoves: 14,
+    });
+
+    expect(result?.moveIndex).not.toBe(dangerousSupport);
+    expect(result?.candidates[0]?.score).toBeGreaterThan(
+      result?.candidates.find(
+        (candidate) => candidate.moveIndex === dangerousSupport,
+      )?.score ?? Number.NEGATIVE_INFINITY,
+    );
+  });
 });
 
 describe("Classic MCTS AI", () => {
@@ -379,6 +473,68 @@ describe("Classic MCTS AI", () => {
     expect(result?.reason).toBe("tactical");
     expect(result?.simulations).toBe(0);
     expect(result?.move).toEqual({ row: 2, col: 3 });
+  });
+
+  it("respects an opponent fork block as a tactical move", () => {
+    const game = replayMoves([
+      { row: 2, col: 2 },
+      { row: 0, col: 0 },
+      { row: 2, col: 3 },
+    ]);
+    const result = analyzeMctsMove(game, {
+      simulations: 220,
+      seed: 7,
+      useRave: true,
+      smartRolloutRate: 0.76,
+      earlyExitVisits: 140,
+      earlyExitRatio: 0.94,
+    });
+
+    expect(result?.reason).toBe("tactical");
+    expect(result?.simulations).toBe(0);
+    expect(result?.move).toEqual(expect.objectContaining({ row: 2 }));
+    expect([1, 4]).toContain(result?.move.col);
+  });
+
+  it("uses the tactical fork gate on expanded boards", () => {
+    const game = replayMoves(
+      [
+        { row: 3, col: 3 },
+        { row: 0, col: 0 },
+        { row: 3, col: 4 },
+      ],
+      undefined,
+      LARGE_TEST_DIMENSIONS,
+    );
+    const result = analyzeMctsMove(game, {
+      simulations: 40,
+      seed: 11,
+      useRave: true,
+    });
+
+    expect(result?.reason).toBe("tactical");
+    expect(result?.simulations).toBe(0);
+    expect(result?.move).toEqual(expect.objectContaining({ row: 3 }));
+    expect([2, 5]).toContain(result?.move.col);
+  });
+
+  it("uses lookahead to avoid enabling next-turn gravity forks", () => {
+    const state = createHeightOneForkSupportState();
+    const dangerousSupport = moveToIndex({ row: 2, col: 3 });
+
+    const result = analyzeMctsMove(gameFromSearchState(state, 2), {
+      simulations: 80,
+      seed: 19,
+      useRave: true,
+      progressiveBias: 0.24,
+      lookaheadDepth: 2,
+      lookaheadMaxMoves: 10,
+      lookaheadRootMaxMoves: 14,
+      lookaheadWeight: 0.7,
+      lookaheadOverrideMargin: 1,
+    });
+
+    expect(result?.moveIndex).not.toBe(dangerousSupport);
   });
 
   it("runs deterministic seeded search on quiet positions", () => {

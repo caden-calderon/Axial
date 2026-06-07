@@ -50,7 +50,18 @@ Important boundaries:
 - Classic AI uses difficulty-aware minimum visible thinking time in addition to its worker search
   budget: Easy stays brisk, while Max waits long enough to feel deliberate even when the worker
   finds a fast obvious move. Larger boards scale Max's worker budget by board breadth/height, and
-  non-terminal forcing/block-forcing moves now search instead of bypassing MCTS.
+  true tactical forks are enforced before MCTS simulations. Softer non-terminal line-race
+  heuristics still search, but immediate win, immediate block, own fork creation, and opponent fork
+  prevention are treated as tactical root decisions.
+- Classic MCTS combines UCT, RAVE, threat-ordered expansion, smart rollouts, and progressive bias.
+  Progressive bias uses the fast heuristic move ranking as a decaying prior during child selection,
+  with stronger difficulty presets passing larger bias values.
+- Classic MCTS also uses bounded alpha-beta tactical lookahead for the stronger presets. The
+  lookahead layer evaluates tempo-aware immediate threats, fork moves, center/shape, and multi-line
+  race pressure; MCTS consumes it as a root prior and Max/Hard can let it override noisy rollout
+  results when the deterministic score gap is large enough.
+- RAVE should remain scoped to AMAF value estimates: blend AMAF with exploitation, then add
+  exploration/progressive bias; update each node only from moves played after that node.
 - Appearance setup includes exact board-grid color, piece shape, separate per-player gradient color
   pills, light/dark mode, axis-number visibility, grid-layer visibility, and click-to-confirm drop.
 - Click-to-confirm is controller-owned board input state: first click arms a move, clicking a
@@ -94,7 +105,10 @@ Important boundaries:
 4. Respond to Caden-directed UI/gameplay changes after the cleanup pass has produced a clear map of risks and quick wins.
 5. Add progress messages for longer Classic AI searches.
 6. Extend the seeded evaluation harness with larger random/greedy/heuristic/basic-MCTS benchmark suites and JSONL-style match logs, including expanded board sizes, connect-5, and 2-3-line win targets.
-7. Tune the TypeScript heuristic/MCTS engine against those benchmarks and direct Caden challenge games.
+7. Tune the TypeScript heuristic/MCTS/lookahead engine against those benchmarks and direct Caden
+   challenge games. First benchmark target after the 2026-06-07 fork/lookahead fixes is to measure
+   tactical-suite pass rate and latency across 6 x 6 x 7 through 10 x 10 x 10 boards, including
+   connect-5 and 2-3-line win conditions.
 8. Consider a dedicated benchmark CLI/script once match logging shape is clear.
 9. Keep the old Python MCTS runnable only as a reference/baseline through the root `uv` environment.
 10. Add PyTorch/training dependencies only when neural self-play work resumes.

@@ -11,14 +11,23 @@ import {
   countLineCompletionsForMove,
   findWinningMoves,
   selectHeuristicMove,
+  selectTacticalMove,
 } from "./heuristic";
 import { moveFromIndex, type MoveIndex } from "./geometry";
+import { selectLookaheadMove, type LookaheadMoveResult } from "./lookahead";
 import { ClassicSearchState } from "./state";
 
 export type MctsOptions = {
   simulations?: number;
   maxTimeMs?: number;
   exploration?: number;
+  progressiveBias?: number;
+  lookaheadDepth?: number;
+  lookaheadMaxMoves?: number;
+  lookaheadRootMaxMoves?: number;
+  lookaheadNodeLimit?: number;
+  lookaheadWeight?: number;
+  lookaheadOverrideMargin?: number;
   seed?: number;
   smartRolloutRate?: number;
   earlyExitVisits?: number;
@@ -39,7 +48,7 @@ export type MctsMoveResult = {
   moveIndex: MoveIndex;
   simulations: number;
   elapsedMs: number;
-  reason: "tactical" | "search" | "heuristic";
+  reason: "tactical" | "lookahead" | "search" | "heuristic";
   stats: MctsMoveStat[];
 };
 
@@ -50,11 +59,25 @@ type RaveStat = {
 
 type RolloutResult = {
   winner: Player | 0;
-  playedByPlayer: Record<Player, Set<MoveIndex>>;
+  moves: PlayedMove[];
+};
+
+type PlayedMove = {
+  player: Player;
+  moveIndex: MoveIndex;
+};
+
+type RankedMove = {
+  moveIndex: MoveIndex;
+  score: number;
+  prior: number;
 };
 
 const DEFAULT_SIMULATIONS = 300;
 const DEFAULT_EXPLORATION = Math.SQRT2;
+const DEFAULT_PROGRESSIVE_BIAS = 0.18;
+const DEFAULT_LOOKAHEAD_WEIGHT = 0.32;
+const LOOKAHEAD_PRIOR_SCALE = 160_000;
 const DEFAULT_SMART_ROLLOUT_RATE = 0.72;
 const DEFAULT_EARLY_EXIT_VISITS = 160;
 const DEFAULT_EARLY_EXIT_RATIO = 0.86;
@@ -76,17 +99,22 @@ export function analyzeMctsMove(
   const rootState = ClassicSearchState.fromGame(game);
   if (rootState.winner !== null) return null;
 
-  const tactical = selectHeuristicMove(rootState, game.currentPlayer);
-  if (!tactical) return null;
-
-  if (tactical.reason === "win" || tactical.reason === "block") {
+  const criticalTactical = selectTacticalMove(
+    rootState,
+    game.currentPlayer,
+    "forced-only",
+  );
+  if (criticalTactical) {
     return {
-      move: publicMoveFromIndex(tactical.moveIndex, rootState.dimensions),
-      moveIndex: tactical.moveIndex,
+      move: publicMoveFromIndex(
+        criticalTactical.moveIndex,
+        rootState.dimensions,
+      ),
+      moveIndex: criticalTactical.moveIndex,
       simulations: 0,
       elapsedMs: 0,
       reason: "tactical",
-      stats: tactical.candidates.map((candidate) => ({
+      stats: criticalTactical.candidates.map((candidate) => ({
         move: publicMoveFromIndex(candidate.moveIndex, rootState.dimensions),
         moveIndex: candidate.moveIndex,
         visits: 0,
@@ -96,14 +124,26 @@ export function analyzeMctsMove(
     };
   }
 
+  const tactical = selectHeuristicMove(rootState, game.currentPlayer);
+  if (!tactical) return null;
+
+  const lookahead = selectRootLookahead(rootState, game.currentPlayer, options);
   const random = createSeededRandom(options.seed ?? 0xa71a1);
-  const search = new MctsSearch(rootState, game.currentPlayer, random, options);
-  return search.run(tactical.moveIndex);
+  const search = new MctsSearch(
+    rootState,
+    game.currentPlayer,
+    random,
+    options,
+    lookahead,
+  );
+  return search.run(lookahead?.moveIndex ?? tactical.moveIndex);
 }
 
 class MctsNode {
   readonly children = new Map<MoveIndex, MctsNode>();
   readonly rave = new Map<MoveIndex, RaveStat>();
+  readonly movePriors = new Map<MoveIndex, number>();
+  readonly untriedMoves: MoveIndex[];
   visits = 0;
   value = 0;
 
@@ -111,8 +151,14 @@ class MctsNode {
     readonly parent: MctsNode | null,
     readonly moveIndex: MoveIndex | null,
     readonly playerJustMoved: Player,
-    readonly untriedMoves: MoveIndex[],
-  ) {}
+    readonly depth: number,
+    rankedMoves: readonly RankedMove[],
+  ) {
+    this.untriedMoves = rankedMoves.map((move) => move.moveIndex);
+    for (const move of rankedMoves) {
+      this.movePriors.set(move.moveIndex, move.prior);
+    }
+  }
 }
 
 class MctsSearch {
@@ -124,12 +170,19 @@ class MctsSearch {
     private readonly rootPlayer: Player,
     private readonly random: RandomSource,
     private readonly options: MctsOptions,
+    private readonly rootLookahead: LookaheadMoveResult | null,
   ) {
     this.root = new MctsNode(
       null,
       null,
       otherPlayer(rootPlayer),
-      orderedMoves(rootState, rootPlayer),
+      0,
+      rankedMoves(
+        rootState,
+        rootPlayer,
+        rootLookahead,
+        options.lookaheadWeight ?? DEFAULT_LOOKAHEAD_WEIGHT,
+      ),
     );
   }
 
@@ -147,9 +200,9 @@ class MctsSearch {
 
     const elapsedMs = performanceNow() - start;
     const stats = this.rootStats();
-    const best = stats[0];
+    const selected = this.selectRootMove(stats);
 
-    if (!best) {
+    if (!selected) {
       return {
         move: publicMoveFromIndex(fallbackMoveIndex, this.rootState.dimensions),
         moveIndex: fallbackMoveIndex,
@@ -161,18 +214,18 @@ class MctsSearch {
     }
 
     return {
-      move: best.move,
-      moveIndex: best.moveIndex,
+      move: selected.stat.move,
+      moveIndex: selected.stat.moveIndex,
       simulations: this.simulations,
       elapsedMs,
-      reason: "search",
+      reason: selected.reason,
       stats,
     };
   }
 
   private runSimulation(): void {
     const state = this.rootState.clone();
-    const playedByPlayer = emptyPlayedMoves();
+    const playedMoves: PlayedMove[] = [];
     let node = this.root;
 
     while (
@@ -183,7 +236,10 @@ class MctsSearch {
     ) {
       node = this.selectChild(node);
       state.makeMove(node.moveIndex!, node.playerJustMoved);
-      playedByPlayer[node.playerJustMoved].add(node.moveIndex!);
+      playedMoves.push({
+        player: node.playerJustMoved,
+        moveIndex: node.moveIndex!,
+      });
     }
 
     if (
@@ -194,14 +250,15 @@ class MctsSearch {
       const moveIndex = node.untriedMoves.shift()!;
       const player = otherPlayer(node.playerJustMoved);
       state.makeMove(moveIndex, player);
-      playedByPlayer[player].add(moveIndex);
+      playedMoves.push({ player, moveIndex });
 
       const child = new MctsNode(
         node,
         moveIndex,
         player,
+        node.depth + 1,
         state.winner === null && !state.isDraw()
-          ? orderedMoves(state, otherPlayer(player))
+          ? rankedMoves(state, otherPlayer(player))
           : [],
       );
       node.children.set(moveIndex, child);
@@ -214,8 +271,8 @@ class MctsSearch {
       this.random,
       this.options.smartRolloutRate ?? DEFAULT_SMART_ROLLOUT_RATE,
     );
-    mergePlayedMoves(playedByPlayer, rollout.playedByPlayer);
-    this.backpropagate(node, rollout.winner, playedByPlayer);
+    playedMoves.push(...rollout.moves);
+    this.backpropagate(node, rollout.winner, playedMoves);
   }
 
   private selectChild(node: MctsNode): MctsNode {
@@ -228,10 +285,12 @@ class MctsSearch {
     for (const child of node.children.values()) {
       if (child.visits === 0) return child;
 
-      const exploitation = child.value / child.visits;
+      let valueEstimate = child.value / child.visits;
       const explorationScore =
         exploration * Math.sqrt(Math.log(parentVisits) / child.visits);
-      let score = exploitation + explorationScore;
+      let score = valueEstimate + explorationScore;
+      const progressiveBias =
+        this.options.progressiveBias ?? DEFAULT_PROGRESSIVE_BIAS;
 
       if (useRave && child.moveIndex !== null) {
         const rave = node.rave.get(child.moveIndex);
@@ -241,8 +300,15 @@ class MctsSearch {
             (child.visits +
               rave.visits +
               (4 * child.visits * rave.visits) / RAVE_K);
-          score = (1 - beta) * score + beta * (rave.value / rave.visits);
+          valueEstimate =
+            (1 - beta) * valueEstimate + beta * (rave.value / rave.visits);
+          score = valueEstimate + explorationScore;
         }
+      }
+
+      if (progressiveBias > 0 && child.moveIndex !== null) {
+        const prior = node.movePriors.get(child.moveIndex) ?? 0;
+        score += (progressiveBias * prior) / (child.visits + 1);
       }
 
       if (
@@ -269,7 +335,7 @@ class MctsSearch {
   private backpropagate(
     node: MctsNode | null,
     winner: Player | 0,
-    playedByPlayer: Record<Player, Set<MoveIndex>>,
+    playedMoves: readonly PlayedMove[],
   ): void {
     while (node) {
       node.visits += 1;
@@ -277,7 +343,16 @@ class MctsSearch {
 
       const playerToMove = otherPlayer(node.playerJustMoved);
       const raveValue = resultValue(winner, playerToMove);
-      for (const moveIndex of playedByPlayer[playerToMove]) {
+      const futureSeen = new Set<MoveIndex>();
+
+      for (let index = node.depth; index < playedMoves.length; index += 1) {
+        const move = playedMoves[index]!;
+        if (move.player !== playerToMove || futureSeen.has(move.moveIndex)) {
+          continue;
+        }
+        futureSeen.add(move.moveIndex);
+
+        const moveIndex = move.moveIndex;
         const stat = node.rave.get(moveIndex) ?? { visits: 0, value: 0 };
         stat.visits += 1;
         stat.value += raveValue;
@@ -315,6 +390,36 @@ class MctsSearch {
     return totalVisits > 0 && topVisits / totalVisits >= ratio;
   }
 
+  private selectRootMove(
+    stats: readonly MctsMoveStat[],
+  ): { stat: MctsMoveStat; reason: "lookahead" | "search" } | null {
+    const searchBest = stats[0];
+    if (!searchBest) return null;
+
+    const lookaheadBest = this.rootLookahead?.candidates[0];
+    if (!lookaheadBest) return { stat: searchBest, reason: "search" };
+
+    const margin = this.options.lookaheadOverrideMargin ?? 0;
+    if (margin <= 0 || searchBest.moveIndex === lookaheadBest.moveIndex) {
+      return { stat: searchBest, reason: "search" };
+    }
+
+    const searchBestLookaheadScore =
+      this.rootLookahead.candidates.find(
+        (candidate) => candidate.moveIndex === searchBest.moveIndex,
+      )?.score ?? Number.NEGATIVE_INFINITY;
+    if (lookaheadBest.score - searchBestLookaheadScore < margin) {
+      return { stat: searchBest, reason: "search" };
+    }
+
+    const lookaheadStat = stats.find(
+      (stat) => stat.moveIndex === lookaheadBest.moveIndex,
+    );
+    if (!lookaheadStat) return { stat: searchBest, reason: "search" };
+
+    return { stat: lookaheadStat, reason: "lookahead" };
+  }
+
   private rootStats(): MctsMoveStat[] {
     return [...this.root.children.values()]
       .map((child) => ({
@@ -337,12 +442,26 @@ class MctsSearch {
   }
 }
 
-function orderedMoves(state: ClassicSearchState, player: Player): MoveIndex[] {
-  return state
+function rankedMoves(
+  state: ClassicSearchState,
+  player: Player,
+  lookahead: LookaheadMoveResult | null = null,
+  lookaheadWeight = 0,
+): RankedMove[] {
+  const lookaheadScores = lookaheadScoreMap(lookahead);
+  const lookaheadRange = lookaheadScoreRange(lookahead);
+  const scored = state
     .legalMoveIndices()
     .map((moveIndex) => ({
       moveIndex,
-      score: fastMoveScore(state, moveIndex, player),
+      score:
+        fastMoveScore(state, moveIndex, player) +
+        lookaheadPriorScore(
+          moveIndex,
+          lookaheadScores,
+          lookaheadRange,
+          lookaheadWeight,
+        ),
     }))
     .sort((first, second) => {
       if (first.score !== second.score) return second.score - first.score;
@@ -351,8 +470,74 @@ function orderedMoves(state: ClassicSearchState, player: Player): MoveIndex[] {
         second.moveIndex,
         state.dimensions,
       );
-    })
-    .map((score) => score.moveIndex);
+    });
+  const bestScore = scored[0]?.score ?? 0;
+  const worstScore = scored.at(-1)?.score ?? bestScore;
+  const spread = Math.max(1, bestScore - worstScore);
+
+  return scored.map((move) => ({
+    ...move,
+    prior: (move.score - worstScore) / spread,
+  }));
+}
+
+function selectRootLookahead(
+  state: ClassicSearchState,
+  player: Player,
+  options: MctsOptions,
+): LookaheadMoveResult | null {
+  const depth = options.lookaheadDepth ?? 0;
+  if (depth <= 0) return null;
+
+  return selectLookaheadMove(state, player, {
+    depth,
+    maxMoves: options.lookaheadMaxMoves,
+    rootMaxMoves: options.lookaheadRootMaxMoves,
+    nodeLimit: options.lookaheadNodeLimit,
+  });
+}
+
+function lookaheadScoreMap(
+  lookahead: LookaheadMoveResult | null,
+): ReadonlyMap<MoveIndex, number> {
+  const scores = new Map<MoveIndex, number>();
+  for (const candidate of lookahead?.candidates ?? []) {
+    scores.set(candidate.moveIndex, candidate.score);
+  }
+  return scores;
+}
+
+function lookaheadScoreRange(
+  lookahead: LookaheadMoveResult | null,
+): { worst: number; spread: number } | null {
+  const candidates = lookahead?.candidates;
+  if (!candidates || candidates.length === 0) return null;
+
+  let best = Number.NEGATIVE_INFINITY;
+  let worst = Number.POSITIVE_INFINITY;
+  for (const candidate of candidates) {
+    best = Math.max(best, candidate.score);
+    worst = Math.min(worst, candidate.score);
+  }
+
+  return {
+    worst,
+    spread: Math.max(1, best - worst),
+  };
+}
+
+function lookaheadPriorScore(
+  moveIndex: MoveIndex,
+  scores: ReadonlyMap<MoveIndex, number>,
+  range: { worst: number; spread: number } | null,
+  weight: number,
+): number {
+  if (!range || weight <= 0) return 0;
+
+  const score = scores.get(moveIndex);
+  if (score === undefined) return 0;
+
+  return ((score - range.worst) / range.spread) * LOOKAHEAD_PRIOR_SCALE * weight;
 }
 
 function rolloutFrom(
@@ -361,7 +546,7 @@ function rolloutFrom(
   random: RandomSource,
   smartRolloutRate: number,
 ): RolloutResult {
-  const playedByPlayer = emptyPlayedMoves();
+  const moves: PlayedMove[] = [];
   let player = otherPlayer(previousPlayer);
 
   while (state.winner === null && !state.isDraw()) {
@@ -374,13 +559,13 @@ function rolloutFrom(
     if (moveIndex === null) break;
 
     state.makeMove(moveIndex, player);
-    playedByPlayer[player].add(moveIndex);
+    moves.push({ player, moveIndex });
     player = otherPlayer(player);
   }
 
   return {
     winner: state.winner ?? 0,
-    playedByPlayer,
+    moves,
   };
 }
 
@@ -434,21 +619,6 @@ function chooseRolloutMove(
 function resultValue(winner: Player | 0, player: Player): number {
   if (winner === 0) return 0.5;
   return winner === player ? 1 : 0;
-}
-
-function emptyPlayedMoves(): Record<Player, Set<MoveIndex>> {
-  return {
-    1: new Set<MoveIndex>(),
-    2: new Set<MoveIndex>(),
-  };
-}
-
-function mergePlayedMoves(
-  target: Record<Player, Set<MoveIndex>>,
-  source: Record<Player, Set<MoveIndex>>,
-): void {
-  for (const moveIndex of source[1]) target[1].add(moveIndex);
-  for (const moveIndex of source[2]) target[2].add(moveIndex);
 }
 
 function performanceNow(): number {

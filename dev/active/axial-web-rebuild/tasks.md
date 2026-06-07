@@ -90,6 +90,15 @@
 - [x] Generalize Classic AI search geometry for expanded board dimensions.
 - [x] Scale Classic AI budgets by board size for stronger Max play and remove the instant MCTS
   shortcut for non-terminal forcing/block-forcing moves.
+- [x] Fix the Classic MCTS open-ended fork regression by making true fork creation/prevention a
+  hard tactical root decision again, with coverage for default boards, expanded boards, and
+  connect-five rules.
+- [x] Add progressive bias to Classic MCTS so fast heuristic move ranking guides early UCT/RAVE
+  selection and decays as child visits accumulate.
+- [x] Add bounded tactical lookahead to Classic MCTS so stronger difficulties can avoid next-turn
+  fork setup, gravity-support traps, and multi-line race pressure before rollouts converge.
+- [x] Audit and correct RAVE selection/backpropagation so AMAF blends with value estimates and each
+  node only receives future-move AMAF updates from its own position.
 - [ ] Benchmark AI strength and latency.
 - [ ] Train or build a Classic-mode opponent that can beat Caden.
 
@@ -166,9 +175,24 @@
     added focused dynamic-board AI tests. Larger-board strength/latency benchmarking remains open.
   - 2026-06-07 AI follow-up: Max Classic AI now uses larger board-scaled budgets and broader
     forcing/block-forcing heuristic moves run through MCTS instead of returning instantly.
+  - 2026-06-07 fork-regression follow-up: true immediate-threat forks are split from softer
+    line-race forcing moves. MCTS returns immediately for wins, blocks, own forks, and opponent
+    fork blocks; non-forced line-race strategy still searches. Progressive bias was added to
+    improve early move selection under high branching factors.
+  - 2026-06-07 foresight follow-up: added bounded alpha-beta tactical lookahead as a root MCTS prior
+    and optional Hard/Max override, tuned difficulty presets to diverge more, and corrected RAVE's
+    AMAF value blending/update scope.
 - [ ] Keep initial cleanup refactors behavior-preserving unless Caden's next requested changes touch the same area.
 - [x] Re-run focused unit/e2e/build checks after cleanup and before pushing.
   - 2026-06-07 follow-up: `pnpm check`, `pnpm lint`, `pnpm build`, `pnpm --filter @axial/core test:unit`, `pnpm --filter @axial/ai test:unit`, `pnpm --filter @axial/web test:unit -- --run`, `pnpm --filter @axial/web test:e2e`, and local Playwright fallback visual smokes passed.
+  - 2026-06-07 fork-regression follow-up: `pnpm --filter @axial/ai test:unit`,
+    `pnpm --filter @axial/web test:unit -- --run`, `pnpm --filter @axial/core test:unit`,
+    `pnpm check`, `pnpm lint`, and `pnpm build` passed. Build retained only the known
+    Three/Threlte route chunk warning.
+  - 2026-06-07 foresight follow-up: `pnpm --filter @axial/ai test:unit`, `pnpm check`,
+    `pnpm lint`, `pnpm --filter @axial/web test:unit -- --run`,
+    `pnpm --filter @axial/core test:unit`, and `pnpm build` passed. Build retained only the known
+    Three/Threlte route chunk warning at `843.05 kB` minified / `218.27 kB` gzip.
 
 ## Tactical Variants
 

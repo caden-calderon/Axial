@@ -12,7 +12,7 @@ export type ClassicAiWorkerSuccess = {
 	ok: true;
 	move: Move | null;
 	moveIndex: number | null;
-	reason: 'tactical' | 'search' | 'heuristic' | null;
+	reason: 'tactical' | 'lookahead' | 'search' | 'heuristic' | null;
 	simulations: number;
 	elapsedMs: number;
 	stats: MctsMoveStat[];

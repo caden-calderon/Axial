@@ -59,6 +59,49 @@ TypeScript implementation result:
 - Added pre-match AI difficulty presets: Easy, Medium, Hard, and Max. Hard keeps the current default budget; Max uses a larger worker-only budget.
 - Focused timing after fast affected-line MCTS ordering: 40 empty-board simulations in about 261ms under Vitest.
 
+2026-06-07 tactical regression review:
+
+- Reproduced Caden's open-ended horizontal trap: if a player has an open two, the opponent must
+  block one extension before the player can create a three with two winning ends.
+- Root cause: the TypeScript heuristic still detected the position as `block-forcing`, but
+  `analyzeMctsMove` only treated immediate wins/blocks as hard tactical returns. Fork
+  creation/prevention was downgraded to a fallback hint, allowing MCTS visits to override it under
+  normal Hard/Max budgets.
+- Fix direction: split forcing moves into true immediate-threat forks versus softer multi-line
+  races. MCTS now exits tactically for immediate win, immediate block, own true fork, and opponent
+  true-fork block, while still letting search evaluate non-forced line-race strategy.
+- Added default MCTS progressive bias using the existing fast heuristic ranking as a decaying UCT
+  prior. This follows Chaslot et al.'s progressive-bias idea: domain knowledge guides early search,
+  then fades as node visits accumulate. Stronger web difficulties pass larger progressive-bias
+  values.
+- Added fixtures for default connect-4, expanded-board connect-4, and connect-5 fork prevention so
+  this class of trap stays covered across board sizes/rules.
+
+2026-06-07 foresight/RAVE review:
+
+- Caden can still beat Max by building double traps. The tactical gate blocks already-visible
+  forks, but plain rollout MCTS is still too willing to choose moves that allow the opponent to
+  create a fork one ply later, especially through gravity support on higher cells.
+- Research direction: keep MCTS, but give it a deterministic adversarial spine. Lanctot et al.'s
+  implicit-minimax work supports storing heuristic/minimax guidance alongside rollout values, and
+  Allis-style Connect-Four search reinforces that threat knowledge and exact-ish local search matter
+  in tactical connection games.
+- Added `classic/lookahead.ts`: a bounded alpha-beta lookahead over the existing mutable
+  `ClassicSearchState`. It orders urgent wins/blocks/forks first, limits breadth for browser
+  latency, evaluates tempo-aware immediate threats, fork moves, center/shape, and multi-line races,
+  and works with connect-4/connect-5 plus 1-3-line win targets.
+- MCTS now uses root lookahead as a stronger prior and optional override when deterministic search
+  sees a materially better move. Difficulty presets diverge in actual engine behavior: Easy has no
+  lookahead, Medium has shallow lookahead, Hard searches two plies, and Max searches three plies with
+  a larger node cap and stronger override.
+- RAVE audit: the TypeScript implementation was blending AMAF value into the whole UCT score,
+  which accidentally damped exploration/progressive bias. It now blends AMAF with only the value
+  estimate, then adds exploration and progressive bias. AMAF updates are also scoped to moves played
+  after each node's position rather than the entire simulated path.
+- Added a gravity-support fork fixture: the AI must avoid filling the lower cell of a center column
+  when that makes the opponent's height-one fork playable next turn. This covers the class of trap
+  where the AI creates the support needed for the opponent's future tactic.
+
 ## Caden Decision Update
 
 On 2026-06-06, Caden agreed with the staged direction:
@@ -90,6 +133,8 @@ Useful references:
 - AlphaGo Zero accepted manuscript: https://discovery.ucl.ac.uk/id/eprint/10045895/
 - UCT: https://aima.cs.berkeley.edu/~russell/classes/cs294/s11/readings/Kocsis%2BSzepesvari%3A2006.pdf
 - RAVE: https://ics.uci.edu/~dechter/courses/ics-295/winter-2018/papers/mcts-gelly-silver.pdf
+- Progressive bias: https://cris.maastrichtuniversity.nl/en/publications/progressive-strategies-for-monte-carlo-tree-search/
+- Implicit minimax backups: https://arxiv.org/abs/1406.0486
 - Allis Connect Four: https://journals.sagepub.com/doi/abs/10.3233/ICG-1988-11410
 - Pascal Pons Connect Four solver: https://github.com/PascalPons/connect4
 - Pascal Pons solver tutorial: https://blog.gamesolver.org/

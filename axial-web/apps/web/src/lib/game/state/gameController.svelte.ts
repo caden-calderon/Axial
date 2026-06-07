@@ -121,6 +121,13 @@ type ClassicAiSearchOptions = {
 	simulations?: number;
 	maxTimeMs?: number;
 	exploration?: number;
+	progressiveBias?: number;
+	lookaheadDepth?: number;
+	lookaheadMaxMoves?: number;
+	lookaheadRootMaxMoves?: number;
+	lookaheadNodeLimit?: number;
+	lookaheadWeight?: number;
+	lookaheadOverrideMargin?: number;
 	seed?: number;
 	smartRolloutRate?: number;
 	earlyExitVisits?: number;
@@ -128,10 +135,19 @@ type ClassicAiSearchOptions = {
 	useRave?: boolean;
 };
 
+type ClassicAiSearchPreset = ClassicAiSearchOptions & {
+	simulations: number;
+	maxTimeMs: number;
+	earlyExitVisits: number;
+};
+
 const CLASSIC_AI_SEARCH_PRESETS = {
 	easy: {
 		simulations: 24,
 		maxTimeMs: 110,
+		progressiveBias: 0.08,
+		lookaheadDepth: 0,
+		lookaheadWeight: 0,
 		smartRolloutRate: 0.45,
 		earlyExitVisits: 18,
 		earlyExitRatio: 0.92,
@@ -140,6 +156,12 @@ const CLASSIC_AI_SEARCH_PRESETS = {
 	medium: {
 		simulations: 88,
 		maxTimeMs: 280,
+		progressiveBias: 0.14,
+		lookaheadDepth: 1,
+		lookaheadMaxMoves: 8,
+		lookaheadRootMaxMoves: 10,
+		lookaheadNodeLimit: 900,
+		lookaheadWeight: 0.16,
 		smartRolloutRate: 0.62,
 		earlyExitVisits: 54,
 		earlyExitRatio: 0.92,
@@ -148,6 +170,13 @@ const CLASSIC_AI_SEARCH_PRESETS = {
 	hard: {
 		simulations: 220,
 		maxTimeMs: 680,
+		progressiveBias: 0.2,
+		lookaheadDepth: 2,
+		lookaheadMaxMoves: 10,
+		lookaheadRootMaxMoves: 14,
+		lookaheadNodeLimit: 4_000,
+		lookaheadWeight: 0.36,
+		lookaheadOverrideMargin: 72_000,
 		smartRolloutRate: 0.76,
 		earlyExitVisits: 140,
 		earlyExitRatio: 0.94,
@@ -156,12 +185,19 @@ const CLASSIC_AI_SEARCH_PRESETS = {
 	nightmare: {
 		simulations: 760,
 		maxTimeMs: 2200,
+		progressiveBias: 0.26,
+		lookaheadDepth: 3,
+		lookaheadMaxMoves: 12,
+		lookaheadRootMaxMoves: 18,
+		lookaheadNodeLimit: 16_000,
+		lookaheadWeight: 0.62,
+		lookaheadOverrideMargin: 34_000,
 		smartRolloutRate: 0.86,
 		earlyExitVisits: 420,
 		earlyExitRatio: 0.97,
 		useRave: true
 	}
-} as const satisfies Record<AiDifficulty, ClassicAiSearchOptions>;
+} as const satisfies Record<AiDifficulty, ClassicAiSearchPreset>;
 
 const CLASSIC_AI_BOARD_SCALE = {
 	easy: 0.22,
@@ -1131,7 +1167,7 @@ export function classicAiSearchOptionsForGame(
 	aiDifficulty: AiDifficulty,
 	game: GameSnapshot
 ): ClassicAiSearchOptions {
-	const preset = CLASSIC_AI_SEARCH_PRESETS[aiDifficulty];
+	const preset: ClassicAiSearchPreset = CLASSIC_AI_SEARCH_PRESETS[aiDifficulty];
 	const winRuleMultiplier =
 		1 +
 		(game.winCondition.linesToWin - 1) * 0.34 +
@@ -1147,12 +1183,23 @@ export function classicAiSearchOptionsForGame(
 			(aiDifficulty === 'nightmare' ? 0.055 : 0.04);
 	const multiplier = winRuleMultiplier * boardBreadthMultiplier * heightMultiplier;
 	const earlyExitMultiplier = Math.min(multiplier, aiDifficulty === 'nightmare' ? 2 : 1.65);
+	const lookaheadBreadthMultiplier =
+		1 + (Math.sqrt(boardArea) - 1) * (aiDifficulty === 'nightmare' ? 0.38 : 0.24);
+	const lookaheadNodeMultiplier = Math.min(multiplier, aiDifficulty === 'nightmare' ? 2.2 : 1.7);
 
 	return {
 		...preset,
 		simulations: Math.round(preset.simulations * multiplier),
 		maxTimeMs: Math.round(preset.maxTimeMs * multiplier),
-		earlyExitVisits: Math.round(preset.earlyExitVisits * earlyExitMultiplier)
+		earlyExitVisits: Math.round(preset.earlyExitVisits * earlyExitMultiplier),
+		lookaheadRootMaxMoves:
+			preset.lookaheadRootMaxMoves === undefined
+				? undefined
+				: Math.round(preset.lookaheadRootMaxMoves * lookaheadBreadthMultiplier),
+		lookaheadNodeLimit:
+			preset.lookaheadNodeLimit === undefined
+				? undefined
+				: Math.round(preset.lookaheadNodeLimit * lookaheadNodeMultiplier)
 	};
 }
 

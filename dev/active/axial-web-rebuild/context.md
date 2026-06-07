@@ -70,6 +70,19 @@ Implemented gameplay/UX:
   midrange worker budget; Max uses a larger worker-only budget that scales with board area/height.
   AI replies also have difficulty-aware minimum visible thinking time so stronger settings feel more
   deliberate even when the worker finds an obvious move quickly.
+- Classic MCTS now treats true tactical forks as non-negotiable root decisions: immediate wins,
+  immediate blocks, own fork creation, and opponent fork prevention return before simulations. This
+  fixes the open-ended horizontal trap regression where MCTS could override the heuristic
+  `block-forcing` move.
+- Classic MCTS also uses progressive bias: the existing fast heuristic move ranking becomes a
+  decaying UCT prior, with stronger difficulty presets passing larger bias values. RAVE remains
+  enabled for Medium/Hard/Max.
+- Classic MCTS now has deterministic tactical lookahead for foresight beyond already-visible forks.
+  Medium/Hard/Max use increasing bounded alpha-beta depths, and Max uses the lookahead as both a
+  root prior and a stronger override when it sees materially better trap-avoidance or setup moves.
+- The RAVE implementation was audited during the lookahead pass: AMAF now blends into the value
+  estimate only, and node AMAF updates use moves that occur after that node rather than the whole
+  simulated path.
 - Match setup exposes `Classic` and `Tactical` modes and locks opponent/rules after the first placement.
 - Match setup exposes win-rule controls for connect length and completed lines needed; those settings are persisted and lock after the first placement.
 - Match setup exposes board dimensions as clickable pre-match number controls. Bigger boards reset
@@ -127,6 +140,11 @@ Implemented gameplay/UX:
 
 Latest checks passed from `axial-web/apps/web` unless noted:
 
+- 2026-06-07 Classic AI foresight pass from `axial-web/`: `pnpm --filter @axial/ai test:unit`,
+  `pnpm check`, `pnpm lint`, `pnpm --filter @axial/web test:unit -- --run`,
+  `pnpm --filter @axial/core test:unit`, and `pnpm build`.
+- The foresight build retained only the known Three/Threlte route chunk warning; current route
+  chunk is `843.05 kB` minified / `218.27 kB` gzip.
 - `pnpm --filter @axial/web test:unit -- --run src/lib/game/state/gameController.test.ts` from `axial-web/`
 - `pnpm --filter @axial/ai test:unit` from `axial-web/`
 - `pnpm --filter @axial/core test:unit` from `axial-web/`
@@ -260,6 +278,10 @@ Latest cleanup verification:
   the beam opacity shared the same pulse phase as the preview piece and square floor plate. No page
   errors, console errors, or failed requests were observed. Screenshot was written to
   `/tmp/axial-synced-confirm-beam.png`.
+- Classic AI fork-regression verification from `axial-web/`: `pnpm --filter @axial/ai test:unit`,
+  `pnpm --filter @axial/web test:unit -- --run`, `pnpm --filter @axial/core test:unit`,
+  `pnpm check`, `pnpm lint`, and `pnpm build` passed. The build kept the known
+  Three/Threlte route chunk warning at `842.36 kB` minified / `218.10 kB` gzip.
 - Favicon/PWA icon replacement verification passed: manifest JSON parsed, old SVG icon filenames no
   longer appeared in source references, `/icons/apple-touch-icon.png`, `/icons/axial-icon-192.png`,
   and `/icons/axial-icon-512.png` returned `200 OK` from the dev server, and the PWA E2E metadata
@@ -325,8 +347,11 @@ Useful screenshots in `axial-web/apps/web/` include:
   tables, move indices, center scoring, and MCTS rollouts instead of the old random fallback.
 - Classic AI now gives multi-line modes stronger strategy weight: non-terminal line completions are valuable, opponent line progress is blocked, line-completion forks influence forcing moves, rollouts pursue/block line progress, and search budgets scale upward for connect-5 / 2-3-line variants.
 - Classic AI no longer short-circuits MCTS for non-terminal forcing/block-forcing heuristic moves;
-  only immediate wins and immediate blocks bypass search. Root heuristic scoring now weighs fork
-  creation and opponent immediate replies more aggressively.
+  only immediate wins, immediate blocks, true own forks, and true opponent-fork blocks bypass search.
+  Root heuristic scoring now weighs fork creation and opponent immediate replies more aggressively.
+- Classic AI now has a bounded tactical lookahead layer that scores future trap setup/avoidance
+  before rollouts. It includes coverage for a gravity-support trap where an AI move would make the
+  opponent's height-one fork playable on the next turn.
 - The app has a cancellable Classic AI client: reset/undo/mode changes terminate stale worker requests before they can play old moves.
 - The Match panel exposes AI strength when AI mode is selected; the setting persists and locks with the rest of setup after the first move.
 - Keep the old Python MCTS runnable only as a reference/baseline, not as production code moved into `axial-web`.

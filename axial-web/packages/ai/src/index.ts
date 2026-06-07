@@ -37,8 +37,11 @@ export {
   scoreLegalMoves,
   scoreMove,
   selectHeuristicMove,
+  selectTacticalMove,
+  type ForcingMove,
   type HeuristicMoveResult,
   type MoveScore,
+  type TacticalMoveMode,
 } from "./classic/heuristic";
 export {
   analyzeMctsMove,
@@ -47,6 +50,13 @@ export {
   type MctsMoveStat,
   type MctsOptions,
 } from "./classic/mcts";
+export {
+  evaluateLookaheadPosition,
+  selectLookaheadMove,
+  type LookaheadMoveResult,
+  type LookaheadMoveScore,
+  type LookaheadOptions,
+} from "./classic/lookahead";
 export {
   playAiMatch,
   runEvaluation,
