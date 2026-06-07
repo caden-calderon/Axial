@@ -79,7 +79,7 @@ export function analyzeMctsMove(
   const tactical = selectHeuristicMove(rootState, game.currentPlayer);
   if (!tactical) return null;
 
-  if (tactical.reason !== "heuristic") {
+  if (tactical.reason === "win" || tactical.reason === "block") {
     return {
       move: publicMoveFromIndex(tactical.moveIndex, rootState.dimensions),
       moveIndex: tactical.moveIndex,

@@ -42,6 +42,10 @@ Deployment state:
 - GitHub integration is enabled; pushes to `main` trigger production Cloudflare Pages deployments.
 - The app uses the explicit `@sveltejs/adapter-cloudflare` adapter.
 - The app has local PWA install metadata: manifest, Axial icons, iOS home-screen tags, and a SvelteKit service worker. Installed mobile launches should use browser app display modes instead of a normal tab when supported.
+- Favicon/PWA icon assets use Caden's downloaded `AxialLOGO.png` app-icon render. The original
+  source is preserved at `axial-web/apps/web/static/icons/axial-logo.png`; generated favicon,
+  apple-touch, 192px, and 512px icons use a modest crop around the app-icon frame so the cube mark
+  reads larger at small sizes. The old SVG icon assets are no longer referenced.
 - Deployment notes and dashboard values live in `dev/active/axial-web-rebuild/deployment.md`.
 - Porkbun remains the registrar, and Cloudflare is the authoritative DNS host with nameservers `gwen.ns.cloudflare.com` and `melnicoff.ns.cloudflare.com`.
 - Production smoke can be run with `pnpm smoke:production` from `axial-web/`.
@@ -51,14 +55,21 @@ Implemented gameplay/UX:
 
 - Playable 6 x 6 x 7 board with projected column picking.
 - Drop preview and animated beveled cube pieces.
-- Exact board-grid color picker, dark/light mode, and toggleable axis labels.
+- Exact board-grid color picker, dark/light mode, toggleable axis labels, and toggleable grid
+  layers. Full 3D grid remains the default; floor-only mode preserves the board footprint while
+  hiding the upper/layer lattice.
+- Click-to-confirm drop is a persisted desktop/mobile input option. The first click arms a column,
+  clicking another column re-arms there, and clicking the armed column commits the drop.
 - Undo, redo, rematch, and replay-from-start via canonical move history.
 - Game-over modal with winner, move count, rematch, replay, and review actions.
 - Collapsible top-right control panel with smooth downward expansion.
 - Expanded match console with Match, Appearance, and Session sections.
 - Session record tracks Player 1 wins, Player 2 wins, and draws once per completed match.
 - AI opponent mode is unlocked. Classic mode now uses a bounded TypeScript MCTS/search opponent in a Web Worker on default and expanded board sizes; Tactical mode still uses random normal moves because special-piece AI is deferred.
-- Classic AI has pre-match difficulty presets: Easy, Medium, Hard, and Max. Hard preserves the current default strength; Max uses a larger worker-only budget. AI replies also have difficulty-aware minimum visible thinking time so stronger settings feel more deliberate even when the worker finds an obvious move quickly.
+- Classic AI has pre-match difficulty presets: Easy, Medium, Hard, and Max. Hard preserves a strong
+  midrange worker budget; Max uses a larger worker-only budget that scales with board area/height.
+  AI replies also have difficulty-aware minimum visible thinking time so stronger settings feel more
+  deliberate even when the worker finds an obvious move quickly.
 - Match setup exposes `Classic` and `Tactical` modes and locks opponent/rules after the first placement.
 - Match setup exposes win-rule controls for connect length and completed lines needed; those settings are persisted and lock after the first placement.
 - Match setup exposes board dimensions as clickable pre-match number controls. Bigger boards reset
@@ -66,7 +77,8 @@ Implemented gameplay/UX:
 - The latest placed move gets a pulsing 3D glow so returning to the board makes the most recent placement easy to find.
 - Completed lines are now visible before the match ends. The core snapshot exposes stable completed-line IDs, and the scene renders each line with a draw-through animation, traveling glow bead, final pulse, and idle glowing marker.
 - The game-over modal is delayed after wins so the completed-line draw animation can finish before the result overlay appears.
-- Piece drops use a slower, softer easing curve than the first implementation so placements settle more gracefully.
+- Piece drops use a stronger ease-out curve than the first implementation so placements slow more
+  progressively as they settle into the final cell.
 - Dark scene backgrounds use one solid field color per scene instead of the earlier radial color fields/aurora treatment.
 - Multi-line scoring counts maximal contiguous runs, not every overlapping length-N window. In connect-4 / 2-lines mode, five in a row is one completed line, while crossing or separate completed runs count separately.
 - Tactical mode now has two playable specials in a fixed three-piece kit per player: two Blocker Combos and one Double Adjacent.
@@ -106,6 +118,9 @@ Implemented gameplay/UX:
 - Piece style and player colors are live appearance settings persisted in local storage and applied to placed pieces and drop previews.
 - Piece style and color choices behave like pre-match loadout choices: they are editable on a fresh board, then locked for the active match once any piece has been placed.
 - Appearance setup is grouped as Board color, Piece look, and Theme. Board color remains editable live; piece shape/colors lock after the first placement. Player color pickers are two separate gradient pills, while the board-color picker remains a single full-width pill. The session footer no longer repeats the old arena/theme text.
+- Appearance setup also owns compact Grid layers, Axis numbers, and Confirm drop toggles. The
+  confirm-drop armed state renders a soft column beam plus a square floor plate so the staged column
+  reads as intentional before the second click commits.
 - Tactical/special-piece brainstorming and implementation notes are captured in `dev/active/axial-web-rebuild/variant-modes.md`.
 
 ## Recent Verification
@@ -131,8 +146,8 @@ Known non-blocking build warnings:
 - Large Three.js/Threlte game chunk. The 2026-06-07 cleanup pass reduced the client page
   chunk from `993.16 kB` minified / `273.01 kB` gzip to `831.24 kB` minified /
   `215.85 kB` gzip, but the route still exceeds Vite's default 500 kB warning threshold.
-  After the synchronized HUD glow polish pass, the route is `836.43 kB` minified /
-  `216.72 kB` gzip.
+  After the icon replacement and confirm-beam sync pass, the route is `842.28 kB` minified /
+  `218.07 kB` gzip.
 
 Bundle cleanup decision from the 2026-06-07 pass:
 
@@ -221,6 +236,34 @@ Latest cleanup verification:
   `http://localhost:5173/`: AXIAL, board dimensions, and the centered turn pill all used the same
   `0s`, `0.12s`, `0.24s` glyph delay sequence; the center pill rendered shorter with larger text.
   Screenshot was written to `/tmp/axial-hud-sync-turn-chip.png`.
+- Local Playwright fallback smoke for the confirm-drop/grid/AI pass against
+  `http://localhost:5173/`: Confirm drop armed a column without placing on the first click and
+  placed on the second click; Grid layers toggled to floor-only mode; Max Classic AI on an 8 x 8 x 8
+  board did not reply before the visible thinking floor and completed the worker-backed reply after
+  about 3.57s. No page errors, console errors, or failed requests were observed. Screenshots were
+  written to `/tmp/axial-confirm-drop-armed.png`, `/tmp/axial-flat-grid-mode.png`, and
+  `/tmp/axial-max-ai-large-board-delay.png`.
+- Local Playwright fallback smoke for the square cue polish against `http://localhost:5173/`:
+  Confirm drop stayed at `0 MOVES` after the first click, committed to `1 MOVE` after the second
+  click, floor-only mode kept axis labels visible, and screenshots showed square confirm/last-move
+  floor markers with no center ring through the preview piece. No page errors, console errors, or
+  failed requests were observed. Screenshots were written to
+  `/tmp/axial-square-confirm-floor-axis.png` and `/tmp/axial-square-last-move.png`.
+- Local Playwright fallback smoke for the beam/platform and label-stability pass against
+  `http://localhost:5173/`: Confirm drop stayed at `0 MOVES` after the first click, the beam began
+  above the square floor plate, and grid/axis toggles at a low oblique angle kept labels visible
+  without obvious readjustment. No page errors, console errors, or failed requests were observed.
+  Screenshots were written to `/tmp/axial-beam-above-platform.png` and
+  `/tmp/axial-axis-labels-after-toggles.png`.
+- Local Playwright fallback smoke for the synced confirm-beam pass against `http://localhost:5173/`:
+  Confirm drop stayed at `0 MOVES` after the first click, the beam was slightly higher contrast, and
+  the beam opacity shared the same pulse phase as the preview piece and square floor plate. No page
+  errors, console errors, or failed requests were observed. Screenshot was written to
+  `/tmp/axial-synced-confirm-beam.png`.
+- Favicon/PWA icon replacement verification passed: manifest JSON parsed, old SVG icon filenames no
+  longer appeared in source references, `/icons/apple-touch-icon.png`, `/icons/axial-icon-192.png`,
+  and `/icons/axial-icon-512.png` returned `200 OK` from the dev server, and the PWA E2E metadata
+  test passed.
 
 Useful screenshots in `axial-web/apps/web/` include:
 
@@ -274,11 +317,16 @@ Useful screenshots in `axial-web/apps/web/` include:
 
 - Caden locked the Classic AI direction on 2026-06-06: rewrite MCTS/search in the web repo first, then train a policy-value model with self-play/RL after search and evaluation are trustworthy.
 - First implementation landed in `@axial/ai`: precomputed 954 winning segments, row-major move indices, mutable Classic search state, heuristic tactical selector, seeded evaluation harness, and deterministic MCTS with RAVE-style statistics.
-- Classic AI opponent mode now calls bounded MCTS through a Vite Web Worker with `96` simulations capped at about `220ms`.
+- Classic AI opponent mode now calls bounded MCTS through a Vite Web Worker. Difficulty budgets are
+  larger than the first pass and scale with board area/height; Max starts at `760` simulations /
+  `2200ms` before board and win-rule multipliers.
 - Classic AI search now reads `game.winCondition`, including connect-5 and multi-line targets, through dynamic segment tables.
 - Classic AI search now reads `game.dimensions`; expanded board sizes use dimension-aware segment
   tables, move indices, center scoring, and MCTS rollouts instead of the old random fallback.
 - Classic AI now gives multi-line modes stronger strategy weight: non-terminal line completions are valuable, opponent line progress is blocked, line-completion forks influence forcing moves, rollouts pursue/block line progress, and search budgets scale upward for connect-5 / 2-3-line variants.
+- Classic AI no longer short-circuits MCTS for non-terminal forcing/block-forcing heuristic moves;
+  only immediate wins and immediate blocks bypass search. Root heuristic scoring now weighs fork
+  creation and opponent immediate replies more aggressively.
 - The app has a cancellable Classic AI client: reset/undo/mode changes terminate stale worker requests before they can play old moves.
 - The Match panel exposes AI strength when AI mode is selected; the setting persists and locks with the rest of setup after the first move.
 - Keep the old Python MCTS runnable only as a reference/baseline, not as production code moved into `axial-web`.
@@ -296,6 +344,14 @@ Useful screenshots in `axial-web/apps/web/` include:
 ## Next Polish Candidates
 
 - More Caden-directed UI changes.
+- Confirm-drop visuals now use a tall tapered column beam, square cell-floor markers, and preview
+  compositing that keeps grid lines from drawing through hover pieces. Last-move floor emphasis uses
+  the same square marker language. The armed beam starts above the floor marker so it does not cut
+  through the platform, uses a little more contrast, and pulses in sync with the preview piece and
+  square plate.
+- Axis labels remain available in floor-only grid mode; `Grid layers` and `Axis numbers` are
+  independent visual toggles. Labels remain mounted while hidden and outside the grid remount key to
+  reduce camera-angle flicker on toggle.
 - Add editable loadout UX for choosing the three Tactical specials.
 - Graphics quality settings.
 - Richer glass/acrylic board material.

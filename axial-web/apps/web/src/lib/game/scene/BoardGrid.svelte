@@ -5,6 +5,7 @@
 		AdditiveBlending,
 		BackSide,
 		BufferGeometry,
+		DoubleSide,
 		Float32BufferAttribute,
 		LineBasicMaterial,
 		LineSegments,
@@ -26,38 +27,42 @@
 	let {
 		palette,
 		uiTheme,
-		dimensions
+		dimensions,
+		layersVisible = true
 	}: {
 		palette: ScenePalette;
 		uiTheme: UiThemeName;
 		dimensions: BoardDimensions;
+		layersVisible?: boolean;
 	} = $props();
 
 	const initialDimensions = untrack(() => dimensions);
+	const includeLayers = untrack(() => layersVisible);
+	const geometryOptions = { includeLayers };
 	const lineGeometry = new BufferGeometry();
 	lineGeometry.setAttribute(
 		'position',
-		new Float32BufferAttribute(createGridLinePositions(initialDimensions), 3)
+		new Float32BufferAttribute(createGridLinePositions(initialDimensions, geometryOptions), 3)
 	);
 
 	const edgeGeometry = new BufferGeometry();
 	edgeGeometry.setAttribute(
 		'position',
-		new Float32BufferAttribute(createOuterEdgeLinePositions(initialDimensions), 3)
+		new Float32BufferAttribute(createOuterEdgeLinePositions(initialDimensions, geometryOptions), 3)
 	);
 
 	const innerStreakGeometry = createFadedLineGeometry(
-		createGridGlowStreakGeometry(0.38, initialDimensions)
+		createGridGlowStreakGeometry(0.38, initialDimensions, geometryOptions)
 	);
 
 	const outerStreakGeometry = createFadedLineGeometry(
-		createGridGlowStreakGeometry(0.78, initialDimensions)
+		createGridGlowStreakGeometry(0.78, initialDimensions, geometryOptions)
 	);
 
 	const nodeGeometry = new BufferGeometry();
 	nodeGeometry.setAttribute(
 		'position',
-		new Float32BufferAttribute(createGridNodePositions(initialDimensions), 3)
+		new Float32BufferAttribute(createGridNodePositions(initialDimensions, geometryOptions), 3)
 	);
 
 	const lineMaterial = new LineBasicMaterial({
@@ -98,16 +103,31 @@
 		blending: AdditiveBlending
 	});
 
-	const lineOpacity = $derived(uiTheme === 'dark' ? 0.34 : 0.48);
-	const edgeOpacity = $derived(uiTheme === 'dark' ? 0.8 : 0.76);
-	const innerStreakOpacity = $derived(uiTheme === 'dark' ? 0.42 : 0.24);
-	const outerStreakOpacity = $derived(uiTheme === 'dark' ? 0.18 : 0.12);
-	const nodeOpacity = $derived(uiTheme === 'dark' ? 0.64 : 0.58);
-	const nodeHaloOpacity = $derived(uiTheme === 'dark' ? 0.11 : 0.14);
-	const shellOpacity = $derived(uiTheme === 'dark' ? 0.045 : 0.055);
+	const lineOpacity = $derived(
+		includeLayers ? (uiTheme === 'dark' ? 0.34 : 0.48) : uiTheme === 'dark' ? 0.44 : 0.56
+	);
+	const edgeOpacity = $derived(
+		includeLayers ? (uiTheme === 'dark' ? 0.8 : 0.76) : uiTheme === 'dark' ? 0.88 : 0.82
+	);
+	const innerStreakOpacity = $derived(
+		includeLayers ? (uiTheme === 'dark' ? 0.42 : 0.24) : uiTheme === 'dark' ? 0.34 : 0.2
+	);
+	const outerStreakOpacity = $derived(
+		includeLayers ? (uiTheme === 'dark' ? 0.18 : 0.12) : uiTheme === 'dark' ? 0.14 : 0.1
+	);
+	const nodeOpacity = $derived(
+		includeLayers ? (uiTheme === 'dark' ? 0.64 : 0.58) : uiTheme === 'dark' ? 0.7 : 0.64
+	);
+	const nodeHaloOpacity = $derived(
+		includeLayers ? (uiTheme === 'dark' ? 0.11 : 0.14) : uiTheme === 'dark' ? 0.09 : 0.12
+	);
+	const shellOpacity = $derived(
+		includeLayers ? (uiTheme === 'dark' ? 0.045 : 0.055) : uiTheme === 'dark' ? 0.07 : 0.08
+	);
 	const gridLineBlending = $derived(uiTheme === 'dark' ? AdditiveBlending : NormalBlending);
 	const gridGlowBlending = AdditiveBlending;
 	const shellSize = boardSize(initialDimensions);
+	const floorPlanePosition: [number, number, number] = [0, -shellSize[1] / 2, 0];
 
 	$effect(() => {
 		lineMaterial.color.set(palette.grid);
@@ -203,25 +223,44 @@
 </script>
 
 <T.Group>
-	<T.Mesh renderOrder={0}>
-		<T.BoxGeometry args={shellSize} />
-		<T.MeshPhysicalMaterial
-			color={palette.grid}
-			emissive={palette.gridEmissive}
-			emissiveIntensity={uiTheme === 'dark' ? 0.12 : 0.015}
-			roughness={0.12}
-			metalness={0}
-			clearcoat={1}
-			clearcoatRoughness={0.04}
-			ior={1.45}
-			transmission={uiTheme === 'dark' ? 0.18 : 0.04}
-			thickness={0.18}
-			transparent
-			opacity={shellOpacity}
-			depthWrite={false}
-			side={BackSide}
-		/>
-	</T.Mesh>
+	{#if includeLayers}
+		<T.Mesh renderOrder={0}>
+			<T.BoxGeometry args={shellSize} />
+			<T.MeshPhysicalMaterial
+				color={palette.grid}
+				emissive={palette.gridEmissive}
+				emissiveIntensity={uiTheme === 'dark' ? 0.12 : 0.015}
+				roughness={0.12}
+				metalness={0}
+				clearcoat={1}
+				clearcoatRoughness={0.04}
+				ior={1.45}
+				transmission={uiTheme === 'dark' ? 0.18 : 0.04}
+				thickness={0.18}
+				transparent
+				opacity={shellOpacity}
+				depthWrite={false}
+				side={BackSide}
+			/>
+		</T.Mesh>
+	{:else}
+		<T.Mesh position={floorPlanePosition} rotation.x={-Math.PI / 2} renderOrder={0}>
+			<T.PlaneGeometry args={[shellSize[0], shellSize[2]]} />
+			<T.MeshPhysicalMaterial
+				color={palette.grid}
+				emissive={palette.gridEmissive}
+				emissiveIntensity={uiTheme === 'dark' ? 0.1 : 0.012}
+				roughness={0.18}
+				metalness={0}
+				clearcoat={1}
+				clearcoatRoughness={0.08}
+				transparent
+				opacity={shellOpacity}
+				depthWrite={false}
+				side={DoubleSide}
+			/>
+		</T.Mesh>
+	{/if}
 
 	<T is={LineSegments} args={[lineGeometry, lineMaterial]} renderOrder={2} />
 	<T is={LineSegments} args={[edgeGeometry, edgeMaterial]} renderOrder={3} />

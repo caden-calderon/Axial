@@ -141,15 +141,19 @@ export function scoreMove(
   const opponentThreats = countImmediateThreats(state, opponent);
   const ownLineThreats = countLineCompletionThreats(state, player);
   const opponentLineThreats = countLineCompletionThreats(state, opponent);
+  const ownForkPressure = Math.max(0, ownThreats - 1);
+  const opponentForkDanger = Math.max(0, opponentThreats - 1);
   const score =
     evaluatePosition(state, player) +
     lineCompletionScore(state, player, ownLineCompletions, false) +
     lineCompletionScore(state, opponent, blockedOpponentLineCompletions, true) +
     ownImmediateBlockValue +
-    ownThreats * 750 -
-    opponentThreats * 900 +
-    ownLineThreats * lineThreatScore(state, player, false) -
-    opponentLineThreats * lineThreatScore(state, opponent, true) +
+    ownThreats * 1_700 +
+    ownForkPressure * 8_500 -
+    opponentThreats * 11_000 -
+    opponentForkDanger * 9_500 +
+    ownLineThreats * lineThreatScore(state, player, false) * 1.25 -
+    opponentLineThreats * lineThreatScore(state, opponent, true) * 1.5 +
     centerScoreForLastMove(state);
   state.unmakeMove();
 

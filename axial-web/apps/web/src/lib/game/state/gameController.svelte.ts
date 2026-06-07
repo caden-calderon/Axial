@@ -40,6 +40,8 @@ const STORAGE_KEYS = {
 	uiTheme: 'axial-theme',
 	boardColor: 'axial-board-color',
 	labelsVisible: 'axial-axis-labels',
+	gridLayersVisible: 'axial-grid-layers',
+	confirmDropEnabled: 'axial-confirm-drop',
 	opponentMode: 'axial-opponent-mode',
 	aiDifficulty: 'axial-ai-difficulty',
 	matchMode: 'axial-match-mode',
@@ -109,10 +111,10 @@ const AI_RESULT_LABELS: Record<Player, string> = {
 };
 
 const AI_MINIMUM_THINK_MS = {
-	easy: 720,
-	medium: 980,
-	hard: 1280,
-	nightmare: 1720
+	easy: 780,
+	medium: 1180,
+	hard: 1680,
+	nightmare: 2450
 } as const satisfies Record<AiDifficulty, number>;
 
 type ClassicAiSearchOptions = {
@@ -128,38 +130,45 @@ type ClassicAiSearchOptions = {
 
 const CLASSIC_AI_SEARCH_PRESETS = {
 	easy: {
-		simulations: 16,
-		maxTimeMs: 70,
+		simulations: 24,
+		maxTimeMs: 110,
 		smartRolloutRate: 0.45,
-		earlyExitVisits: 12,
+		earlyExitVisits: 18,
 		earlyExitRatio: 0.92,
 		useRave: false
 	},
 	medium: {
-		simulations: 48,
-		maxTimeMs: 140,
-		smartRolloutRate: 0.58,
-		earlyExitVisits: 28,
-		earlyExitRatio: 0.9,
+		simulations: 88,
+		maxTimeMs: 280,
+		smartRolloutRate: 0.62,
+		earlyExitVisits: 54,
+		earlyExitRatio: 0.92,
 		useRave: true
 	},
 	hard: {
-		simulations: 96,
-		maxTimeMs: 220,
-		smartRolloutRate: 0.68,
-		earlyExitVisits: 48,
-		earlyExitRatio: 0.9,
+		simulations: 220,
+		maxTimeMs: 680,
+		smartRolloutRate: 0.76,
+		earlyExitVisits: 140,
+		earlyExitRatio: 0.94,
 		useRave: true
 	},
 	nightmare: {
-		simulations: 288,
-		maxTimeMs: 900,
-		smartRolloutRate: 0.78,
-		earlyExitVisits: 120,
-		earlyExitRatio: 0.88,
+		simulations: 760,
+		maxTimeMs: 2200,
+		smartRolloutRate: 0.86,
+		earlyExitVisits: 420,
+		earlyExitRatio: 0.97,
 		useRave: true
 	}
 } as const satisfies Record<AiDifficulty, ClassicAiSearchOptions>;
+
+const CLASSIC_AI_BOARD_SCALE = {
+	easy: 0.22,
+	medium: 0.48,
+	hard: 0.78,
+	nightmare: 1.16
+} as const satisfies Record<AiDifficulty, number>;
 
 type MoveSource = 'human' | 'ai';
 export type PlacementMode = 'piece' | 'blocker' | 'double-adjacent';
@@ -183,9 +192,12 @@ export function createGameController() {
 		)
 	);
 	let hoveredMove = $state<Move | null>(null);
+	let lockedMove = $state<Move | null>(null);
 	let uiTheme = $state<UiThemeName>('dark');
 	let boardColor = $state(DEFAULT_BOARD_COLOR);
 	let labelsVisible = $state(true);
+	let gridLayersVisible = $state(true);
+	let confirmDropEnabled = $state(false);
 	let opponentMode = $state<OpponentMode>('local');
 	let aiDifficulty = $state<AiDifficulty>('hard');
 	let matchMode = $state<MatchMode>('classic');
@@ -215,6 +227,7 @@ export function createGameController() {
 	const appearanceLocked = $derived(setupLocked);
 	const canUndo = $derived(game.moveHistory.length > 0);
 	const canRedo = $derived(redoMoves.length > 0);
+	const previewMove = $derived(lockedMove ?? hoveredMove);
 	const showGameOverModal = $derived(
 		game.status.state !== 'playing' && !gameOverDismissed && gameOverModalReady
 	);
@@ -298,6 +311,12 @@ export function createGameController() {
 			legacyBoardColor(localStorage.getItem(LEGACY_SCENE_THEME_KEY))
 		);
 		const savedLabelsVisible = parseBoolean(localStorage.getItem(STORAGE_KEYS.labelsVisible));
+		const savedGridLayersVisible = parseBoolean(
+			localStorage.getItem(STORAGE_KEYS.gridLayersVisible)
+		);
+		const savedConfirmDropEnabled = parseBoolean(
+			localStorage.getItem(STORAGE_KEYS.confirmDropEnabled)
+		);
 		const savedOpponentMode = parseOpponentMode(localStorage.getItem(STORAGE_KEYS.opponentMode));
 		const savedAiDifficulty = parseAiDifficulty(localStorage.getItem(STORAGE_KEYS.aiDifficulty));
 		const savedMatchMode = parseMatchMode(localStorage.getItem(STORAGE_KEYS.matchMode));
@@ -315,6 +334,8 @@ export function createGameController() {
 		if (savedUiTheme) uiTheme = savedUiTheme;
 		boardColor = savedBoardColor;
 		if (savedLabelsVisible !== null) labelsVisible = savedLabelsVisible;
+		if (savedGridLayersVisible !== null) gridLayersVisible = savedGridLayersVisible;
+		if (savedConfirmDropEnabled !== null) confirmDropEnabled = savedConfirmDropEnabled;
 		if (savedOpponentMode) opponentMode = savedOpponentMode;
 		if (savedAiDifficulty) aiDifficulty = savedAiDifficulty;
 		if (savedMatchMode) matchMode = savedMatchMode;
@@ -337,6 +358,29 @@ export function createGameController() {
 				DEFAULT_PIECE_COLORS.playerTwo
 			)
 		};
+	}
+
+	function selectOrPlayMove(move: Move): void {
+		if (!confirmDropEnabled) {
+			playMove(move);
+			return;
+		}
+
+		if (!canAcceptHumanMove()) {
+			playMove(move);
+			return;
+		}
+
+		if (lockedMove && sameMove(lockedMove, move)) {
+			const moveToPlay = lockedMove;
+			lockedMove = null;
+			playMove(moveToPlay);
+			return;
+		}
+
+		moveError = '';
+		lockedMove = { ...move };
+		hoveredMove = { ...move };
 	}
 
 	function playMove(move: Move, source: MoveSource = 'human'): void {
@@ -416,6 +460,7 @@ export function createGameController() {
 		recordedMatchId = null;
 		game = createGame(winCondition, boardDimensions);
 		hoveredMove = null;
+		lockedMove = null;
 		moveError = '';
 		redoMoves = [];
 		selectedSpecial = null;
@@ -433,6 +478,7 @@ export function createGameController() {
 		redoMoves = [toMove(lastMove), ...redoMoves];
 		game = replayMoves(previousMoves, winCondition, boardDimensions);
 		hoveredMove = null;
+		lockedMove = null;
 		moveError = '';
 		selectedSpecial = null;
 		gameOverDismissed = true;
@@ -455,6 +501,7 @@ export function createGameController() {
 			);
 			redoMoves = remainingMoves;
 			hoveredMove = null;
+			lockedMove = null;
 			selectedSpecial = null;
 			gameOverDismissed = false;
 			recordMatchOutcome();
@@ -472,6 +519,7 @@ export function createGameController() {
 		redoMoves = [...game.moveHistory.map(toMove), ...redoMoves];
 		game = createGame(winCondition, boardDimensions);
 		hoveredMove = null;
+		lockedMove = null;
 		moveError = '';
 		selectedSpecial = null;
 		gameOverDismissed = true;
@@ -488,6 +536,12 @@ export function createGameController() {
 		hoveredMove = move;
 	}
 
+	function canAcceptHumanMove(): boolean {
+		if (game.status.state !== 'playing') return false;
+
+		return !(opponentMode === 'ai' && game.status.state === 'playing' && game.currentPlayer === 2);
+	}
+
 	function setBoardColor(color: string): void {
 		boardColor = normalizeBoardColor(color, boardColor);
 		persist(STORAGE_KEYS.boardColor, boardColor);
@@ -501,6 +555,7 @@ export function createGameController() {
 
 		clearQueuedAiMove();
 		selectedSpecial = null;
+		lockedMove = null;
 		opponentMode = nextMode;
 		persist(STORAGE_KEYS.opponentMode, nextMode);
 		queueAiMove();
@@ -513,6 +568,7 @@ export function createGameController() {
 		}
 
 		clearQueuedAiMove();
+		lockedMove = null;
 		aiDifficulty = nextDifficulty;
 		persist(STORAGE_KEYS.aiDifficulty, nextDifficulty);
 		queueAiMove();
@@ -552,6 +608,8 @@ export function createGameController() {
 		clearGameOverModalDelay();
 		boardDimensions = normalized;
 		game = createGame(winCondition, boardDimensions);
+		hoveredMove = null;
+		lockedMove = null;
 		redoMoves = [];
 		selectedSpecial = null;
 		gameOverDismissed = false;
@@ -586,6 +644,8 @@ export function createGameController() {
 		clearGameOverModalDelay();
 		winCondition = normalized;
 		game = createGame(winCondition, boardDimensions);
+		hoveredMove = null;
+		lockedMove = null;
 		redoMoves = [];
 		selectedSpecial = null;
 		gameOverDismissed = false;
@@ -608,12 +668,14 @@ export function createGameController() {
 		if (selectedSpecial === special) {
 			selectedSpecial = null;
 			hoveredMove = null;
+			lockedMove = null;
 			return;
 		}
 
 		if (selectedSpecial) {
 			selectedSpecial = special;
 			hoveredMove = null;
+			lockedMove = null;
 			return;
 		}
 
@@ -633,6 +695,7 @@ export function createGameController() {
 
 		selectedSpecial = special;
 		hoveredMove = null;
+		lockedMove = null;
 	}
 
 	function setPieceShape(nextShape: PieceShape): void {
@@ -673,6 +736,17 @@ export function createGameController() {
 		persist(STORAGE_KEYS.labelsVisible, String(labelsVisible));
 	}
 
+	function toggleGridLayers(): void {
+		gridLayersVisible = !gridLayersVisible;
+		persist(STORAGE_KEYS.gridLayersVisible, String(gridLayersVisible));
+	}
+
+	function toggleConfirmDrop(): void {
+		confirmDropEnabled = !confirmDropEnabled;
+		lockedMove = null;
+		persist(STORAGE_KEYS.confirmDropEnabled, String(confirmDropEnabled));
+	}
+
 	function recordMatchOutcome(): void {
 		if (game.status.state === 'playing' || recordedMatchId === matchId) return;
 
@@ -682,6 +756,7 @@ export function createGameController() {
 
 	function finishPlacement(source: MoveSource, movingPlayer: Player): void {
 		hoveredMove = null;
+		lockedMove = null;
 		redoMoves = [];
 		gameOverDismissed = false;
 		recordMatchOutcome();
@@ -859,8 +934,20 @@ export function createGameController() {
 		get hoveredMove() {
 			return hoveredMove;
 		},
+		get previewMove() {
+			return previewMove;
+		},
+		get lockedMove() {
+			return lockedMove;
+		},
 		get labelsVisible() {
 			return labelsVisible;
+		},
+		get gridLayersVisible() {
+			return gridLayersVisible;
+		},
+		get confirmDropEnabled() {
+			return confirmDropEnabled;
 		},
 		get specialLoadoutSlots() {
 			return specialLoadoutSlots;
@@ -928,6 +1015,7 @@ export function createGameController() {
 		dismissGameOver,
 		hydrateFromStorage,
 		playMove,
+		selectOrPlayMove,
 		redoMove,
 		resetGame,
 		rewindGame,
@@ -941,6 +1029,8 @@ export function createGameController() {
 		setPieceShape,
 		setBoardColor,
 		setWinLineLength,
+		toggleConfirmDrop,
+		toggleGridLayers,
 		toggleLabels,
 		toggleBlockerCombo,
 		toggleDoubleAdjacent,
@@ -1037,18 +1127,32 @@ async function chooseMctsFallbackMove(
 	return chooseMctsMove(game, options);
 }
 
-function classicAiSearchOptionsForGame(aiDifficulty: AiDifficulty, game: GameSnapshot) {
+export function classicAiSearchOptionsForGame(
+	aiDifficulty: AiDifficulty,
+	game: GameSnapshot
+): ClassicAiSearchOptions {
 	const preset = CLASSIC_AI_SEARCH_PRESETS[aiDifficulty];
-	const multiplier =
+	const winRuleMultiplier =
 		1 +
 		(game.winCondition.linesToWin - 1) * 0.34 +
 		(game.winCondition.lineLength - DEFAULT_WIN_CONDITION.lineLength) * 0.16;
+	const boardArea =
+		(game.dimensions.rows * game.dimensions.columns) /
+		(DEFAULT_BOARD_DIMENSIONS.rows * DEFAULT_BOARD_DIMENSIONS.columns);
+	const boardBreadthMultiplier =
+		1 + (Math.sqrt(boardArea) - 1) * CLASSIC_AI_BOARD_SCALE[aiDifficulty];
+	const heightMultiplier =
+		1 +
+		Math.max(0, game.dimensions.height - DEFAULT_BOARD_DIMENSIONS.height) *
+			(aiDifficulty === 'nightmare' ? 0.055 : 0.04);
+	const multiplier = winRuleMultiplier * boardBreadthMultiplier * heightMultiplier;
+	const earlyExitMultiplier = Math.min(multiplier, aiDifficulty === 'nightmare' ? 2 : 1.65);
 
 	return {
 		...preset,
 		simulations: Math.round(preset.simulations * multiplier),
 		maxTimeMs: Math.round(preset.maxTimeMs * multiplier),
-		earlyExitVisits: Math.round(preset.earlyExitVisits * Math.min(multiplier, 1.45))
+		earlyExitVisits: Math.round(preset.earlyExitVisits * earlyExitMultiplier)
 	};
 }
 
@@ -1104,6 +1208,10 @@ function chooseRandomMove(game: GameSnapshot): Move | null {
 function randomMoveIndex(moveCount: number): number {
 	if (moveCount <= 0) return -1;
 	return Math.floor(Math.random() * moveCount);
+}
+
+function sameMove(first: Move, second: Move): boolean {
+	return first.row === second.row && first.col === second.col;
 }
 
 function legacyBoardColor(value: string | null): string {

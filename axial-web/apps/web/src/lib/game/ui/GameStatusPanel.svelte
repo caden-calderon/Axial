@@ -35,6 +35,8 @@
 		boardColor,
 		uiTheme,
 		labelsVisible,
+		gridLayersVisible,
+		confirmDropEnabled,
 		opponentMode,
 		aiDifficulty,
 		matchMode,
@@ -74,6 +76,8 @@
 		onPieceShapeChange,
 		onPieceColorChange,
 		onBoardColorChange,
+		onToggleConfirmDrop,
+		onToggleGridLayers,
 		onToggleLabels,
 		onToggleTheme
 	}: {
@@ -82,6 +86,8 @@
 		boardColor: string;
 		uiTheme: UiThemeName;
 		labelsVisible: boolean;
+		gridLayersVisible: boolean;
+		confirmDropEnabled: boolean;
 		opponentMode: OpponentMode;
 		aiDifficulty: AiDifficulty;
 		matchMode: MatchMode;
@@ -121,6 +127,8 @@
 		onPieceShapeChange: (shape: PieceShape) => void;
 		onPieceColorChange: (player: 1 | 2, color: string) => void;
 		onBoardColorChange: (color: string) => void;
+		onToggleConfirmDrop: () => void;
+		onToggleGridLayers: () => void;
 		onToggleLabels: () => void;
 		onToggleTheme: () => void;
 	} = $props();
@@ -313,12 +321,16 @@
 						{boardColor}
 						{uiTheme}
 						{labelsVisible}
+						{gridLayersVisible}
+						{confirmDropEnabled}
 						{pieceShape}
 						{pieceColors}
 						{appearanceLocked}
 						{onPieceShapeChange}
 						{onPieceColorChange}
 						{onBoardColorChange}
+						{onToggleConfirmDrop}
+						{onToggleGridLayers}
 						{onToggleLabels}
 						{onToggleTheme}
 					/>

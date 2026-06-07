@@ -36,6 +36,8 @@
 - [x] Add a lightweight automated production smoke command.
 - [x] Document the release workflow, production smoke checklist, and rollback habit.
 - [x] Add PWA install metadata, branded icons, and a lightweight service worker.
+- [x] Replace favicon/PWA icon assets with Caden's updated `AxialLOGO.png` render and derive the
+  generated icon sizes from a modest app-icon-frame crop.
 - [ ] Add the future multiplayer Worker/Durable Object app when live invite links become the active task.
 
 ## Phase 1: Beautiful Playable 3D MVP
@@ -86,6 +88,8 @@
 - [x] Keep Classic AI rule-aware for configurable connect length and line-count win targets.
 - [x] Improve Classic AI heuristic/MCTS behavior for 2-3-line targets by valuing and blocking non-terminal line progress.
 - [x] Generalize Classic AI search geometry for expanded board dimensions.
+- [x] Scale Classic AI budgets by board size for stronger Max play and remove the instant MCTS
+  shortcut for non-terminal forcing/block-forcing moves.
 - [ ] Benchmark AI strength and latency.
 - [ ] Train or build a Classic-mode opponent that can beat Caden.
 
@@ -137,6 +141,13 @@
 - [x] Replace preset grid themes with exact board-color picker and grouped Appearance controls.
 - [x] Add synchronized sequential glow to the AXIAL/dimensions HUD and center turn pill, and restore
   separate gradient P1/P2 color pills.
+- [x] Add a persisted click-to-confirm drop option with an armed-column preview animation.
+- [x] Add a persisted grid-layer visibility option with a floor-only board mode.
+- [x] Make the piece drop ease-out more gradual as pieces settle.
+- [x] Polish confirm-drop/last-move scene cues with cell-sized square plates, a taller tapered
+  armed-column beam, preview-over-grid compositing, and axis labels in floor-only mode.
+- [x] Stop the armed-column beam from piercing the square floor marker and keep axis-label state
+  stable across grid/axis toggle changes.
 - [ ] Build richer glass/acrylic board material.
 - [x] Build first pass of emissive/glossy player piece materials.
 - [ ] Add selective bloom or glow pass.
@@ -153,6 +164,8 @@
 - [ ] Audit `packages/core` and `packages/ai` for unused exports, duplicated rules/search logic, and tests that should be tightened.
   - 2026-06-07 follow-up: generalized Classic AI geometry for non-default board dimensions and
     added focused dynamic-board AI tests. Larger-board strength/latency benchmarking remains open.
+  - 2026-06-07 AI follow-up: Max Classic AI now uses larger board-scaled budgets and broader
+    forcing/block-forcing heuristic moves run through MCTS instead of returning instantly.
 - [ ] Keep initial cleanup refactors behavior-preserving unless Caden's next requested changes touch the same area.
 - [x] Re-run focused unit/e2e/build checks after cleanup and before pushing.
   - 2026-06-07 follow-up: `pnpm check`, `pnpm lint`, `pnpm build`, `pnpm --filter @axial/core test:unit`, `pnpm --filter @axial/ai test:unit`, `pnpm --filter @axial/web test:unit -- --run`, `pnpm --filter @axial/web test:e2e`, and local Playwright fallback visual smokes passed.

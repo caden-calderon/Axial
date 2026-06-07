@@ -49,9 +49,21 @@ Important boundaries:
 - Game-over modal actions distinguish `New match`, `Review from start`, and `Keep board`.
 - Classic AI uses difficulty-aware minimum visible thinking time in addition to its worker search
   budget: Easy stays brisk, while Max waits long enough to feel deliberate even when the worker
-  finds a fast obvious move.
+  finds a fast obvious move. Larger boards scale Max's worker budget by board breadth/height, and
+  non-terminal forcing/block-forcing moves now search instead of bypassing MCTS.
 - Appearance setup includes exact board-grid color, piece shape, separate per-player gradient color
-  pills, light/dark mode, and axis-number visibility.
+  pills, light/dark mode, axis-number visibility, grid-layer visibility, and click-to-confirm drop.
+- Click-to-confirm is controller-owned board input state: first click arms a move, clicking a
+  different column re-arms, and clicking the armed column commits. The scene receives the active
+  preview plus a locked flag for the staged-column animation. The armed preview uses a tall,
+  tapered beam and cell-sized square floor plate; preview meshes render above the grid so floor
+  lines do not read as stripes through the piece. The beam begins just above the floor plate so it
+  does not pierce the marker, and its contrast/pulse are tied to the same animation phase as the
+  preview piece and square plate.
+- Grid-layer visibility is a scene preference. Full cube grid remains default; floor-only mode
+  swaps to reduced floor geometry while axis labels remain controlled only by the axis-number
+  toggle. Axis labels stay mounted while hidden and live outside the grid remount key so toggling
+  grid layers/axis numbers does not reset their camera-facing visibility state.
 - Board color is live and persisted. Piece shape and player colors are pre-match loadout settings:
   they are editable on a fresh board, then locked after the first placed piece until
   `New match`/reset.
@@ -81,7 +93,7 @@ Important boundaries:
 3. Keep refactors behavior-preserving unless Caden explicitly asks for gameplay changes in the same area.
 4. Respond to Caden-directed UI/gameplay changes after the cleanup pass has produced a clear map of risks and quick wins.
 5. Add progress messages for longer Classic AI searches.
-6. Extend the seeded evaluation harness with larger random/greedy/heuristic/basic-MCTS benchmark suites and JSONL-style match logs, including connect-5 and 2-3-line win targets.
+6. Extend the seeded evaluation harness with larger random/greedy/heuristic/basic-MCTS benchmark suites and JSONL-style match logs, including expanded board sizes, connect-5, and 2-3-line win targets.
 7. Tune the TypeScript heuristic/MCTS engine against those benchmarks and direct Caden challenge games.
 8. Consider a dedicated benchmark CLI/script once match logging shape is clear.
 9. Keep the old Python MCTS runnable only as a reference/baseline through the root `uv` environment.

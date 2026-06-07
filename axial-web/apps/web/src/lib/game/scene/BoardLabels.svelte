@@ -7,11 +7,13 @@
 	import BillboardLabel from './BillboardLabel.svelte';
 
 	let {
+		visible = true,
 		palette,
 		uiTheme,
 		boardRotation,
 		dimensions
 	}: {
+		visible?: boolean;
 		palette: ScenePalette;
 		uiTheme: UiThemeName;
 		boardRotation: number;
@@ -98,25 +100,21 @@
 	const zNumbers = Array.from({ length: initialDimensions.height }, (_, index) =>
 		String(index + 1)
 	);
+	const initialCameraDirection = cameraDirectionInBoardSpace();
 
-	let cameraLocalX = $state(1);
-	let cameraLocalZ = $state(1);
+	let cameraLocalX = $state(initialCameraDirection[0]);
+	let cameraLocalZ = $state(initialCameraDirection[1]);
 	const labelColor = $derived(uiTheme === 'dark' ? '#dcecff' : palette.grid);
 	const numberFillOpacity = $derived(uiTheme === 'dark' ? 0.28 : 0.34);
 	const numberOutlineOpacity = $derived(uiTheme === 'dark' ? 0.16 : 0.1);
 	const axisFillOpacity = $derived(uiTheme === 'dark' ? 0.36 : 0.42);
 	const axisOutlineOpacity = $derived(uiTheme === 'dark' ? 0.21 : 0.14);
 	useTask((delta) => {
-		const world = camera.current.position;
-		const cos = Math.cos(boardRotation);
-		const sin = Math.sin(boardRotation);
-		const nextLocalX = cos * world.x - sin * world.z;
-		const nextLocalZ = sin * world.x + cos * world.z;
-		const length = Math.hypot(nextLocalX, nextLocalZ) || 1;
+		const [nextLocalX, nextLocalZ] = cameraDirectionInBoardSpace();
 		const blend = Math.min(1, delta * 8);
 
-		cameraLocalX += (nextLocalX / length - cameraLocalX) * blend;
-		cameraLocalZ += (nextLocalZ / length - cameraLocalZ) * blend;
+		cameraLocalX += (nextLocalX - cameraLocalX) * blend;
+		cameraLocalZ += (nextLocalZ - cameraLocalZ) * blend;
 	});
 
 	function createPerimeterLabels(): PerimeterLabel[] {
@@ -187,6 +185,17 @@
 		});
 	}
 
+	function cameraDirectionInBoardSpace(): [number, number] {
+		const world = camera.current.position;
+		const cos = Math.cos(boardRotation);
+		const sin = Math.sin(boardRotation);
+		const nextLocalX = cos * world.x - sin * world.z;
+		const nextLocalZ = sin * world.x + cos * world.z;
+		const length = Math.hypot(nextLocalX, nextLocalZ) || 1;
+
+		return [nextLocalX / length, nextLocalZ / length];
+	}
+
 	function perimeterNumberVisibility(label: PerimeterLabel): number {
 		return railVisibility(railScore(label.railId));
 	}
@@ -250,7 +259,7 @@
 	}
 </script>
 
-<T.Group>
+<T.Group {visible}>
 	{#each perimeterLabels as label (label.id)}
 		{@const visibility = perimeterNumberVisibility(label)}
 		{#if visibility > 0.01}

@@ -15,6 +15,10 @@ export type FadedLineGeometryData = {
 	alphas: number[];
 };
 
+export type GridGeometryOptions = {
+	includeLayers?: boolean;
+};
+
 export function boardSize(dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS): Vec3 {
 	return [
 		dimensions.columns * CELL_SPACING,
@@ -57,7 +61,8 @@ export function columnHitPosition(
 }
 
 export function createGridLinePositions(
-	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS
+	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+	options: GridGeometryOptions = {}
 ): number[] {
 	const positions: number[] = [];
 	const size = boardSize(dimensions);
@@ -67,19 +72,16 @@ export function createGridLinePositions(
 	const yMax = size[1] / 2;
 	const zMin = -size[2] / 2;
 	const zMax = size[2] / 2;
+	const includeLayers = options.includeLayers ?? true;
+
+	if (!includeLayers) {
+		pushGridPlaneLines(positions, dimensions, yMin, xMin, xMax, zMin, zMax);
+		return positions;
+	}
 
 	for (let y = 0; y <= dimensions.height; y += 1) {
 		const yPos = boundary(y, dimensions.height);
-
-		for (let row = 0; row <= dimensions.rows; row += 1) {
-			const zPos = boundary(row, dimensions.rows);
-			pushLine(positions, [xMin, yPos, zPos], [xMax, yPos, zPos]);
-		}
-
-		for (let col = 0; col <= dimensions.columns; col += 1) {
-			const xPos = boundary(col, dimensions.columns);
-			pushLine(positions, [xPos, yPos, zMin], [xPos, yPos, zMax]);
-		}
+		pushGridPlaneLines(positions, dimensions, yPos, xMin, xMax, zMin, zMax);
 	}
 
 	for (let col = 0; col <= dimensions.columns; col += 1) {
@@ -94,7 +96,8 @@ export function createGridLinePositions(
 }
 
 export function createOuterEdgeLinePositions(
-	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS
+	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+	options: GridGeometryOptions = {}
 ): number[] {
 	const positions: number[] = [];
 	const size = boardSize(dimensions);
@@ -104,6 +107,15 @@ export function createOuterEdgeLinePositions(
 	const yMax = size[1] / 2;
 	const zMin = -size[2] / 2;
 	const zMax = size[2] / 2;
+	const includeLayers = options.includeLayers ?? true;
+
+	if (!includeLayers) {
+		pushLine(positions, [xMin, yMin, zMin], [xMax, yMin, zMin]);
+		pushLine(positions, [xMax, yMin, zMin], [xMax, yMin, zMax]);
+		pushLine(positions, [xMax, yMin, zMax], [xMin, yMin, zMax]);
+		pushLine(positions, [xMin, yMin, zMax], [xMin, yMin, zMin]);
+		return positions;
+	}
 
 	for (const y of [yMin, yMax]) {
 		for (const z of [zMin, zMax]) {
@@ -125,12 +137,22 @@ export function createOuterEdgeLinePositions(
 }
 
 export function createGridNodePositions(
-	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS
+	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+	options: GridGeometryOptions = {}
 ): number[] {
 	const positions: number[] = [];
+	const includeLayers = options.includeLayers ?? true;
 
 	for (let col = 0; col <= dimensions.columns; col += 1) {
 		const x = boundary(col, dimensions.columns);
+
+		if (!includeLayers) {
+			for (let row = 0; row <= dimensions.rows; row += 1) {
+				const z = boundary(row, dimensions.rows);
+				positions.push(x, boundary(0, dimensions.height), z);
+			}
+			continue;
+		}
 
 		for (let height = 0; height <= dimensions.height; height += 1) {
 			const y = boundary(height, dimensions.height);
@@ -147,7 +169,8 @@ export function createGridNodePositions(
 
 export function createGridGlowStreakPositions(
 	length: number,
-	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS
+	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+	options: GridGeometryOptions = {}
 ): number[] {
 	const positions: number[] = [];
 	const size = boardSize(dimensions);
@@ -158,11 +181,14 @@ export function createGridGlowStreakPositions(
 	const zMin = -size[2] / 2;
 	const zMax = size[2] / 2;
 	const halfLength = length / 2;
+	const includeLayers = options.includeLayers ?? true;
 
 	for (let col = 0; col <= dimensions.columns; col += 1) {
 		const x = boundary(col, dimensions.columns);
 
 		for (let height = 0; height <= dimensions.height; height += 1) {
+			if (!includeLayers && height > 0) continue;
+
 			const y = boundary(height, dimensions.height);
 
 			for (let row = 0; row <= dimensions.rows; row += 1) {
@@ -172,11 +198,13 @@ export function createGridGlowStreakPositions(
 					[clamp(x - halfLength, xMin, xMax), y, z],
 					[clamp(x + halfLength, xMin, xMax), y, z]
 				);
-				pushLine(
-					positions,
-					[x, clamp(y - halfLength, yMin, yMax), z],
-					[x, clamp(y + halfLength, yMin, yMax), z]
-				);
+				if (includeLayers) {
+					pushLine(
+						positions,
+						[x, clamp(y - halfLength, yMin, yMax), z],
+						[x, clamp(y + halfLength, yMin, yMax), z]
+					);
+				}
 				pushLine(
 					positions,
 					[x, y, clamp(z - halfLength, zMin, zMax)],
@@ -191,7 +219,8 @@ export function createGridGlowStreakPositions(
 
 export function createGridGlowStreakGeometry(
 	length: number,
-	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS
+	dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+	options: GridGeometryOptions = {}
 ): FadedLineGeometryData {
 	const positions: number[] = [];
 	const alphas: number[] = [];
@@ -202,11 +231,14 @@ export function createGridGlowStreakGeometry(
 	const yMax = size[1] / 2;
 	const zMin = -size[2] / 2;
 	const zMax = size[2] / 2;
+	const includeLayers = options.includeLayers ?? true;
 
 	for (let col = 0; col <= dimensions.columns; col += 1) {
 		const x = boundary(col, dimensions.columns);
 
 		for (let height = 0; height <= dimensions.height; height += 1) {
+			if (!includeLayers && height > 0) continue;
+
 			const y = boundary(height, dimensions.height);
 
 			for (let row = 0; row <= dimensions.rows; row += 1) {
@@ -215,8 +247,10 @@ export function createGridGlowStreakGeometry(
 
 				pushFadedLine(positions, alphas, center, [clamp(x - length, xMin, xMax), y, z]);
 				pushFadedLine(positions, alphas, center, [clamp(x + length, xMin, xMax), y, z]);
-				pushFadedLine(positions, alphas, center, [x, clamp(y - length, yMin, yMax), z]);
-				pushFadedLine(positions, alphas, center, [x, clamp(y + length, yMin, yMax), z]);
+				if (includeLayers) {
+					pushFadedLine(positions, alphas, center, [x, clamp(y - length, yMin, yMax), z]);
+					pushFadedLine(positions, alphas, center, [x, clamp(y + length, yMin, yMax), z]);
+				}
 				pushFadedLine(positions, alphas, center, [x, y, clamp(z - length, zMin, zMax)]);
 				pushFadedLine(positions, alphas, center, [x, y, clamp(z + length, zMin, zMax)]);
 			}
@@ -224,6 +258,26 @@ export function createGridGlowStreakGeometry(
 	}
 
 	return { positions, alphas };
+}
+
+function pushGridPlaneLines(
+	positions: number[],
+	dimensions: BoardDimensions,
+	y: number,
+	xMin: number,
+	xMax: number,
+	zMin: number,
+	zMax: number
+): void {
+	for (let row = 0; row <= dimensions.rows; row += 1) {
+		const zPos = boundary(row, dimensions.rows);
+		pushLine(positions, [xMin, y, zPos], [xMax, y, zPos]);
+	}
+
+	for (let col = 0; col <= dimensions.columns; col += 1) {
+		const xPos = boundary(col, dimensions.columns);
+		pushLine(positions, [xPos, y, zMin], [xPos, y, zMax]);
+	}
 }
 
 function boundary(index: number, count: number): number {

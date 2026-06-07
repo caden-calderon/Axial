@@ -9,7 +9,9 @@
 	let {
 		game,
 		hoveredMove,
+		previewLocked,
 		labelsVisible,
+		gridLayersVisible,
 		uiTheme,
 		boardColor,
 		pieceShape,
@@ -21,7 +23,9 @@
 	}: {
 		game: GameSnapshot;
 		hoveredMove: Move | null;
+		previewLocked: boolean;
 		labelsVisible: boolean;
+		gridLayersVisible: boolean;
 		uiTheme: UiThemeName;
 		boardColor: string;
 		pieceShape: PieceShape;
@@ -38,7 +42,9 @@
 		<AxialWorld
 			{game}
 			{hoveredMove}
+			{previewLocked}
 			{labelsVisible}
+			{gridLayersVisible}
 			{uiTheme}
 			{boardColor}
 			{pieceShape}

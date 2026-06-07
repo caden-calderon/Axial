@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BLOCKER_CELL, cellCount, indexOf } from '@axial/core';
+import { BLOCKER_CELL, cellCount, createGame, indexOf } from '@axial/core';
 import { GAME_OVER_MODAL_DELAY_MS } from '../animation';
-import { createGameController, remainingAiThinkingDelayMs } from './gameController.svelte';
+import {
+	classicAiSearchOptionsForGame,
+	createGameController,
+	remainingAiThinkingDelayMs
+} from './gameController.svelte';
 
 describe('game controller AI timing', () => {
 	it('keeps visible thinking time meaningfully longer on stronger difficulties', () => {
@@ -15,6 +19,20 @@ describe('game controller AI timing', () => {
 		expect(hard).toBeGreaterThan(medium);
 		expect(max).toBeGreaterThan(hard);
 		expect(remainingAiThinkingDelayMs('nightmare', max)).toBe(0);
+	});
+
+	it('scales Max Classic search budget up on larger boards', () => {
+		const defaultBoard = classicAiSearchOptionsForGame('nightmare', createGame());
+		const largeBoard = classicAiSearchOptionsForGame(
+			'nightmare',
+			createGame(undefined, { height: 10, rows: 10, columns: 10 })
+		);
+
+		expect(defaultBoard.maxTimeMs).toBeGreaterThan(2000);
+		expect(largeBoard.maxTimeMs).toBeGreaterThan(defaultBoard.maxTimeMs!);
+		expect(largeBoard.simulations).toBeGreaterThan(defaultBoard.simulations!);
+		expect(largeBoard.earlyExitVisits).toBeGreaterThan(defaultBoard.earlyExitVisits!);
+		expect(largeBoard.earlyExitRatio).toBeGreaterThanOrEqual(defaultBoard.earlyExitRatio!);
 	});
 });
 
@@ -65,6 +83,53 @@ describe('game controller appearance lock', () => {
 
 		expect(controller.boardColor).toBe('#123456');
 		expect(controller.appearanceLocked).toBe(true);
+	});
+
+	it('arms and confirms board clicks when confirm drop is enabled', () => {
+		const controller = createGameController();
+
+		controller.toggleConfirmDrop();
+		controller.selectOrPlayMove({ row: 0, col: 0 });
+
+		expect(controller.confirmDropEnabled).toBe(true);
+		expect(controller.game.moveHistory).toHaveLength(0);
+		expect(controller.lockedMove).toEqual({ row: 0, col: 0 });
+		expect(controller.previewMove).toEqual({ row: 0, col: 0 });
+
+		controller.selectOrPlayMove({ row: 0, col: 1 });
+
+		expect(controller.game.moveHistory).toHaveLength(0);
+		expect(controller.lockedMove).toEqual({ row: 0, col: 1 });
+
+		controller.selectOrPlayMove({ row: 0, col: 1 });
+
+		expect(controller.game.moveHistory).toHaveLength(1);
+		expect(controller.game.moveHistory[0]).toMatchObject({ row: 0, col: 1 });
+		expect(controller.lockedMove).toBeNull();
+	});
+
+	it('clears an armed confirm drop when the option is turned off', () => {
+		const controller = createGameController();
+
+		controller.toggleConfirmDrop();
+		controller.selectOrPlayMove({ row: 0, col: 0 });
+		controller.toggleConfirmDrop();
+		controller.selectOrPlayMove({ row: 0, col: 1 });
+
+		expect(controller.confirmDropEnabled).toBe(false);
+		expect(controller.lockedMove).toBeNull();
+		expect(controller.game.moveHistory).toHaveLength(1);
+		expect(controller.game.moveHistory[0]).toMatchObject({ row: 0, col: 1 });
+	});
+
+	it('toggles grid layers independently from axis labels', () => {
+		const controller = createGameController();
+
+		controller.toggleGridLayers();
+		controller.toggleLabels();
+
+		expect(controller.gridLayersVisible).toBe(false);
+		expect(controller.labelsVisible).toBe(false);
 	});
 
 	it('locks opponent and rules setup after the first placed piece', () => {

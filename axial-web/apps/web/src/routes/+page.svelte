@@ -91,8 +91,10 @@
 	<div class="aurora"></div>
 	<AxialScene
 		game={controller.game}
-		hoveredMove={controller.hoveredMove}
+		hoveredMove={controller.previewMove}
+		previewLocked={controller.lockedMove !== null}
 		labelsVisible={controller.labelsVisible}
+		gridLayersVisible={controller.gridLayersVisible}
 		uiTheme={controller.uiTheme}
 		boardColor={controller.boardColor}
 		pieceShape={controller.pieceShape}
@@ -100,7 +102,7 @@
 		placementMode={controller.placementMode}
 		doubleAdjacentAnchor={controller.pendingDoubleAdjacentOrigin}
 		onHover={controller.setHover}
-		onPlay={controller.playMove}
+		onPlay={controller.selectOrPlayMove}
 	/>
 
 	<GameHud
@@ -115,6 +117,8 @@
 		boardColor={controller.boardColor}
 		uiTheme={controller.uiTheme}
 		labelsVisible={controller.labelsVisible}
+		gridLayersVisible={controller.gridLayersVisible}
+		confirmDropEnabled={controller.confirmDropEnabled}
 		opponentMode={controller.opponentMode}
 		aiDifficulty={controller.aiDifficulty}
 		matchMode={controller.matchMode}
@@ -154,6 +158,8 @@
 		onPieceShapeChange={controller.setPieceShape}
 		onPieceColorChange={controller.setPieceColor}
 		onBoardColorChange={controller.setBoardColor}
+		onToggleConfirmDrop={controller.toggleConfirmDrop}
+		onToggleGridLayers={controller.toggleGridLayers}
 		onToggleLabels={controller.toggleLabels}
 		onToggleTheme={controller.toggleTheme}
 	/>

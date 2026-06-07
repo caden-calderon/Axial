@@ -8,24 +8,32 @@
 		boardColor,
 		uiTheme,
 		labelsVisible,
+		gridLayersVisible,
+		confirmDropEnabled,
 		pieceShape,
 		pieceColors,
 		appearanceLocked,
 		onPieceShapeChange,
 		onPieceColorChange,
 		onBoardColorChange,
+		onToggleConfirmDrop,
+		onToggleGridLayers,
 		onToggleLabels,
 		onToggleTheme
 	}: {
 		boardColor: string;
 		uiTheme: UiThemeName;
 		labelsVisible: boolean;
+		gridLayersVisible: boolean;
+		confirmDropEnabled: boolean;
 		pieceShape: PieceShape;
 		pieceColors: PieceColors;
 		appearanceLocked: boolean;
 		onPieceShapeChange: (shape: PieceShape) => void;
 		onPieceColorChange: (player: Player, color: string) => void;
 		onBoardColorChange: (color: string) => void;
+		onToggleConfirmDrop: () => void;
+		onToggleGridLayers: () => void;
 		onToggleLabels: () => void;
 		onToggleTheme: () => void;
 	} = $props();
@@ -157,14 +165,36 @@
 			</button>
 		</div>
 
-		<label class="toggle-row">
-			<span>Axis numbers</span>
-			<input
-				type="checkbox"
-				checked={labelsVisible}
-				aria-label="Toggle axis numbers"
-				onchange={() => onToggleLabels()}
-			/>
-		</label>
+		<div class="toggle-stack">
+			<label class="toggle-row">
+				<span>Grid layers</span>
+				<input
+					type="checkbox"
+					checked={gridLayersVisible}
+					aria-label="Toggle grid layers"
+					onchange={() => onToggleGridLayers()}
+				/>
+			</label>
+
+			<label class="toggle-row">
+				<span>Axis numbers</span>
+				<input
+					type="checkbox"
+					checked={labelsVisible}
+					aria-label="Toggle axis numbers"
+					onchange={() => onToggleLabels()}
+				/>
+			</label>
+
+			<label class="toggle-row">
+				<span>Confirm drop</span>
+				<input
+					type="checkbox"
+					checked={confirmDropEnabled}
+					aria-label="Toggle click to confirm drops"
+					onchange={() => onToggleConfirmDrop()}
+				/>
+			</label>
+		</div>
 	</div>
 </section>

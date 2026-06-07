@@ -5,7 +5,7 @@
 	import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 	import type { BoardDimensions, PlacedMove } from '@axial/core';
 	import { PIECE_DROP_DURATION_MAX_SECONDS, PIECE_DROP_DURATION_MIN_SECONDS } from '../animation';
-	import { cellPosition, dropStartY, PIECE_SIZE } from './geometry';
+	import { CELL_SPACING, cellPosition, dropStartY, PIECE_SIZE } from './geometry';
 	import type { PieceColors, PieceShape } from '../state/pieceAppearance';
 
 	let {
@@ -44,6 +44,8 @@
 	const materialOpacity = $derived(isBlocker ? (settled ? 0.68 : 0.58) : settled ? 0.86 : 0.76);
 	const glowOpacity = $derived(isBlocker ? (settled ? 0.1 : 0.16) : settled ? 0.2 : 0.28);
 	const piecePosition = $derived([target[0], y, target[2]] as [number, number, number]);
+	const boardHeight = $derived(dimensions.height * CELL_SPACING);
+	const floorMarkerOffsetY = $derived(-boardHeight / 2 - y + CELL_SPACING * 0.012);
 	const highlightPulse = $derived(highlighted ? 0.68 + Math.sin(highlightPhase) * 0.24 : 0);
 	const highlightScale = $derived(1.18 + highlightPulse * 0.16);
 	const highlightOpacity = $derived(opacity * (highlighted ? 0.16 + highlightPulse * 0.22 : 0));
@@ -60,12 +62,12 @@
 
 		elapsed += Math.min(delta, 0.04);
 		const progress = Math.min(elapsed / dropDuration, 1);
-		const eased = easeOutCubic(progress);
+		const eased = easeOutQuart(progress);
 
 		y = target[1] + (dropStart - target[1]) * (1 - eased);
-		scale = 0.94 + easeOutCubic(Math.min(progress * 2.6, 1)) * 0.06;
-		opacity = easeOutCubic(clamp((progress - 0.02) / 0.28, 0, 1));
-		fallGlow = Math.pow(1 - progress, 1.12);
+		scale = 0.94 + easeOutQuart(Math.min(progress * 2.35, 1)) * 0.06;
+		opacity = easeOutQuart(clamp((progress - 0.02) / 0.3, 0, 1));
+		fallGlow = Math.pow(1 - progress, 1.35);
 
 		if (progress >= 1) {
 			y = target[1];
@@ -97,8 +99,8 @@
 		return Math.max(min, Math.min(max, value));
 	}
 
-	function easeOutCubic(value: number): number {
-		return 1 - Math.pow(1 - value, 3);
+	function easeOutQuart(value: number): number {
+		return 1 - Math.pow(1 - value, 4);
 	}
 </script>
 
@@ -229,12 +231,17 @@
 	</T.Mesh>
 
 	{#if highlighted}
-		<T.Mesh position={[0, -PIECE_SIZE * 0.56, 0]} rotation.x={-Math.PI / 2} scale={highlightScale}>
-			<T.RingGeometry args={[PIECE_SIZE * 0.58, PIECE_SIZE * 0.88, 64]} />
+		<T.Mesh
+			position={[0, floorMarkerOffsetY, 0]}
+			rotation.x={-Math.PI / 2}
+			scale={highlightScale}
+			renderOrder={8}
+		>
+			<T.PlaneGeometry args={[CELL_SPACING * 0.88, CELL_SPACING * 0.88]} />
 			<T.MeshBasicMaterial
 				color={glow}
 				transparent
-				opacity={highlightOpacity * 0.72}
+				opacity={highlightOpacity * 0.62}
 				depthWrite={false}
 				blending={AdditiveBlending}
 			/>

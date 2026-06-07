@@ -23,7 +23,9 @@
 	let {
 		game,
 		hoveredMove,
+		previewLocked,
 		labelsVisible,
+		gridLayersVisible,
 		uiTheme,
 		boardColor,
 		pieceShape,
@@ -35,7 +37,9 @@
 	}: {
 		game: GameSnapshot;
 		hoveredMove: Move | null;
+		previewLocked: boolean;
 		labelsVisible: boolean;
+		gridLayersVisible: boolean;
 		uiTheme: UiThemeName;
 		boardColor: string;
 		pieceShape: PieceShape;
@@ -49,6 +53,7 @@
 	const palette = $derived(resolveScenePalette(uiTheme, boardColor));
 	const dimensions = $derived(game.dimensions);
 	const dimensionKey = $derived(`${dimensions.height}:${dimensions.rows}:${dimensions.columns}`);
+	const gridKey = $derived(`${dimensionKey}:${gridLayersVisible ? 'full' : 'floor'}`);
 	const previewColor = $derived(
 		placementMode === 'blocker'
 			? '#60756f'
@@ -126,12 +131,12 @@
 />
 
 <T.Group rotation.y={boardRotation} scale={boardScale}>
-	{#key dimensionKey}
-		<BoardGrid {palette} {uiTheme} {dimensions} />
+	{#key gridKey}
+		<BoardGrid {palette} {uiTheme} {dimensions} layersVisible={gridLayersVisible} />
+	{/key}
 
-		{#if labelsVisible}
-			<BoardLabels {palette} {uiTheme} {boardRotation} {dimensions} />
-		{/if}
+	{#key dimensionKey}
+		<BoardLabels visible={labelsVisible} {palette} {uiTheme} {boardRotation} {dimensions} />
 	{/key}
 
 	{#if hoveredMove && previewHeight >= 0 && game.status.state === 'playing'}
@@ -141,6 +146,7 @@
 			{pieceShape}
 			color={previewColor}
 			kind={placementMode}
+			locked={previewLocked}
 			{dimensions}
 		/>
 	{/if}

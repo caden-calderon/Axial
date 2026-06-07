@@ -838,6 +838,16 @@ button {
 	cursor: pointer;
 }
 
+.toggle-stack {
+	display: grid;
+	gap: 0.18rem;
+}
+
+.toggle-stack .toggle-row {
+	min-height: 1.92rem;
+	padding-inline: 0.04rem;
+}
+
 .toggle-row input {
 	position: relative;
 	flex: 0 0 auto;
