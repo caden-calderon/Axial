@@ -29,9 +29,11 @@
 - [x] Switch SvelteKit from `adapter-auto` to explicit `@sveltejs/adapter-cloudflare`.
 - [x] Pin the Cloudflare build Node version with `axial-web/.node-version`.
 - [x] Document Cloudflare Pages build settings, Porkbun/Cloudflare DNS setup, and future multiplayer direction.
-- [ ] Create the Cloudflare Pages project from Git.
-- [ ] Move authoritative DNS for `playaxial.dev` from Porkbun DNS to the Cloudflare nameservers assigned to the zone.
-- [ ] Attach `playaxial.dev` as the Pages custom domain after the first successful deploy.
+- [x] Create the Cloudflare Pages project from Git.
+- [x] Move authoritative DNS for `playaxial.dev` from Porkbun DNS to the Cloudflare nameservers assigned to the zone.
+- [x] Attach `playaxial.dev` as the Pages custom domain after the first successful deploy.
+- [x] Add a lightweight automated production smoke command.
+- [x] Document the release workflow, production smoke checklist, and rollback habit.
 - [ ] Add the future multiplayer Worker/Durable Object app when live invite links become the active task.
 
 ## Phase 1: Beautiful Playable 3D MVP

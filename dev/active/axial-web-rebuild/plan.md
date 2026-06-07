@@ -12,7 +12,7 @@ Near-term priority: shift from visual/UI polish into serious Classic-mode AI pla
 - `axial-web/packages/core`: pure TypeScript rules package.
 - `axial-web/packages/ai`: pure TypeScript AI move-selection package.
 - `axial-unity`: preserved Unity version.
-- Production deployment target: Cloudflare Pages at `playaxial.dev`, with Porkbun kept as registrar and Cloudflare used as authoritative DNS once nameservers are changed.
+- Production deployment target: Cloudflare Pages at `https://playaxial.dev`, with Porkbun kept as registrar and Cloudflare used as authoritative DNS.
 
 Important boundaries:
 
@@ -41,7 +41,7 @@ Important boundaries:
 - Opponent mode and match rules are also pre-match setup choices and lock after the first placement.
 - Win rules are pre-match setup choices for both Classic and Tactical: players can choose connect 4 or connect 5, and require 1, 2, or 3 completed lines to win. The core game snapshot carries the selected win condition so replay, undo/redo, and AI evaluate the same rules.
 - Completed lines are first-class visual state during active play. They should be recomputed from board ownership, keyed with stable IDs, and rendered as persistent in-board markers so multi-line modes communicate progress before the final win.
-- The SvelteKit app now uses `@sveltejs/adapter-cloudflare` directly instead of `adapter-auto`; Cloudflare Pages build settings and DNS notes live in `dev/active/axial-web-rebuild/deployment.md`.
+- The SvelteKit app now uses `@sveltejs/adapter-cloudflare` directly instead of `adapter-auto`; Cloudflare Pages build settings, DNS notes, release workflow, and production smoke checklist live in `dev/active/axial-web-rebuild/deployment.md`.
 - The game shell disables browser text selection to preserve a game-like interaction feel.
 - Desktop turn pill is independent from the AXIAL wordmark and fixed-width at top center.
 - Mobile keeps controls smaller, tucked top-right, and hides the turn pill.
@@ -59,7 +59,7 @@ Important boundaries:
 8. Keep Tactical/special-piece AI deferred until Classic-mode AI is locked.
 9. Respond to Caden-directed UI/visual changes when needed.
 10. Add editable loadout UX for choosing the three Tactical specials when returning to Tactical polish.
-11. Complete the first public Cloudflare Pages deployment and attach `playaxial.dev`.
+11. Keep the production deploy loop healthy with local checks, Cloudflare deployment review, and production smoke tests before/after significant changes.
 
 ## Testing Expectations
 

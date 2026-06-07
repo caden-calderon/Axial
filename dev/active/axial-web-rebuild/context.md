@@ -32,9 +32,13 @@ The web app is playable and split into focused layers:
 Deployment state:
 
 - Caden bought `playaxial.dev` through Porkbun.
-- The app is being prepared for Cloudflare Pages using the explicit `@sveltejs/adapter-cloudflare` adapter.
+- `https://playaxial.dev` is live on Cloudflare Pages.
+- `https://playaxial.pages.dev` is the Pages preview/project URL.
+- GitHub integration is enabled; pushes to `main` trigger production Cloudflare Pages deployments.
+- The app uses the explicit `@sveltejs/adapter-cloudflare` adapter.
 - Deployment notes and dashboard values live in `dev/active/axial-web-rebuild/deployment.md`.
-- Recommended DNS path is to keep Porkbun as registrar, add `playaxial.dev` to Cloudflare, then replace the Porkbun nameservers with Cloudflare's assigned nameservers so the apex domain can be attached cleanly to Pages.
+- Porkbun remains the registrar, and Cloudflare is the authoritative DNS host with nameservers `gwen.ns.cloudflare.com` and `melnicoff.ns.cloudflare.com`.
+- Production smoke can be run with `pnpm smoke:production` from `axial-web/`.
 - Future live multiplayer should be a separate Cloudflare Worker plus Durable Objects room service, with the web app remaining the frontend and `@axial/core` validating server-side moves.
 
 Implemented gameplay/UX:
@@ -94,6 +98,8 @@ Latest checks passed from `axial-web/apps/web` unless noted:
 - `pnpm check`
 - `pnpm lint`
 - `pnpm build`
+- `pnpm --filter @axial/web test:e2e`
+- `pnpm smoke:production` against `https://playaxial.dev`
 - Browser plugin runtime was not exposed by tool discovery, so local Playwright fallback was used against `http://localhost:5174/`.
 - Playwright fallback smoke passed: page loaded without page errors, AI mode selected, board clicks advanced through paired human/AI moves to `10 MOVES`.
 - Worker smoke passed against `http://localhost:5173/`: Classic AI worker was created, page had no errors, and one human click advanced through the worker-backed AI reply to `2 MOVES`.
@@ -177,7 +183,6 @@ Useful screenshots in `axial-web/apps/web/` include:
 ## Next Polish Candidates
 
 - More Caden-directed UI changes.
-- First public Cloudflare Pages deploy for `playaxial.dev`.
 - Add editable loadout UX for choosing the three Tactical specials.
 - Graphics quality settings.
 - Richer glass/acrylic board material.

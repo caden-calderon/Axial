@@ -10,6 +10,7 @@
     "preview": "pnpm --filter @axial/web preview",
     "check": "pnpm --filter @axial/web check",
     "lint": "pnpm -r --if-present lint",
+    "smoke:production": "pnpm --filter @axial/web smoke:production",
     "test": "pnpm -r --if-present test",
     "test:unit": "pnpm -r --if-present test:unit"
   },

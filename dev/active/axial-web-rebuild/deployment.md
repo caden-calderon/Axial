@@ -2,7 +2,7 @@
 
 ## Decision
 
-Deploy the playable web app to Cloudflare Pages at `playaxial.dev`.
+Deploy and operate the playable web app on Cloudflare Pages at `playaxial.dev`.
 
 Why Cloudflare:
 
@@ -13,10 +13,11 @@ Why Cloudflare:
 ## Current Production Target
 
 - Registrar: Porkbun.
-- Public domain: `playaxial.dev`.
-- DNS host: Cloudflare, once Caden changes the Porkbun nameservers to the pair Cloudflare assigns for the zone.
+- Public domain: `https://playaxial.dev`.
+- Pages preview domain: `https://playaxial.pages.dev`.
+- DNS host: Cloudflare.
 - Frontend host: Cloudflare Pages.
-- Pages project name: `playaxial` unless Caden wants a different dashboard label.
+- Pages project name: `playaxial`.
 
 ## Cloudflare Pages Build Settings
 
@@ -44,7 +45,9 @@ nodejs_als
 
 The repository pins Node with `axial-web/.node-version`, currently matching local development at Node `24.13.0`.
 
-After the first successful deployment, add `playaxial.dev` under the Pages project's Custom domains tab. For the apex domain, Cloudflare expects the domain to be a Cloudflare zone, so Porkbun should keep registrar ownership while Cloudflare becomes the authoritative DNS provider.
+GitHub integration is enabled. Pushes to `main` trigger production deployments automatically.
+
+`playaxial.dev` is attached under the Pages project's Custom domains tab. For the apex domain, Cloudflare expects the domain to be a Cloudflare zone, so Porkbun keeps registrar ownership while Cloudflare is the authoritative DNS provider.
 
 ## DNS Setup
 
@@ -58,6 +61,60 @@ Recommended path:
 6. Optionally add `www.playaxial.dev` too, then redirect it to the apex domain.
 
 Do not manually create only a CNAME in Porkbun for the apex domain. Cloudflare Pages supports external-DNS CNAME setup for subdomains, but its docs require apex Pages domains to be attached to a Cloudflare zone.
+
+Current nameservers:
+
+```text
+gwen.ns.cloudflare.com
+melnicoff.ns.cloudflare.com
+```
+
+## Release Workflow
+
+Normal production update loop:
+
+```text
+pnpm check
+pnpm lint
+pnpm test:unit
+pnpm build
+pnpm --filter @axial/web test:e2e
+pnpm smoke:production
+git add ...
+git commit -m "..."
+git push origin main
+```
+
+After the push:
+
+1. Open Cloudflare dashboard.
+2. Go to Workers & Pages.
+3. Open the `playaxial` Pages project.
+4. Check the latest deployment from `main`.
+5. Wait for the deployment to finish successfully.
+6. Run the production smoke again if the change touched runtime behavior or rendering.
+
+For branch work, Cloudflare can create preview deployments when preview builds are enabled. Treat `main` as the production branch.
+
+## Production Smoke Checklist
+
+Automated smoke:
+
+```text
+pnpm smoke:production
+```
+
+Manual smoke:
+
+1. Open `https://playaxial.dev`.
+2. Confirm the page loads over HTTPS without certificate warnings.
+3. Confirm the `AXIAL` HUD, board dimensions, board canvas, and right control panel appear.
+4. Start a local Classic move and confirm a piece appears with last-move glow.
+5. Switch to AI mode before the first move, place a piece, and confirm the AI replies.
+6. Toggle light/dark mode and one scene theme.
+7. On a phone-width viewport, confirm the board, HUD, and compact controls fit without text overlap.
+
+If a deployment is bad, use the Pages project's Deployments tab to roll back to the last known-good deployment while fixing `main`.
 
 ## Multiplayer Direction
 
