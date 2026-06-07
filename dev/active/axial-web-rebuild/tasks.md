@@ -119,6 +119,9 @@
 - [x] Lock piece shape and colors after the first placed piece until a new match/reset.
 - [x] Add pulsing last-move glow so the newest placement is easy to spot.
 - [x] Render completed lines with a draw-through glow animation and persistent idle marker.
+- [x] Delay the game-over modal until the completed-line animation can finish.
+- [x] Slow and soften piece drop animation timing.
+- [x] Replace dark-mode radial color fields with a solid scene background.
 - [x] Add a pre-match Classic/Tactical rules selector.
 - [x] Add pre-match connect-length and lines-to-win controls for both modes.
 - [x] Lock opponent mode and rules after the first placement until a new match/reset.

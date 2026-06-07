@@ -30,6 +30,7 @@ import {
 	type PieceColors,
 	type PieceShape
 } from './pieceAppearance';
+import { GAME_OVER_MODAL_DELAY_MS } from '../animation';
 import { createClassicAiClient, type ClassicAiClient } from './classicAiClient';
 import { createSessionRecord, recordCompletedGame, type SessionRecord } from './sessionRecord';
 
@@ -163,6 +164,8 @@ export function createGameController() {
 	let moveError = $state('');
 	let redoMoves = $state<ReplayMove[]>([]);
 	let gameOverDismissed = $state(false);
+	let gameOverModalReady = $state(false);
+	let gameOverModalTimeout: ReturnType<typeof setTimeout> | null = null;
 	let selectedSpecial = $state<TacticalSpecialId | null>(null);
 	let aiThinking = $state(false);
 	let aiMoveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -184,7 +187,9 @@ export function createGameController() {
 	const appearanceLocked = $derived(setupLocked);
 	const canUndo = $derived(game.moveHistory.length > 0);
 	const canRedo = $derived(redoMoves.length > 0);
-	const showGameOverModal = $derived(game.status.state !== 'playing' && !gameOverDismissed);
+	const showGameOverModal = $derived(
+		game.status.state !== 'playing' && !gameOverDismissed && gameOverModalReady
+	);
 	const winnerLabel = $derived(
 		game.status.state === 'won' ? resultLabels[game.status.winner] : null
 	);
@@ -367,6 +372,7 @@ export function createGameController() {
 
 	function resetGame(): void {
 		clearQueuedAiMove();
+		clearGameOverModalDelay();
 		matchId += 1;
 		recordedMatchId = null;
 		game = createGame(winCondition);
@@ -375,6 +381,7 @@ export function createGameController() {
 		redoMoves = [];
 		selectedSpecial = null;
 		gameOverDismissed = false;
+		gameOverModalReady = false;
 	}
 
 	function undoMove(): void {
@@ -382,6 +389,7 @@ export function createGameController() {
 		if (!lastMove) return;
 
 		clearQueuedAiMove();
+		clearGameOverModalDelay();
 		const previousMoves = game.moveHistory.slice(0, -1).map(toMove);
 		redoMoves = [toMove(lastMove), ...redoMoves];
 		game = replayMoves(previousMoves, winCondition);
@@ -389,6 +397,7 @@ export function createGameController() {
 		moveError = '';
 		selectedSpecial = null;
 		gameOverDismissed = true;
+		gameOverModalReady = false;
 	}
 
 	function redoMove(): void {
@@ -396,6 +405,7 @@ export function createGameController() {
 		if (!nextMove) return;
 
 		clearQueuedAiMove();
+		clearGameOverModalDelay();
 		moveError = '';
 
 		try {
@@ -405,6 +415,7 @@ export function createGameController() {
 			selectedSpecial = null;
 			gameOverDismissed = false;
 			recordMatchOutcome();
+			queueGameOverModal();
 		} catch (error) {
 			moveError = error instanceof Error ? error.message : 'Move rejected';
 		}
@@ -414,16 +425,20 @@ export function createGameController() {
 		if (!canUndo && !canRedo) return;
 
 		clearQueuedAiMove();
+		clearGameOverModalDelay();
 		redoMoves = [...game.moveHistory.map(toMove), ...redoMoves];
 		game = createGame(winCondition);
 		hoveredMove = null;
 		moveError = '';
 		selectedSpecial = null;
 		gameOverDismissed = true;
+		gameOverModalReady = false;
 	}
 
 	function dismissGameOver(): void {
+		clearGameOverModalDelay();
 		gameOverDismissed = true;
+		gameOverModalReady = false;
 	}
 
 	function setHover(move: Move | null): void {
@@ -496,11 +511,13 @@ export function createGameController() {
 		}
 
 		clearQueuedAiMove();
+		clearGameOverModalDelay();
 		winCondition = normalized;
 		game = createGame(winCondition);
 		redoMoves = [];
 		selectedSpecial = null;
 		gameOverDismissed = false;
+		gameOverModalReady = false;
 		persist(STORAGE_KEYS.winLineLength, String(winCondition.lineLength));
 		persist(STORAGE_KEYS.linesToWin, String(winCondition.linesToWin));
 	}
@@ -596,6 +613,7 @@ export function createGameController() {
 		redoMoves = [];
 		gameOverDismissed = false;
 		recordMatchOutcome();
+		queueGameOverModal();
 
 		if (
 			source === 'human' &&
@@ -669,6 +687,30 @@ export function createGameController() {
 
 		classicAiClient?.cancelPending();
 		aiThinking = false;
+	}
+
+	function queueGameOverModal(): void {
+		clearGameOverModalDelay();
+		gameOverModalReady = false;
+
+		if (game.status.state === 'playing' || gameOverDismissed) return;
+
+		if (game.status.state === 'draw') {
+			gameOverModalReady = true;
+			return;
+		}
+
+		gameOverModalTimeout = setTimeout(() => {
+			gameOverModalTimeout = null;
+			gameOverModalReady = true;
+		}, GAME_OVER_MODAL_DELAY_MS);
+	}
+
+	function clearGameOverModalDelay(): void {
+		if (!gameOverModalTimeout) return;
+
+		clearTimeout(gameOverModalTimeout);
+		gameOverModalTimeout = null;
 	}
 
 	function getClassicAiClient(): ClassicAiClient {

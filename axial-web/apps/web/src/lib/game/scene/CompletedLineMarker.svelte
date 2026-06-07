@@ -2,6 +2,10 @@
 	import { T, useTask } from '@threlte/core';
 	import { AdditiveBlending, Quaternion, Vector3 } from 'three';
 	import { cellFromIndex, type CompletedLine } from '@axial/core';
+	import {
+		COMPLETED_LINE_DRAW_DURATION_SECONDS,
+		COMPLETED_LINE_SETTLE_DURATION_SECONDS
+	} from '../animation';
 	import { cellPosition, PIECE_SIZE, type Vec3 } from './geometry';
 	import type { PieceColors } from '../state/pieceAppearance';
 
@@ -24,8 +28,8 @@
 	const idlePhaseOffset = $derived(hashPhase(line.id));
 
 	let elapsed = $state(0);
-	const drawDuration = 1.35;
-	const settleDuration = 0.45;
+	const drawDuration = COMPLETED_LINE_DRAW_DURATION_SECONDS;
+	const settleDuration = COMPLETED_LINE_SETTLE_DURATION_SECONDS;
 	const progress = $derived(Math.min(elapsed / drawDuration, 1));
 	const easedProgress = $derived(easeInOutCubic(progress));
 	const settleProgress = $derived(

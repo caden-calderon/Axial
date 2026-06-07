@@ -57,6 +57,9 @@ Implemented gameplay/UX:
 - Match setup exposes win-rule controls for connect length and completed lines needed; those settings are persisted and lock after the first placement.
 - The latest placed move gets a pulsing 3D glow so returning to the board makes the most recent placement easy to find.
 - Completed lines are now visible before the match ends. The core snapshot exposes stable completed-line IDs, and the scene renders each line with a draw-through animation, traveling glow bead, final pulse, and idle glowing marker.
+- The game-over modal is delayed after wins so the completed-line draw animation can finish before the result overlay appears.
+- Piece drops use a slower, softer easing curve than the first implementation so placements settle more gracefully.
+- Dark scene backgrounds use one solid field color per scene instead of the earlier radial color fields/aurora treatment.
 - Multi-line scoring counts maximal contiguous runs, not every overlapping length-N window. In connect-4 / 2-lines mode, five in a row is one completed line, while crossing or separate completed runs count separately.
 - Tactical mode now has two playable specials in a fixed three-piece kit per player: two Blocker Combos and one Double Adjacent.
 - Blocker Combo places a neutral gravity blocker first, then requires a regular piece in the same turn.
@@ -77,6 +80,7 @@ Implemented gameplay/UX:
 - Desktop top-right controls use the same full-height acrylic pill scale as the centered turn pill, while mobile keeps the smaller compact toolbar.
 - The Double Adjacent special uses a distinct copy-plus icon so it does not read as the general Pieces/loadout button.
 - Light mode is warmer/desaturated, with stronger board-grid contrast and glow accents.
+- Dark mode uses a solid scene field to keep the board readable and avoid colored background circles competing with pieces/lines.
 - Axis labels behave as a readable overlay: bottom numbers on clockwise perimeter rails; X/Y fixed side candidates; Z fixed corner rail candidates; camera-based fades prevent duplicate clutter.
 - Expanded controls now behave like a match console: a compact live strip, local/AI mode surface, Classic/Tactical rules selector, current setup cards, live appearance controls, and a session record.
 - AI mode is represented in the Match section. Classic AI uses bounded worker-backed MCTS; Tactical AI is intentionally still a random normal-move baseline until Tactical search is designed.
@@ -100,6 +104,7 @@ Latest checks passed from `axial-web/apps/web` unless noted:
 - `pnpm build`
 - `pnpm --filter @axial/web test:e2e`
 - `pnpm smoke:production` against `https://playaxial.dev`
+- `pnpm --filter @axial/web test:unit -- --run src/lib/game/state/gameController.test.ts`
 - Browser plugin runtime was not exposed by tool discovery, so local Playwright fallback was used against `http://localhost:5174/`.
 - Playwright fallback smoke passed: page loaded without page errors, AI mode selected, board clicks advanced through paired human/AI moves to `10 MOVES`.
 - Worker smoke passed against `http://localhost:5173/`: Classic AI worker was created, page had no errors, and one human click advanced through the worker-backed AI reply to `2 MOVES`.

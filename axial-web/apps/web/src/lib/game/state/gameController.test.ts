@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BLOCKER_CELL, indexOf } from '@axial/core';
+import { GAME_OVER_MODAL_DELAY_MS } from '../animation';
 import { createGameController } from './gameController.svelte';
 
 describe('game controller appearance lock', () => {
@@ -61,6 +62,45 @@ describe('game controller appearance lock', () => {
 		expect(controller.winCondition).toEqual({ lineLength: 5, linesToWin: 2 });
 		expect(controller.game.winCondition).toEqual({ lineLength: 5, linesToWin: 2 });
 		expect(controller.setupLocked).toBe(true);
+	});
+
+	it('delays the game-over modal until the completed-line animation can finish', () => {
+		vi.useFakeTimers();
+		try {
+			const controller = createGameController();
+
+			playBottomRowWin(controller);
+
+			expect(controller.game.status.state).toBe('won');
+			expect(controller.game.completedLines).toHaveLength(1);
+			expect(controller.showGameOverModal).toBe(false);
+
+			vi.advanceTimersByTime(GAME_OVER_MODAL_DELAY_MS - 1);
+
+			expect(controller.showGameOverModal).toBe(false);
+
+			vi.advanceTimersByTime(1);
+
+			expect(controller.showGameOverModal).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('cancels a delayed game-over modal when the match resets', () => {
+		vi.useFakeTimers();
+		try {
+			const controller = createGameController();
+
+			playBottomRowWin(controller);
+			controller.resetGame();
+			vi.advanceTimersByTime(GAME_OVER_MODAL_DELAY_MS);
+
+			expect(controller.game.status.state).toBe('playing');
+			expect(controller.showGameOverModal).toBe(false);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('plays a tactical blocker combo without advancing until the regular piece lands', () => {
@@ -185,3 +225,13 @@ describe('game controller appearance lock', () => {
 		expect(controller.game.moveHistory.map((move) => move.player)).toEqual([1, 1]);
 	});
 });
+
+function playBottomRowWin(controller: ReturnType<typeof createGameController>): void {
+	controller.playMove({ row: 0, col: 0 });
+	controller.playMove({ row: 1, col: 0 });
+	controller.playMove({ row: 0, col: 1 });
+	controller.playMove({ row: 1, col: 1 });
+	controller.playMove({ row: 0, col: 2 });
+	controller.playMove({ row: 1, col: 2 });
+	controller.playMove({ row: 0, col: 3 });
+}

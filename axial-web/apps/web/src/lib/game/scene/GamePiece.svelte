@@ -3,6 +3,7 @@
 	import { RoundedBoxGeometry } from '@threlte/extras';
 	import { AdditiveBlending } from 'three';
 	import type { PlacedMove } from '@axial/core';
+	import { PIECE_DROP_DURATION_MAX_SECONDS, PIECE_DROP_DURATION_MIN_SECONDS } from '../animation';
 	import { cellPosition, DROP_START_Y, PIECE_SIZE } from './geometry';
 	import type { PieceColors, PieceShape } from '../state/pieceAppearance';
 
@@ -55,12 +56,12 @@
 
 		elapsed += Math.min(delta, 0.04);
 		const progress = Math.min(elapsed / dropDuration, 1);
-		const eased = easeOutQuint(progress);
+		const eased = easeOutCubic(progress);
 
 		y = target[1] + (DROP_START_Y - target[1]) * (1 - eased);
-		scale = 0.94 + easeOutCubic(Math.min(progress * 3.8, 1)) * 0.06;
-		opacity = easeOutCubic(clamp((progress - 0.04) / 0.18, 0, 1));
-		fallGlow = Math.pow(1 - progress, 1.35);
+		scale = 0.94 + easeOutCubic(Math.min(progress * 2.6, 1)) * 0.06;
+		opacity = easeOutCubic(clamp((progress - 0.02) / 0.28, 0, 1));
+		fallGlow = Math.pow(1 - progress, 1.12);
 
 		if (progress >= 1) {
 			y = target[1];
@@ -73,7 +74,7 @@
 
 	function createDropDuration(move: PlacedMove, index: number): number {
 		const seed = (index + 1) * 37 + move.row * 101 + move.col * 211 + move.height * 17;
-		return randomRange(seed, 2, 0.58, 0.74);
+		return randomRange(seed, 2, PIECE_DROP_DURATION_MIN_SECONDS, PIECE_DROP_DURATION_MAX_SECONDS);
 	}
 
 	function randomRange(seed: number, salt: number, min: number, max: number): number {
@@ -94,10 +95,6 @@
 
 	function easeOutCubic(value: number): number {
 		return 1 - Math.pow(1 - value, 3);
-	}
-
-	function easeOutQuint(value: number): number {
-		return 1 - Math.pow(1 - value, 5);
 	}
 </script>
 

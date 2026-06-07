@@ -45,6 +45,7 @@ button {
 	--accent: #f5d46f;
 	--brand: #dfece8;
 	--brand-muted: #8fa29b;
+	--field: #071012;
 	--field-a: #071012;
 	--field-b: #10100a;
 	position: relative;
@@ -52,18 +53,7 @@ button {
 	height: 100vh;
 	overflow: hidden;
 	isolation: isolate;
-	background:
-		radial-gradient(
-			circle at 12% 16%,
-			color-mix(in oklab, var(--azure) 22%, transparent),
-			transparent 24rem
-		),
-		radial-gradient(
-			circle at 84% 72%,
-			color-mix(in oklab, var(--solar) 18%, transparent),
-			transparent 24rem
-		),
-		linear-gradient(135deg, var(--field-a), var(--field-b));
+	background: var(--field);
 	color: var(--text);
 	-webkit-user-select: none;
 	user-select: none;
@@ -78,6 +68,7 @@ button {
 	--accent: #8d7835;
 	--brand: #6b716b;
 	--brand-muted: #9b9e96;
+	--field: #e8ece3;
 	--field-a: #e8ece3;
 	--field-b: #d7e4dd;
 	--shadow: color-mix(in oklab, #31453e 22%, transparent);
@@ -87,6 +78,7 @@ button {
 	--solar: #ff7a96;
 	--azure: #73f5d8;
 	--accent: #a88cff;
+	--field: #080812;
 	--field-a: #06070f;
 	--field-b: #141027;
 }
@@ -95,6 +87,7 @@ button {
 	--solar: #aa5e6d;
 	--azure: #347c72;
 	--accent: #6f5ba6;
+	--field: #ebe8e4;
 	--field-a: #ebe8e4;
 	--field-b: #dad7dd;
 }
@@ -103,6 +96,7 @@ button {
 	--solar: #ffb56e;
 	--azure: #8fa9ff;
 	--accent: #67d8ff;
+	--field: #071219;
 	--field-a: #071018;
 	--field-b: #102331;
 }
@@ -111,35 +105,13 @@ button {
 	--solar: #aa7042;
 	--azure: #536d9f;
 	--accent: #2f7f8a;
+	--field: #e6ede8;
 	--field-a: #e6ede8;
 	--field-b: #d4e4dd;
 }
 
-.game-shell[data-theme='light'] .aurora {
-	opacity: 0.42;
-	filter: blur(56px) saturate(0.82);
-}
-
 .aurora {
-	position: absolute;
-	inset: -20%;
-	z-index: -1;
-	background:
-		linear-gradient(
-			120deg,
-			transparent 18%,
-			color-mix(in oklab, var(--accent) 13%, transparent),
-			transparent 42%
-		),
-		linear-gradient(
-			34deg,
-			transparent 20%,
-			color-mix(in oklab, var(--azure) 16%, transparent),
-			transparent 58%
-		);
-	filter: blur(42px);
-	opacity: 0.7;
-	transform: rotate(-8deg);
+	display: none;
 }
 
 .icon-button {

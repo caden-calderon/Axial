@@ -25,6 +25,8 @@ test('Axial shell loads and renders the game canvas', async ({ page }) => {
 		page.getByRole('button', { name: /collapse settings|expand settings/i })
 	).toBeVisible();
 	await expect(page.locator('canvas')).toBeVisible();
+	await expect(page.locator('.game-shell')).toHaveCSS('background-image', 'none');
+	await expect(page.locator('.aurora')).toHaveCSS('display', 'none');
 
 	await page.waitForFunction(() => {
 		const canvas = document.querySelector('canvas');
