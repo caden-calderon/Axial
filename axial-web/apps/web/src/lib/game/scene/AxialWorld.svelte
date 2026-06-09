@@ -79,7 +79,7 @@
 
 	onMount(() => {
 		const updateViewport = () => {
-			isCompact = window.innerWidth < 720;
+			isCompact = isCompactViewport();
 		};
 
 		updateViewport();
@@ -87,6 +87,12 @@
 
 		return () => window.removeEventListener('resize', updateViewport);
 	});
+
+	function isCompactViewport(): boolean {
+		return (
+			window.innerWidth < 720 || window.matchMedia('(hover: none) and (pointer: coarse)').matches
+		);
+	}
 
 	function isMovePlayable(move: Move): boolean {
 		return (

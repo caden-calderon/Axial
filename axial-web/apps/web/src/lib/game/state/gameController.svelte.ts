@@ -20,6 +20,7 @@ import {
 	type Move,
 	type Player,
 	type PlacedMove,
+	type PlacedMoveSpecial,
 	type ReplayMove,
 	type TacticalSpecialId,
 	type WinCondition
@@ -52,7 +53,8 @@ const STORAGE_KEYS = {
 	linesToWin: 'axial-lines-to-win',
 	pieceShape: 'axial-piece-shape',
 	playerOneColor: 'axial-piece-player-one',
-	playerTwoColor: 'axial-piece-player-two'
+	playerTwoColor: 'axial-piece-player-two',
+	activeMatch: 'axial-active-match'
 } as const;
 
 const LEGACY_SCENE_THEME_KEY = 'axial-scene-theme';
@@ -209,6 +211,18 @@ const CLASSIC_AI_BOARD_SCALE = {
 type MoveSource = 'human' | 'ai';
 export type PlacementMode = 'piece' | 'blocker' | 'double-adjacent';
 export type TacticalSpecialCounts = Record<TacticalSpecialId, number>;
+
+type PersistedActiveMatch = {
+	version: 1;
+	matchMode: MatchMode;
+	opponentMode: OpponentMode;
+	aiDifficulty: AiDifficulty;
+	winCondition: WinCondition;
+	boardDimensions: BoardDimensions;
+	moveHistory: ReplayMove[];
+	redoMoves: ReplayMove[];
+	gameOverDismissed: boolean;
+};
 
 export const TACTICAL_SPECIAL_LOADOUT: TacticalSpecialCounts = {
 	'blocker-combo': 2,
@@ -394,6 +408,69 @@ export function createGameController() {
 				DEFAULT_PIECE_COLORS.playerTwo
 			)
 		};
+
+		if (restoreActiveMatch(localStorage.getItem(STORAGE_KEYS.activeMatch))) {
+			queueGameOverModal();
+			queueAiMove();
+		}
+	}
+
+	function restoreActiveMatch(serialized: string | null): boolean {
+		const saved = parsePersistedActiveMatch(serialized);
+		if (!saved) return false;
+
+		try {
+			const restoredGame = replayMoves(
+				saved.moveHistory,
+				saved.winCondition,
+				saved.boardDimensions
+			);
+			boardDimensions = saved.boardDimensions;
+			winCondition = saved.winCondition;
+			matchMode = saved.matchMode;
+			opponentMode = saved.opponentMode;
+			aiDifficulty = saved.aiDifficulty;
+			game = restoredGame;
+			redoMoves = saved.redoMoves;
+			hoveredMove = null;
+			lockedMove = null;
+			selectedSpecial = null;
+			gameOverDismissed = saved.gameOverDismissed;
+			gameOverModalReady = false;
+			matchId += 1;
+			recordedMatchId = null;
+			return true;
+		} catch {
+			clearSavedActiveMatch();
+			return false;
+		}
+	}
+
+	function saveActiveMatch(): void {
+		if (!browser) return;
+
+		if (game.moveHistory.length === 0 && redoMoves.length === 0) {
+			clearSavedActiveMatch();
+			return;
+		}
+
+		const payload: PersistedActiveMatch = {
+			version: 1,
+			matchMode,
+			opponentMode,
+			aiDifficulty,
+			winCondition: { ...winCondition },
+			boardDimensions: { ...boardDimensions },
+			moveHistory: game.moveHistory.map(toMove),
+			redoMoves: redoMoves.map((move) => ({ ...move, special: cloneSpecial(move.special) })),
+			gameOverDismissed
+		};
+
+		localStorage.setItem(STORAGE_KEYS.activeMatch, JSON.stringify(payload));
+	}
+
+	function clearSavedActiveMatch(): void {
+		if (browser) localStorage.removeItem(STORAGE_KEYS.activeMatch);
 	}
 
 	function selectOrPlayMove(move: Move): void {
@@ -502,6 +579,7 @@ export function createGameController() {
 		selectedSpecial = null;
 		gameOverDismissed = false;
 		gameOverModalReady = false;
+		clearSavedActiveMatch();
 	}
 
 	function undoMove(): void {
@@ -519,6 +597,7 @@ export function createGameController() {
 		selectedSpecial = null;
 		gameOverDismissed = true;
 		gameOverModalReady = false;
+		saveActiveMatch();
 	}
 
 	function redoMove(): void {
@@ -542,6 +621,7 @@ export function createGameController() {
 			gameOverDismissed = false;
 			recordMatchOutcome();
 			queueGameOverModal();
+			saveActiveMatch();
 		} catch (error) {
 			moveError = error instanceof Error ? error.message : 'Move rejected';
 		}
@@ -560,12 +640,14 @@ export function createGameController() {
 		selectedSpecial = null;
 		gameOverDismissed = true;
 		gameOverModalReady = false;
+		saveActiveMatch();
 	}
 
 	function dismissGameOver(): void {
 		clearGameOverModalDelay();
 		gameOverDismissed = true;
 		gameOverModalReady = false;
+		saveActiveMatch();
 	}
 
 	function setHover(move: Move | null): void {
@@ -651,6 +733,7 @@ export function createGameController() {
 		gameOverDismissed = false;
 		gameOverModalReady = false;
 		persistBoardDimensions(boardDimensions);
+		clearSavedActiveMatch();
 		queueAiMove();
 	}
 
@@ -688,6 +771,7 @@ export function createGameController() {
 		gameOverModalReady = false;
 		persist(STORAGE_KEYS.winLineLength, String(winCondition.lineLength));
 		persist(STORAGE_KEYS.linesToWin, String(winCondition.linesToWin));
+		clearSavedActiveMatch();
 	}
 
 	function toggleBlockerCombo(): void {
@@ -797,6 +881,7 @@ export function createGameController() {
 		gameOverDismissed = false;
 		recordMatchOutcome();
 		queueGameOverModal();
+		saveActiveMatch();
 
 		if (
 			source === 'human' &&
@@ -1083,6 +1168,136 @@ function parseBoolean(value: string | null): boolean | null {
 	if (value === 'true') return true;
 	if (value === 'false') return false;
 	return null;
+}
+
+function parsePersistedActiveMatch(serialized: string | null): PersistedActiveMatch | null {
+	if (!serialized) return null;
+
+	try {
+		const value: unknown = JSON.parse(serialized);
+		if (!isRecord(value) || value.version !== 1) return null;
+
+		const matchMode = parseMatchMode(readString(value.matchMode));
+		const opponentMode = parseOpponentMode(readString(value.opponentMode));
+		const aiDifficulty = parseAiDifficulty(readString(value.aiDifficulty));
+		const winCondition = parseSavedWinCondition(value.winCondition);
+		const boardDimensions = parseSavedBoardDimensions(value.boardDimensions);
+		const moveHistory = parseReplayMoveList(value.moveHistory);
+		const redoMoves = parseReplayMoveList(value.redoMoves);
+		const gameOverDismissed =
+			typeof value.gameOverDismissed === 'boolean' && value.gameOverDismissed;
+
+		if (
+			!matchMode ||
+			!opponentMode ||
+			!aiDifficulty ||
+			!winCondition ||
+			!boardDimensions ||
+			!moveHistory ||
+			!redoMoves
+		) {
+			return null;
+		}
+
+		return {
+			version: 1,
+			matchMode,
+			opponentMode,
+			aiDifficulty,
+			winCondition,
+			boardDimensions,
+			moveHistory,
+			redoMoves,
+			gameOverDismissed
+		};
+	} catch {
+		return null;
+	}
+}
+
+function parseSavedWinCondition(value: unknown): WinCondition | null {
+	if (!isRecord(value)) return null;
+
+	try {
+		return normalizeWinCondition({
+			lineLength: Number(value.lineLength),
+			linesToWin: Number(value.linesToWin)
+		});
+	} catch {
+		return null;
+	}
+}
+
+function parseSavedBoardDimensions(value: unknown): BoardDimensions | null {
+	if (!isRecord(value)) return null;
+
+	try {
+		return normalizeBoardDimensions({
+			height: Number(value.height),
+			rows: Number(value.rows),
+			columns: Number(value.columns)
+		});
+	} catch {
+		return null;
+	}
+}
+
+function parseReplayMoveList(value: unknown): ReplayMove[] | null {
+	if (!Array.isArray(value)) return null;
+
+	const moves: ReplayMove[] = [];
+	for (const item of value) {
+		const move = parseSavedReplayMove(item);
+		if (!move) return null;
+		moves.push(move);
+	}
+
+	return moves;
+}
+
+function parseSavedReplayMove(value: unknown): ReplayMove | null {
+	if (!isRecord(value)) return null;
+
+	const row = Number(value.row);
+	const col = Number(value.col);
+	if (!Number.isInteger(row) || !Number.isInteger(col)) return null;
+
+	const move: ReplayMove = { row, col };
+	if (value.kind === 'blocker' || value.kind === 'piece') {
+		move.kind = value.kind;
+	}
+
+	const special = parseSavedSpecial(value.special);
+	if (value.special !== undefined && !special) return null;
+	if (special) move.special = special;
+
+	return move;
+}
+
+function parseSavedSpecial(value: unknown): PlacedMoveSpecial | null {
+	if (!isRecord(value)) return null;
+	if (value.action !== 'blocker-combo' && value.action !== 'double-adjacent') return null;
+	if (
+		value.step !== 'blocker' &&
+		value.step !== 'piece' &&
+		value.step !== 'first' &&
+		value.step !== 'second'
+	) {
+		return null;
+	}
+
+	return {
+		action: value.action,
+		step: value.step
+	};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null;
+}
+
+function readString(value: unknown): string | null {
+	return typeof value === 'string' ? value : null;
 }
 
 function parseOpponentMode(value: string | null): OpponentMode | null {
@@ -1372,6 +1587,10 @@ function toMove(move: PlacedMove): ReplayMove {
 		row: move.row,
 		col: move.col,
 		kind: move.kind,
-		...(move.special ? { special: { ...move.special } } : {})
+		...(move.special ? { special: cloneSpecial(move.special) } : {})
 	};
+}
+
+function cloneSpecial(special: PlacedMoveSpecial | undefined): PlacedMoveSpecial | undefined {
+	return special ? { ...special } : undefined;
 }

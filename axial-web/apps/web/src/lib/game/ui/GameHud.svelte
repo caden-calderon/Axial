@@ -177,7 +177,7 @@
 		white-space: pre;
 	}
 
-	@media (max-width: 720px) {
+	@media (max-width: 720px), (hover: none) and (pointer: coarse) {
 		.hud {
 			display: grid;
 			gap: 0;

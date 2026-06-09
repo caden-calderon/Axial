@@ -87,6 +87,8 @@
 - [x] Add difficulty presets.
 - [x] Keep Classic AI rule-aware for configurable connect length and line-count win targets.
 - [x] Improve Classic AI heuristic/MCTS behavior for 2-3-line targets by valuing and blocking non-terminal line progress.
+- [x] Fix Classic AI multi-line scoring so a five-cell contiguous run is not valued as two
+  overlapping connect-4 lines.
 - [x] Generalize Classic AI search geometry for expanded board dimensions.
 - [x] Scale Classic AI budgets by board size for stronger Max play and remove the instant MCTS
   shortcut for non-terminal forcing/block-forcing moves.
@@ -157,6 +159,10 @@
   armed-column beam, preview-over-grid compositing, and axis labels in floor-only mode.
 - [x] Stop the armed-column beam from piercing the square floor marker and keep axis-label state
   stable across grid/axis toggle changes.
+- [x] Keep mobile/touch layout compact in landscape: no center turn pill, compact toolbar sizing,
+  and compact camera framing on coarse-pointer devices.
+- [x] Add active-match autosave/restore and a lightweight scene recovery path for WebGL/context or
+  runtime scene failures.
 - [ ] Build richer glass/acrylic board material.
 - [x] Build first pass of emissive/glossy player piece materials.
 - [ ] Add selective bloom or glow pass.

@@ -20,6 +20,7 @@ import {
   chooseRandomMove,
   countLineCompletionsForMove,
   createSeededRandom,
+  evaluatePosition,
   getClassicMoves,
   getSegmentTable,
   moveCountForDimensions,
@@ -27,6 +28,7 @@ import {
   moveToIndex,
   playAiMatch,
   runEvaluation,
+  scoreMove,
   selectLookaheadMove,
 } from "./index";
 
@@ -222,6 +224,28 @@ describe("Classic search state", () => {
 
     expect(state.completedLineCount(1)).toBe(1);
     expect(state.winner).toBeNull();
+  });
+
+  it("does not evaluate a five-cell run as two completed four-cell lines", () => {
+    const state = new ClassicSearchState(undefined, {
+      lineLength: 4,
+      linesToWin: 2,
+    });
+
+    state.makeMove(moveToIndex({ row: 2, col: 0 }), 1);
+    state.makeMove(moveToIndex({ row: 2, col: 1 }), 1);
+    state.makeMove(moveToIndex({ row: 2, col: 2 }), 1);
+    state.makeMove(moveToIndex({ row: 2, col: 3 }), 1);
+
+    const beforeExtension = evaluatePosition(state, 1);
+    const extensionMove = moveToIndex({ row: 2, col: 4 });
+    expect(countLineCompletionsForMove(state, extensionMove, 1)).toBe(0);
+
+    state.makeMove(extensionMove, 1);
+
+    expect(state.completedLineCount(1)).toBe(1);
+    expect(state.winner).toBeNull();
+    expect(evaluatePosition(state, 1) - beforeExtension).toBeLessThan(10_000);
   });
 
   it("can be constructed from canonical replay state", () => {
@@ -435,6 +459,26 @@ describe("Classic heuristic AI", () => {
     expect(result?.reason).toBe("block-forcing");
     expect(result?.move).toEqual(expect.objectContaining({ row: 2 }));
     expect([1, 5]).toContain(result?.move.col);
+  });
+
+  it("prefers completing a separate second line over extending an existing line", () => {
+    const state = new ClassicSearchState(undefined, {
+      lineLength: 4,
+      linesToWin: 2,
+    });
+
+    state.makeMove(moveToIndex({ row: 2, col: 0 }), 1);
+    state.makeMove(moveToIndex({ row: 2, col: 1 }), 1);
+    state.makeMove(moveToIndex({ row: 2, col: 2 }), 1);
+    state.makeMove(moveToIndex({ row: 2, col: 3 }), 1);
+    state.makeMove(moveToIndex({ row: 3, col: 0 }), 1);
+    state.makeMove(moveToIndex({ row: 3, col: 1 }), 1);
+    state.makeMove(moveToIndex({ row: 3, col: 2 }), 1);
+
+    const extension = scoreMove(state, moveToIndex({ row: 2, col: 4 }), 1);
+    const separateLine = scoreMove(state, moveToIndex({ row: 3, col: 3 }), 1);
+
+    expect(extension.score).toBeLessThan(separateLine.score);
   });
 });
 

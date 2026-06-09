@@ -60,6 +60,10 @@ Important boundaries:
   lookahead layer evaluates tempo-aware immediate threats, fork moves, center/shape, and multi-line
   race pressure; MCTS consumes it as a root prior and Max/Hard can let it override noisy rollout
   results when the deterministic score gap is large enough.
+- Classic AI multi-line evaluation must mirror core maximal-line semantics: a longer contiguous run
+  is one line, not multiple overlapping length-N windows. Segment-level heuristics can rank threats,
+  but completed segment windows inside an already-completed maximal run should not count as extra
+  line progress.
 - RAVE should remain scoped to AMAF value estimates: blend AMAF with exploitation, then add
   exploration/progressive bias; update each node only from moves played after that node.
 - Appearance setup includes exact board-grid color, piece shape, separate per-player gradient color
@@ -90,6 +94,11 @@ Important boundaries:
 - The SvelteKit app now uses `@sveltejs/adapter-cloudflare` directly instead of `adapter-auto`; Cloudflare Pages build settings, DNS notes, release workflow, and production smoke checklist live in `dev/active/axial-web-rebuild/deployment.md`.
 - The game shell disables browser text selection to preserve a game-like interaction feel.
 - Mobile app-like play is supported through PWA install metadata and a fullscreen toolbar control where the browser exposes the Fullscreen API.
+- Mobile/touch breakpoints should key off coarse-pointer capability as well as viewport width so
+  phone landscape does not accidentally adopt desktop HUD/pill sizing.
+- Active match recovery should preserve canonical replay progress first. Renderer recovery can
+  remount the Three/Threlte scene, but the source of truth remains controller/core game state and the
+  autosaved replay payload.
 - Desktop turn pill is independent from the AXIAL wordmark and fixed-width at top center, with a
   shorter pill width and larger status text than the first centered version.
 - The AXIAL wordmark, board-dimension HUD text, and centered desktop turn pill use a synchronized

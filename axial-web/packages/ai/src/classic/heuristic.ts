@@ -213,18 +213,23 @@ export function evaluatePosition(
     const blocked = state.blockedCounts[segment.id];
     if (blocked > 0 || (own > 0 && opp > 0)) continue;
 
+    const lineLength = state.winCondition.lineLength;
     if (own > 0) {
-      score += segmentScore(own, state.winCondition.lineLength, false);
+      if (own >= lineLength) continue;
+
+      score += segmentScore(own, lineLength, false);
       if (
-        own === state.winCondition.lineLength - 1 &&
+        own === lineLength - 1 &&
         segmentHasPlayableEmpty(state, segment.id)
       ) {
         score += 950;
       }
     } else if (opp > 0) {
-      score -= segmentScore(opp, state.winCondition.lineLength, true);
+      if (opp >= lineLength) continue;
+
+      score -= segmentScore(opp, lineLength, true);
       if (
-        opp === state.winCondition.lineLength - 1 &&
+        opp === lineLength - 1 &&
         segmentHasPlayableEmpty(state, segment.id)
       ) {
         score -= 1_150;

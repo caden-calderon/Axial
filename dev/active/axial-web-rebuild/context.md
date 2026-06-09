@@ -94,6 +94,8 @@ Implemented gameplay/UX:
   progressively as they settle into the final cell.
 - Dark scene backgrounds use one solid field color per scene instead of the earlier radial color fields/aurora treatment.
 - Multi-line scoring counts maximal contiguous runs, not every overlapping length-N window. In connect-4 / 2-lines mode, five in a row is one completed line, while crossing or separate completed runs count separately.
+- Classic AI scoring now follows that same maximal-line rule: overlapping length-4 windows inside a
+  five-cell run are not valued as separate completed lines or high-priority second-line progress.
 - Tactical mode now has two playable specials in a fixed three-piece kit per player: two Blocker Combos and one Double Adjacent.
 - Blocker Combo places a neutral gravity blocker first, then requires a regular piece in the same turn.
 - Double Adjacent places one owned gravity piece, then requires a second owned gravity piece whose final landing cell is adjacent in the 26-neighbor 3D sense.
@@ -102,6 +104,12 @@ Implemented gameplay/UX:
 - Board appearance uses an exact color picker instead of fixed scene presets. The Void purple remains the default board accent, and the old preset storage value is only used as a one-time color migration fallback.
 - Piece shape and player colors lock after the first placed piece, including undo/review states; starting a new match unlocks them.
 - Supported browsers expose a fullscreen toolbar button. Mobile users can also install Axial from the browser/home-screen flow for the more app-like experience.
+- Active matches autosave to local storage using canonical replay history, dimensions, rules,
+  opponent settings, and redo state. Reloading after a browser issue restores the board instead of
+  losing progress.
+- The game route wraps the 3D scene in a recovery boundary and listens for WebGL context loss. A
+  recoverable render failure remounts the board scene while preserving controller/game state; repeated
+  scene failures fall back to a small manual board restart control.
 
 ## Visual/UI Decisions
 
@@ -111,6 +119,9 @@ Implemented gameplay/UX:
 - Turn labels use neutral language: `Your turn` and `Opponent's turn`.
 - Desktop turn pill is top-centered, uses the same acrylic surface treatment as the controls, and is fixed-width so it does not resize between turn labels. The pill is intentionally shorter than the earlier version and uses larger status text.
 - Mobile hides the turn pill and keeps the control pill tucked into the top-right corner.
+- Mobile/touch layouts stay mobile in landscape as well as portrait: the center turn pill remains
+  hidden, the toolbar keeps compact touch sizing, and the scene uses compact camera framing on
+  coarse-pointer devices even when viewport width exceeds the old 720px breakpoint.
 - Collapsed controls keep the same rounded shape and clip hidden panel content to zero height, so the icon row is truly centered vertically.
 - Tactical turns use a `Pieces` mode in the top-right control pill: the leftmost toolbar button swaps normal controls for special-piece actions, while the dropdown opens either the normal setup menu or piece details depending on the active toolbar mode.
 - The centered desktop turn pill is now status-only, with no arrow or inactive side-expansion affordance.
@@ -140,6 +151,14 @@ Implemented gameplay/UX:
 
 Latest checks passed from `axial-web/apps/web` unless noted:
 
+- 2026-06-09 mobile/recovery/AI-line pass from `axial-web/`: `pnpm --filter @axial/ai test:unit`,
+  `pnpm --filter @axial/web test:unit -- --run`, `pnpm --filter @axial/core test:unit`,
+  `pnpm check`, `pnpm lint`, and `pnpm build` passed. Build retained only the known Three/Threlte
+  route chunk warning at `847.57 kB` minified / `219.78 kB` gzip. Local Playwright fallback mobile
+  smoke against `http://localhost:5174/` verified portrait/landscape compact mobile layout, mobile
+  theme toggle to light mode, and active-match autosave/restore after reload with no page errors.
+  Browser plugin Node execution was not exposed by tool discovery, so the local Playwright fallback
+  was used.
 - 2026-06-07 Classic AI foresight pass from `axial-web/`: `pnpm --filter @axial/ai test:unit`,
   `pnpm check`, `pnpm lint`, `pnpm --filter @axial/web test:unit -- --run`,
   `pnpm --filter @axial/core test:unit`, and `pnpm build`.

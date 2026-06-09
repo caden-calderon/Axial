@@ -947,7 +947,7 @@ button {
 	}
 }
 
-@media (max-width: 720px) {
+@media (max-width: 720px), (hover: none) and (pointer: coarse) {
 	.control-panel {
 		--control-panel-width: min(14rem, calc(100vw - 1.5rem));
 		left: auto;

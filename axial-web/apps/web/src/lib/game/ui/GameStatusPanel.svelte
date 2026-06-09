@@ -143,12 +143,18 @@
 	);
 
 	onMount(() => {
-		expanded = window.innerWidth >= 720;
+		expanded = !isCompactViewport();
 	});
 
 	function togglePiecesMode(): void {
 		if (matchMode !== 'tactical') return;
 		piecesMode = !piecesMode;
+	}
+
+	function isCompactViewport(): boolean {
+		return (
+			window.innerWidth < 720 || window.matchMedia('(hover: none) and (pointer: coarse)').matches
+		);
 	}
 </script>
 

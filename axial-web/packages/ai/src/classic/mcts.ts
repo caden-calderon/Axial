@@ -668,6 +668,8 @@ function fastMoveScore(
     state.completedLineCount(opponent) * 24_000 +
     ownLineCompletions * (remainingOwnLines <= 1 ? 95_000 : 42_000) +
     opponentLineCompletions * (remainingOpponentLines <= 1 ? 82_000 : 36_000);
+  let ownCompletionBonuses = ownLineCompletions;
+  let opponentCompletionBonuses = opponentLineCompletions;
 
   for (const segmentId of state.segmentTable.cellSegments[cellIndex]) {
     if (state.blockedCounts[segmentId] > 0) continue;
@@ -677,16 +679,31 @@ function fastMoveScore(
     const lineLength = state.winCondition.lineLength;
 
     if (opp === 0) {
-      if (own === lineLength - 1) score += 100_000;
-      else if (own === lineLength - 2) score += 1_200;
-      else if (own > 0) score += 80 * own;
-      else score += 8;
+      if (own === lineLength) {
+        continue;
+      } else if (own === lineLength - 1) {
+        score += ownCompletionBonuses > 0 ? 100_000 : 280;
+        ownCompletionBonuses = Math.max(0, ownCompletionBonuses - 1);
+      } else if (own === lineLength - 2) {
+        score += 1_200;
+      } else if (own > 0) {
+        score += 80 * own;
+      } else {
+        score += 8;
+      }
     }
 
     if (own === 0) {
-      if (opp === lineLength - 1) score += 70_000;
-      else if (opp === lineLength - 2) score += 1_000;
-      else if (opp > 0) score += 70 * opp;
+      if (opp === lineLength) {
+        continue;
+      } else if (opp === lineLength - 1) {
+        score += opponentCompletionBonuses > 0 ? 70_000 : 320;
+        opponentCompletionBonuses = Math.max(0, opponentCompletionBonuses - 1);
+      } else if (opp === lineLength - 2) {
+        score += 1_000;
+      } else if (opp > 0) {
+        score += 70 * opp;
+      }
     }
   }
 

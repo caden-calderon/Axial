@@ -9,6 +9,11 @@
 	const controller = createGameController();
 	let fullscreenAvailable = $state(false);
 	let fullscreenActive = $state(false);
+	let sceneEpoch = $state(0);
+	let recoveryMessage = $state('');
+	let sceneBoundaryRecoveries = 0;
+	let lastRecoveryAt = 0;
+	let recoveryMessageTimeout: number | null = null;
 
 	onMount(() => {
 		controller.hydrateFromStorage();
@@ -21,10 +26,15 @@
 		updateFullscreenState();
 		document.addEventListener('fullscreenchange', updateFullscreenState);
 		document.addEventListener('webkitfullscreenchange', updateFullscreenState);
+		window.addEventListener('error', handleGlobalError);
+		window.addEventListener('unhandledrejection', handleUnhandledRejection);
 
 		return () => {
 			document.removeEventListener('fullscreenchange', updateFullscreenState);
 			document.removeEventListener('webkitfullscreenchange', updateFullscreenState);
+			window.removeEventListener('error', handleGlobalError);
+			window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+			if (recoveryMessageTimeout) clearTimeout(recoveryMessageTimeout);
 		};
 	});
 
@@ -64,6 +74,65 @@
 		return document.exitFullscreen?.() ?? doc.webkitExitFullscreen?.();
 	}
 
+	function handleSceneBoundaryError(error: unknown, reset: () => void): void {
+		console.error('Axial scene failed.', error);
+
+		if (sceneBoundaryRecoveries >= 2) {
+			showRecoveryMessage('Board paused. Match preserved.');
+			return;
+		}
+
+		sceneBoundaryRecoveries += 1;
+		window.setTimeout(() => restartScene(reset), 0);
+	}
+
+	function handleRecoverableSceneError(error: unknown): void {
+		console.warn('Axial scene recovered from a rendering issue.', error);
+		restartScene();
+	}
+
+	function handleGlobalError(event: ErrorEvent): void {
+		if (isIgnoredRuntimeError(event.error)) return;
+		restartSceneFromUnexpected(event.error);
+	}
+
+	function handleUnhandledRejection(event: PromiseRejectionEvent): void {
+		if (isIgnoredRuntimeError(event.reason)) return;
+		restartSceneFromUnexpected(event.reason);
+	}
+
+	function restartSceneFromUnexpected(error: unknown): void {
+		const now = Date.now();
+		if (now - lastRecoveryAt < 1500) return;
+
+		lastRecoveryAt = now;
+		console.error('Axial recovered after an unexpected runtime issue.', error);
+		restartScene();
+	}
+
+	function restartScene(reset?: () => void): void {
+		sceneEpoch += 1;
+		reset?.();
+		showRecoveryMessage('Board recovered. Match preserved.');
+	}
+
+	function showRecoveryMessage(message: string): void {
+		recoveryMessage = message;
+		if (recoveryMessageTimeout) clearTimeout(recoveryMessageTimeout);
+		recoveryMessageTimeout = window.setTimeout(() => {
+			recoveryMessage = '';
+			recoveryMessageTimeout = null;
+		}, 4200);
+	}
+
+	function isIgnoredRuntimeError(error: unknown): boolean {
+		return error instanceof Error && error.name === 'AbortError';
+	}
+
+	function recoveryErrorLabel(error: unknown): string {
+		return error instanceof Error ? error.message : 'Board renderer error';
+	}
+
 	type WebkitFullscreenDocument = Document & {
 		webkitExitFullscreen?: () => Promise<void> | void;
 		webkitFullscreenElement?: Element | null;
@@ -89,21 +158,38 @@
 	style:--accent={controller.boardColor}
 >
 	<div class="aurora"></div>
-	<AxialScene
-		game={controller.game}
-		hoveredMove={controller.previewMove}
-		previewLocked={controller.lockedMove !== null}
-		labelsVisible={controller.labelsVisible}
-		gridLayersVisible={controller.gridLayersVisible}
-		uiTheme={controller.uiTheme}
-		boardColor={controller.boardColor}
-		pieceShape={controller.pieceShape}
-		pieceColors={controller.pieceColors}
-		placementMode={controller.placementMode}
-		doubleAdjacentAnchor={controller.pendingDoubleAdjacentOrigin}
-		onHover={controller.setHover}
-		onPlay={controller.selectOrPlayMove}
-	/>
+	<svelte:boundary onerror={handleSceneBoundaryError}>
+		{#key sceneEpoch}
+			<AxialScene
+				game={controller.game}
+				hoveredMove={controller.previewMove}
+				previewLocked={controller.lockedMove !== null}
+				labelsVisible={controller.labelsVisible}
+				gridLayersVisible={controller.gridLayersVisible}
+				uiTheme={controller.uiTheme}
+				boardColor={controller.boardColor}
+				pieceShape={controller.pieceShape}
+				pieceColors={controller.pieceColors}
+				placementMode={controller.placementMode}
+				doubleAdjacentAnchor={controller.pendingDoubleAdjacentOrigin}
+				onHover={controller.setHover}
+				onPlay={controller.selectOrPlayMove}
+				onRecoverableError={handleRecoverableSceneError}
+			/>
+		{/key}
+
+		{#snippet failed(error, reset)}
+			<div
+				class="scene-recovery"
+				role="status"
+				aria-live="polite"
+				aria-label={recoveryErrorLabel(error)}
+			>
+				<strong>Board paused</strong>
+				<button type="button" onclick={() => restartScene(reset)}>Restart board</button>
+			</div>
+		{/snippet}
+	</svelte:boundary>
 
 	<GameHud
 		currentLabel={controller.currentLabel}
@@ -174,4 +260,61 @@
 			onKeepBoard={controller.dismissGameOver}
 		/>
 	{/if}
+
+	{#if recoveryMessage}
+		<div class="recovery-toast" role="status" aria-live="polite">{recoveryMessage}</div>
+	{/if}
 </main>
+
+<style>
+	.scene-recovery,
+	.recovery-toast {
+		position: absolute;
+		z-index: 5;
+		border: 1px solid var(--border);
+		background: var(--panel);
+		color: var(--text);
+		backdrop-filter: blur(18px) saturate(1.1);
+		box-shadow: 0 18px 48px var(--shadow);
+	}
+
+	.scene-recovery {
+		inset: 50% auto auto 50%;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.7rem;
+		padding: 0.72rem 0.82rem;
+		border-radius: 1rem;
+		transform: translate(-50%, -50%);
+	}
+
+	.scene-recovery strong {
+		font-size: 0.82rem;
+		font-weight: 820;
+		white-space: nowrap;
+	}
+
+	.scene-recovery button {
+		min-height: 2rem;
+		border: 1px solid color-mix(in oklab, var(--accent) 42%, transparent);
+		border-radius: 999px;
+		background: color-mix(in oklab, var(--accent) 18%, var(--surface));
+		color: var(--text);
+		cursor: pointer;
+		font-size: 0.72rem;
+		font-weight: 800;
+		padding: 0 0.72rem;
+	}
+
+	.recovery-toast {
+		left: 50%;
+		bottom: 1rem;
+		max-width: min(22rem, calc(100vw - 2rem));
+		padding: 0.62rem 0.78rem;
+		border-radius: 999px;
+		font-size: 0.76rem;
+		font-weight: 760;
+		text-align: center;
+		transform: translateX(-50%);
+	}
+</style>
