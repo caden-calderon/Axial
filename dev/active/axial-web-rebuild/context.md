@@ -4,7 +4,11 @@
 
 Axial is being rebuilt from the preserved Unity/Python project into a polished browser-native strategy game. The active app is `axial-web/apps/web`, using SvelteKit, TypeScript, pnpm, Three.js, and Threlte. The old Unity project remains in `axial-unity/`.
 
-Current next-session priority: start with a performance/refactor cleanup pass, especially the large Three.js/Threlte chunk warning, dead or duplicated code, and any obvious maintainability issues that accumulated during rapid gameplay/UI iteration. After that audit, handle Caden's next directed gameplay/UI changes.
+Current next-session priority: plan the first robust online multiplayer architecture before
+implementation. Caden wants private rooms with a short join code, invite link, QR code, player
+display names, smooth network handling, automatic reconnection, clear error states, and a polished
+friend-vs-friend experience. The preferred direction is a server-authoritative Cloudflare Worker
+plus Durable Object room service that imports `@axial/core` for canonical move validation.
 
 Classic-mode AI remains an important future lane. Caden wants an AI opponent that can beat him as the benchmark. Tactical/special-piece AI remains deferred.
 
@@ -50,6 +54,59 @@ Deployment state:
 - Porkbun remains the registrar, and Cloudflare is the authoritative DNS host with nameservers `gwen.ns.cloudflare.com` and `melnicoff.ns.cloudflare.com`.
 - Production smoke can be run with `pnpm smoke:production` from `axial-web/`.
 - Future live multiplayer should be a separate Cloudflare Worker plus Durable Objects room service, with the web app remaining the frontend and `@axial/core` validating server-side moves.
+- Multiplayer planning notes live in `dev/active/axial-web-rebuild/multiplayer.md`.
+- 2026-06-09 iframe/header check: the repo has no app-level CSP, `_headers`, `X-Frame-Options`,
+  or `frame-ancestors` config. `https://playaxial.pages.dev/` responded without CSP/XFO and should
+  be iframe-embeddable. Local command-line header checks against the custom domain
+  `https://playaxial.dev/` were inconsistent from this environment because DNS/connection behavior
+  looked stale/weird, although browser navigation worked. Before shipping the portfolio embed,
+  verify custom-domain headers from a clean network and/or Cloudflare dashboard.
+
+Portfolio embed/bridge direction:
+
+- Keep Axial as its own app/site and embed it from the portfolio via iframe.
+- Add an explicit opt-in mode such as `?embed=1&bridge=1` instead of exposing every page load as an
+  integration surface.
+- Use a versioned `window.postMessage` protocol between the iframe and portfolio host.
+- Axial should emit `ready`, state snapshots, acknowledgements, and errors. The portfolio host
+  should be able to request state and send safe commands such as difficulty/theme/grid/label
+  settings. It should not need to make board moves; the existing Axial MCTS remains the real
+  opponent.
+- The first state snapshot should be compact and semantic for the portfolio-side LLM: mode/status,
+  current player, winner, move count, dimensions, win condition, last move, move history, relevant
+  settings, and optional threat summaries/winning-move context when available.
+- Security should be explicit: add a `frame-ancestors` CSP allow-list once the portfolio origin is
+  known, validate `event.origin` before obeying commands, reply with a specific `targetOrigin`, and
+  reject malformed/unsupported commands with typed bridge errors.
+- 2026-06-09 v1 bridge implementation landed under `apps/web/src/lib/game/bridge/` with versioned
+  protocol types, payload validation, state snapshots, and a page lifecycle helper. The route starts
+  the bridge only when framed with `?embed=1&bridge=1`. Same-origin parents are allowed for local
+  smoke tests; external portfolio origins must be configured through `PUBLIC_AXIAL_BRIDGE_ORIGINS`
+  before they can control settings.
+- V1 host commands are intentionally narrow: `axial:get-state` and `axial:set-settings`. Settings
+  include theme, axis labels, grid layers, confirm drop, board color, opponent mode, and bridge-facing
+  AI difficulty (`max` maps to the internal `nightmare` preset). Host-controlled moves, rules, and
+  new-game/reset commands remain deferred until Caden explicitly wants those semantics.
+- Bridge snapshots expose semantic, one-based move coordinates plus mode/status, opponent settings,
+  current player, winner, move count, dimensions, win condition, settings, lock flags, AI thinking,
+  and a compact threat summary from pure core simulations. They do not expose raw board arrays,
+  Three/Threlte objects, Svelte internals, or local-storage payloads.
+- 2026-06-18 update: portfolio bridge remains useful but is paused while multiplayer becomes the
+  active planning target. Do not remove the bridge docs/code; just do not let it distract the next
+  goal.
+
+Multiplayer direction:
+
+- Build online play as a server-authoritative room system, not peer-to-peer.
+- Use one Durable Object instance per room/code so each room has a single coordinator for players,
+  spectators, command ordering, canonical game state, and reconnect state.
+- Use WebSockets for low-latency play and hibernatable Durable Object WebSockets for cost-efficient
+  idle rooms when deployed on Cloudflare.
+- First product target: private Classic room creation, short code, invite link, QR code, player
+  names, ready flow, host-selected rules before start, server-validated moves, reconnect tokens,
+  opponent-disconnected UI, rematch, and graceful room expiration.
+- Multiplayer should eventually share core serialization concepts with replay/bridge work, but it
+  needs its own protocol because it is authoritative and networked.
 
 Implemented gameplay/UX:
 
@@ -149,34 +206,19 @@ Implemented gameplay/UX:
 
 ## Recent Verification
 
-Latest checks passed from `axial-web/apps/web` unless noted:
+Latest checks passed from `axial-web/` unless noted:
 
-- 2026-06-09 mobile/recovery/AI-line pass from `axial-web/`: `pnpm --filter @axial/ai test:unit`,
+- 2026-06-09 portfolio bridge v1: `pnpm check`,
+  `pnpm --filter @axial/web test:unit -- --run`, `pnpm --filter @axial/web test:e2e`,
+  `pnpm lint`, `pnpm build`, and `pnpm test:unit` passed. Build retained only the known large
+  Three/Threlte route chunk warning at `855.41 kB` minified / `222.63 kB` gzip.
+- 2026-06-09 mobile/recovery/AI-line pass: `pnpm --filter @axial/ai test:unit`,
   `pnpm --filter @axial/web test:unit -- --run`, `pnpm --filter @axial/core test:unit`,
-  `pnpm check`, `pnpm lint`, and `pnpm build` passed. Build retained only the known Three/Threlte
-  route chunk warning at `847.57 kB` minified / `219.78 kB` gzip. Local Playwright fallback mobile
-  smoke against `http://localhost:5174/` verified portrait/landscape compact mobile layout, mobile
-  theme toggle to light mode, and active-match autosave/restore after reload with no page errors.
-  Browser plugin Node execution was not exposed by tool discovery, so the local Playwright fallback
-  was used.
-- 2026-06-07 Classic AI foresight pass from `axial-web/`: `pnpm --filter @axial/ai test:unit`,
-  `pnpm check`, `pnpm lint`, `pnpm --filter @axial/web test:unit -- --run`,
-  `pnpm --filter @axial/core test:unit`, and `pnpm build`.
-- The foresight build retained only the known Three/Threlte route chunk warning; current route
-  chunk is `843.05 kB` minified / `218.27 kB` gzip.
-- `pnpm --filter @axial/web test:unit -- --run src/lib/game/state/gameController.test.ts` from `axial-web/`
-- `pnpm --filter @axial/ai test:unit` from `axial-web/`
-- `pnpm --filter @axial/core test:unit` from `axial-web/`
-- `pnpm check`
-- `pnpm lint`
-- `pnpm build`
-- `pnpm --filter @axial/web test:e2e`
-- `pnpm smoke:production` against `https://playaxial.dev`
-- `pnpm --filter @axial/web test:unit -- --run src/lib/game/state/gameController.test.ts`
-- Browser plugin runtime was not exposed by tool discovery, so local Playwright fallback was used against `http://localhost:5174/`.
-- Playwright fallback smoke passed: page loaded without page errors, AI mode selected, board clicks advanced through paired human/AI moves to `10 MOVES`.
-- Worker smoke passed against `http://localhost:5173/`: Classic AI worker was created, page had no errors, and one human click advanced through the worker-backed AI reply to `2 MOVES`.
-- Difficulty smoke passed against `http://localhost:5173/`: AI mode revealed Easy/Med/Hard/Max, Max selected correctly, the worker was created, and play advanced to `4 MOVES` with no page errors.
+  `pnpm check`, `pnpm lint`, and `pnpm build` passed. Local Playwright fallback verified mobile
+  portrait/landscape compact layout, mobile theme toggle, and active-match restore.
+- Historical visual-smoke details, screenshot paths, bundle-cleanup notes, and older AI verification
+  logs were archived to
+  `dev/active/axial-web-rebuild/archive/2026-06-18-verification-history.md`.
 
 Known non-blocking build warnings:
 
@@ -202,138 +244,12 @@ Bundle cleanup decision from the 2026-06-07 pass:
   into another required chunk, so defer larger splitting until there is a non-game first route,
   a deliberate loading shell, or a quality-tier architecture.
 
-Visual verification used local Playwright screenshots because the Browser plugin was listed but the required Node REPL `js` execution tool was not exposed by tool discovery.
-
-UI boundary cleanup from the 2026-06-07 follow-up:
-
-- Split `GameStatusPanel.svelte` into focused UI sections:
-  `PanelLiveStrip.svelte`, `MatchSettingsPanel.svelte`, `AppearancePanel.svelte`,
-  `SessionRecordPanel.svelte`, and `TacticalLoadoutPanel.svelte`.
-- Removed the stale `matchConfig` controller getter/import. Tactical test-only getters remain for
-  explicit special-action assertions.
-- Kept the refactor behavior-preserving; shared panel styling still comes from the existing global
-  panel classes.
-
-Board-dimension update from the 2026-06-07 follow-up:
-
-- `@axial/core` now carries `dimensions` on `GameSnapshot`; `createGame`, `replayMoves`, legal
-  moves, gravity, indexing, win-line scanning, and double-adjacent checks accept dynamic
-  dimensions while keeping the 6 x 6 x 7 constants as default compatibility.
-- Web scene geometry, labels, projected column picking, pieces, previews, and completed-line
-  markers now render from `game.dimensions`.
-- `@axial/ai` Classic geometry is now dimension-aware: row-major policy moves, cell-to-move
-  mapping, segment tables, search-state heights, center bias, heuristic ordering, rollouts, and
-  MCTS result conversion all use `game.dimensions`. Classic AI no longer falls back to random only
-  because the board is larger.
-
-Latest cleanup verification:
-
-- `pnpm check`
-- `pnpm lint`
-- `pnpm build`
-- `pnpm --filter @axial/core test:unit`
-- `pnpm --filter @axial/ai test:unit`
-- `pnpm --filter @axial/web test:unit -- --run`
-- `pnpm --filter @axial/web test:e2e`
-- Local Playwright fallback smoke against `http://localhost:5174/`: desktop board loaded, one
-  move placed successfully, mobile board framed correctly, and no page errors, console errors, or
-  failed requests were observed. Screenshots were written to `/tmp/axial-cleanup-desktop.png` and
-  `/tmp/axial-cleanup-mobile.png`.
-- Local Playwright fallback orbit-control smoke against preview `http://localhost:4173/`: board
-  drag completed with no page errors, console errors, or failed requests. Screenshot was written to
-  `/tmp/axial-cleanup-orbit-drag.png`.
-- Local Playwright fallback smoke against current dev server `http://localhost:5173/`: desktop,
-  Tactical Pieces mode, mobile collapsed, and mobile expanded all rendered with one canvas and no
-  page errors, console errors, or failed requests. Screenshots were written to
-  `/tmp/axial-cleanup-section-split-desktop-2.png`,
-  `/tmp/axial-cleanup-section-split-tactical-2.png`,
-  `/tmp/axial-cleanup-section-split-mobile-2.png`, and
-  `/tmp/axial-cleanup-section-split-mobile-expanded.png`.
-- Local Playwright fallback smoke for the board-size/modal pass against `http://localhost:5173/`:
-  desktop expanded panel changed the board to 7 x 7 x 8, mobile expanded did the same, and a real
-  seven-move Player 1 win opened the polished result modal. No page errors, console errors, or
-  failed requests were observed. Screenshots were written to
-  `/tmp/axial-expanded-pill-dimensions.png`, `/tmp/axial-mobile-expanded-dimensions.png`, and
-  `/tmp/axial-result-modal-polished-2.png`.
-- Local Playwright fallback smoke for the appearance/AI geometry pass against
-  `http://localhost:5173/`: desktop and mobile expanded panels showed the grouped Board color /
-  Piece look / Theme controls with custom `#4be0ff`, no repeated arena footer text, and no page
-  errors, console errors, or failed requests. Desktop AI mode on a 7 x 7 x 8 board advanced through
-  a worker-backed reply to `2 MOVES`. Screenshots were written to
-  `/tmp/axial-appearance-custom-color-desktop.png`, `/tmp/axial-large-board-ai-reply.png`, and
-  `/tmp/axial-appearance-custom-color-mobile.png`.
-- Local Playwright fallback smoke for the AI timing/HUD/appearance polish pass against
-  `http://localhost:5173/`: mobile expanded panel showed separate gradient P1/P2 pills, no Board
-  color subheader, and glyph-split AXIAL/dimension HUD text. Max Classic AI did not respond within
-  the first 900ms after a human move and completed the worker-backed reply after about 3.9s with no
-  page errors, console errors, or failed requests. Screenshots were written to
-  `/tmp/axial-ai-hud-appearance-polish-mobile.png` and
-  `/tmp/axial-ai-thinking-delay-desktop.png`.
-- Local Playwright fallback smoke for the synchronized HUD glow pass against
-  `http://localhost:5173/`: AXIAL, board dimensions, and the centered turn pill all used the same
-  `0s`, `0.12s`, `0.24s` glyph delay sequence; the center pill rendered shorter with larger text.
-  Screenshot was written to `/tmp/axial-hud-sync-turn-chip.png`.
-- Local Playwright fallback smoke for the confirm-drop/grid/AI pass against
-  `http://localhost:5173/`: Confirm drop armed a column without placing on the first click and
-  placed on the second click; Grid layers toggled to floor-only mode; Max Classic AI on an 8 x 8 x 8
-  board did not reply before the visible thinking floor and completed the worker-backed reply after
-  about 3.57s. No page errors, console errors, or failed requests were observed. Screenshots were
-  written to `/tmp/axial-confirm-drop-armed.png`, `/tmp/axial-flat-grid-mode.png`, and
-  `/tmp/axial-max-ai-large-board-delay.png`.
-- Local Playwright fallback smoke for the square cue polish against `http://localhost:5173/`:
-  Confirm drop stayed at `0 MOVES` after the first click, committed to `1 MOVE` after the second
-  click, floor-only mode kept axis labels visible, and screenshots showed square confirm/last-move
-  floor markers with no center ring through the preview piece. No page errors, console errors, or
-  failed requests were observed. Screenshots were written to
-  `/tmp/axial-square-confirm-floor-axis.png` and `/tmp/axial-square-last-move.png`.
-- Local Playwright fallback smoke for the beam/platform and label-stability pass against
-  `http://localhost:5173/`: Confirm drop stayed at `0 MOVES` after the first click, the beam began
-  above the square floor plate, and grid/axis toggles at a low oblique angle kept labels visible
-  without obvious readjustment. No page errors, console errors, or failed requests were observed.
-  Screenshots were written to `/tmp/axial-beam-above-platform.png` and
-  `/tmp/axial-axis-labels-after-toggles.png`.
-- Local Playwright fallback smoke for the synced confirm-beam pass against `http://localhost:5173/`:
-  Confirm drop stayed at `0 MOVES` after the first click, the beam was slightly higher contrast, and
-  the beam opacity shared the same pulse phase as the preview piece and square floor plate. No page
-  errors, console errors, or failed requests were observed. Screenshot was written to
-  `/tmp/axial-synced-confirm-beam.png`.
-- Classic AI fork-regression verification from `axial-web/`: `pnpm --filter @axial/ai test:unit`,
-  `pnpm --filter @axial/web test:unit -- --run`, `pnpm --filter @axial/core test:unit`,
-  `pnpm check`, `pnpm lint`, and `pnpm build` passed. The build kept the known
-  Three/Threlte route chunk warning at `842.36 kB` minified / `218.10 kB` gzip.
-- Favicon/PWA icon replacement verification passed: manifest JSON parsed, old SVG icon filenames no
-  longer appeared in source references, `/icons/apple-touch-icon.png`, `/icons/axial-icon-192.png`,
-  and `/icons/axial-icon-512.png` returned `200 OK` from the dev server, and the PWA E2E metadata
-  test passed.
-
-Useful screenshots in `axial-web/apps/web/` include:
-
-- `axial-ui-match-console-desktop-light.png`
-- `axial-ui-match-console-mobile-expanded-light.png`
-- `axial-ui-match-console-mobile-collapsed-light.png`
-- `axial-ai-random-desktop-light.png`
-- `axial-ai-random-mobile-expanded-light.png`
-- `axial-match-mode-card-desktop-light.png`
-- `axial-match-mode-card-mobile-expanded-light.png`
-- `axial-piece-customizer-desktop-light.png`
-- `axial-piece-customizer-mobile-expanded-light.png`
-- `axial-piece-appearance-locked-desktop-light.png`
-- `axial-piece-appearance-locked-mobile-light.png`
-- `axial-tactical-blocker-combo-desktop-light.png`
-- `axial-tactical-blocker-combo-mobile-light.png`
-- `axial-tactical-double-adjacent-desktop-light.png`
-- `axial-tactical-double-adjacent-mobile-light.png`
-- `axial-tactical-pieces-toolbar-desktop-light.png`
-- `axial-tactical-pieces-toolbar-mobile-light.png`
-- `axial-toolbar-scale-desktop-collapsed-dark.png`
-- `axial-toolbar-scale-desktop-dark.png`
-- `axial-toolbar-scale-mobile-dark.png`
-- `axial-ui-desktop-turn-chip-fixed-longer-width.png`
-- `axial-ui-mobile-light-centered-collapsed.png`
-- `axial-ui-mobile-light-centered-expanded.png`
-- `axial-polish-game-over-desktop.png`
-
 ## Key Files For Next Work
+
+For multiplayer, start with `dev/active/axial-web-rebuild/multiplayer.md` and the proposed
+`axial-web/apps/multiplayer-worker` package layout in `next-session-prompt.md`.
+
+For existing web/game work:
 
 - `axial-web/apps/web/src/routes/layout.css`
 - `axial-web/apps/web/src/lib/game/ui/GameHud.svelte`
@@ -347,7 +263,6 @@ Useful screenshots in `axial-web/apps/web/` include:
 - `axial-web/apps/web/src/lib/game/scene/geometry.ts`
 - `axial-web/apps/web/src/lib/game/state/gameController.svelte.ts`
 - `axial-web/apps/web/src/lib/game/state/pieceAppearance.ts`
-- `axial-web/apps/web/src/lib/game/scene/GamePiece.svelte`
 - `axial-web/apps/web/src/lib/game/scene/DropPreview.svelte`
 - `axial-web/packages/core/src/index.ts`
 - `axial-web/packages/ai/src/index.ts`

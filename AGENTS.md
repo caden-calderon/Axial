@@ -1,5 +1,28 @@
 # AGENTS.md - Engineering Configuration
 
+## Project Overlay - Axial
+
+Axial is a browser-native rebuild of a 3D strategy game. The active web app lives in `axial-web/apps/web`; the preserved Unity project lives in `axial-unity/`.
+
+Project stack:
+
+- SvelteKit, Svelte 5, TypeScript, pnpm
+- Tailwind 4, lucide-svelte
+- Three.js and Threlte for the 3D board scene
+- Pure TypeScript game/AI packages under `axial-web/packages`
+- Cloudflare Pages deployment with `@sveltejs/adapter-cloudflare`
+
+Common commands:
+
+- `cd axial-web && pnpm dev`
+- `cd axial-web && pnpm check`
+- `cd axial-web && pnpm lint`
+- `cd axial-web && pnpm test`
+- `cd axial-web && pnpm build`
+- `cd axial-web && pnpm smoke:production`
+
+For Axial web UI, gameplay feel, animation, 3D board composition, portfolio iframe/embed polish, and browser visual QA, prefer the existing Svelte/Threlte patterns and the Codex Browser workflow when available. Do not pull Axial into another repo unless explicitly asked.
+
 Owner: Caden | Updated: February 2026
 
 Philosophy: Plan first. Think thoroughly. Test everything. Build for the future.

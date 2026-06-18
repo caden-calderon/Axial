@@ -4,7 +4,10 @@
 
 Make Axial a polished browser-native strategy game. The active screen should remain the playable 3D board with compact controls, clear game state, and excellent visual readability.
 
-Near-term priority: begin the next session with a performance/refactor cleanup pass before new feature work. Focus first on the large Three.js/Threlte chunk warning, dead or duplicated code, component boundaries, and any maintainability issues from rapid iteration. After that audit, handle Caden's next directed gameplay/UI changes.
+Near-term priority: plan online multiplayer before implementation. The goal is private
+friend-vs-friend Axial rooms with short join codes, invite links, QR codes, player names,
+server-authoritative move validation, robust reconnects, and clear network/error states. Portfolio
+bridge production setup is paused for now.
 
 Classic-mode AI remains an important future lane. The target is an AI opponent that can beat Caden, and the current recommendation is documented in `dev/active/axial-web-rebuild/classic-ai-research.md`.
 
@@ -31,6 +34,15 @@ Important boundaries:
 - Keep the top-right status panel shell small. Match setup, appearance controls, tactical loadout
   details, and session stats should live in focused UI section components rather than one large
   mixed markup file.
+- Keep portfolio integration code behind an explicit embed/bridge boundary. The portfolio site
+  should not depend on Svelte component internals, controller runes, Three scene objects, or local
+  storage details.
+- Keep multiplayer authority out of the frontend. The web app may predict/render optimistically, but
+  the room service owns canonical turn order, moves, match settings, player seats, reconnection, and
+  conflict resolution.
+- Keep the first multiplayer backend as a separate worker app/package, likely
+  `axial-web/apps/multiplayer-worker`, with `@axial/core` as a shared dependency. Avoid mixing room
+  server code into Svelte route components.
 
 ## Active Implementation Choices
 
@@ -99,6 +111,29 @@ Important boundaries:
 - Active match recovery should preserve canonical replay progress first. Renderer recovery can
   remount the Three/Threlte scene, but the source of truth remains controller/core game state and the
   autosaved replay payload.
+- Portfolio embed mode should be opt-in, probably through `?embed=1&bridge=1`. Embedded play can
+  reuse the same controller/game state, but bridge concerns should live in focused modules such as
+  `apps/web/src/lib/game/bridge/protocol.ts`, `stateSnapshot.ts`, and a Svelte/browser-side bridge
+  lifecycle helper instead of being scattered across page markup.
+- The bridge contract should be versioned and semantic. Axial-to-host messages should include
+  `axial:ready`, `axial:state`, `axial:ack`, and `axial:error`. Host-to-Axial messages should start
+  with safe commands only: `axial:get-state`, `axial:set-settings`, and possibly `axial:new-game` /
+  `axial:set-rules` if the portfolio UX needs them.
+- The portfolio LLM does not need to make moves. The existing worker-backed MCTS remains the actual
+  AI opponent. Avoid adding host-controlled move commands unless a later product requirement
+  clearly needs them.
+- Bridge state snapshots should be compact but useful for narration: match mode/status, current
+  player, winner, move count, dimensions, win condition, last move, move history, settings, and
+  eventually threat summaries or immediate winning moves. Any threat summary should come from pure
+  core/AI helpers, not ad hoc DOM/scene inspection.
+- Bridge commands must validate payloads, respect match locks, and return explicit errors for
+  unsupported or unsafe requests. A request to change rules after the first move should fail or
+  require a deliberate new-match command; a request to lower AI difficulty/theme/grid/labels can be
+  applied live if current controller rules allow it.
+- Iframe security should be intentional before public portfolio use: configure `frame-ancestors`
+  for `'self'` plus the portfolio origin once known, do not rely on `X-Frame-Options`, validate
+  `event.origin`, never use `*` as `targetOrigin` after handshake if an origin is known, and ignore
+  malformed messages without mutating game state.
 - Desktop turn pill is independent from the AXIAL wordmark and fixed-width at top center, with a
   shorter pill width and larger status text than the first centered version.
 - The AXIAL wordmark, board-dimension HUD text, and centered desktop turn pill use a synchronized
@@ -106,26 +141,105 @@ Important boundaries:
 - Mobile keeps controls smaller, tucked top-right, and hides the turn pill.
 - Variant mode design is tracked in `dev/active/axial-web-rebuild/variant-modes.md`; classic rules remain the default.
 
+## Portfolio Bridge V1 Architecture
+
+Decision for the first implementation pass:
+
+- Bridge activation is explicit and browser-only: Axial starts the bridge only when loaded in an
+  iframe with `?embed=1&bridge=1`. Normal `https://playaxial.dev/` behavior remains unchanged.
+- The bridge contract is a versioned `postMessage` envelope with `source`, `version`, `id`, `type`,
+  and optional `payload`. Axial emits `axial:ready`, `axial:state`, `axial:ack`, and `axial:error`.
+  The host can send `axial:get-state` and `axial:set-settings` in v1.
+- V1 deliberately excludes host-controlled board moves, rule changes, and new-match commands. Those
+  can be added later with explicit product approval and separate reset/staleness semantics.
+- State snapshots are semantic data derived from the controller and `@axial/core` snapshots:
+  match mode, status, opponent mode, bridge-facing AI difficulty, current player, winner, move
+  count, dimensions, win condition, last move, move history, settings, lock flags, AI thinking, and
+  a compact threat summary from pure core move simulation.
+- Move coordinates in the bridge are one-based row/column/layer values for narration. The bridge
+  does not expose board arrays, local-storage payloads, Threlte/Three objects, or Svelte runes.
+- `axial:set-settings` accepts only safe presentation/setup fields: theme, labels, grid layers,
+  confirm drop, board color, opponent mode, and AI difficulty. Live presentation changes can apply
+  during a match. Opponent mode and AI difficulty continue to respect the existing setup lock.
+- Payload validation happens before mutation. Invalid payloads or locked setup changes fail the
+  whole request and return a typed error without partial application.
+- Origin security defaults closed for external sites. The bridge always allows same-origin parent
+  pages for local/static smoke tests and reads additional allowed origins from
+  `PUBLIC_AXIAL_BRIDGE_ORIGINS`. Until Caden provides the portfolio origin, production external
+  portfolio control should remain disabled.
+- Initial `axial:ready` uses the iframe referrer origin only if that origin is allow-listed. Replies
+  use the exact trusted `event.origin`; untrusted origins are ignored without mutating state.
+- Tests should cover protocol validation, origin allow-list behavior, snapshot serialization,
+  locked-setting errors, same-origin iframe ready/get-state/settings flow, malformed payload errors,
+  and an untrusted external parent receiving no response.
+- 2026-06-09 implementation status: v1 is implemented in `apps/web/src/lib/game/bridge/` and wired
+  from `apps/web/src/routes/+page.svelte`. The same-origin iframe harness lives at
+  `apps/web/static/embed-bridge-smoke.html`, with Playwright coverage in
+  `apps/web/e2e/bridge.e2e.ts`. The remaining production release decision is the real portfolio
+  origin for `PUBLIC_AXIAL_BRIDGE_ORIGINS` and the matching `frame-ancestors` policy.
+
+## Multiplayer Architecture Direction
+
+Planning doc: `dev/active/axial-web-rebuild/multiplayer.md`.
+
+Initial recommendation:
+
+- Use a Cloudflare Worker as the public API/WebSocket entrypoint and a Durable Object class as the
+  room coordinator. Cloudflare's Durable Objects are designed for stateful coordination across
+  clients, including multiplayer-style room coordination, and the WebSocket Hibernation API should
+  be preferred so idle WebSocket rooms can sleep without disconnecting clients.
+- One room code maps to one Durable Object instance. The object stores room metadata, players,
+  reconnect tokens, canonical game snapshot, move log, event revision, ready/rematch state, and any
+  spectator presence.
+- The server validates every move with `@axial/core`; clients never submit or decide canonical board
+  state.
+- Every accepted command increments a monotonic `revision`. Clients can reconnect with
+  `roomCode`, `playerId`, `reconnectToken`, and `lastSeenRevision` so the room can resend a full
+  snapshot or a bounded event catch-up.
+- Start with Classic mode only unless Caden explicitly wants Tactical online in v1. Tactical
+  special sub-actions make the protocol and turn-continuation rules more complex.
+- Design protocol messages before implementation. Commands should include `create-room`, `join`,
+  `set-name`, `set-rules`, `ready`, `play-move`, `resync`, `rematch`, `leave`, and optional
+  `spectate`. Server events should include `room-snapshot`, `player-joined`, `player-updated`,
+  `match-started`, `move-accepted`, `move-rejected`, `player-disconnected`, `player-reconnected`,
+  `game-ended`, `rematch-state`, `room-expired`, and `error`.
+- UX states should be explicit: creating, joining, waiting, ready, starting, playing, reconnecting,
+  resyncing, opponent disconnected, ended, expired, and fatal error.
+- Reconnect design is a first-class feature, not polish. Store a per-seat secret reconnect token in
+  local storage/session storage, allow a grace period for mobile sleep/refresh, and prevent a second
+  tab or attacker with only the public room code from taking over a seat.
+- Plan for observability and supportability: typed error codes, reason strings suitable for UI, and
+  small structured logs around room creation, join failures, reconnect failures, and move rejection.
+
 ## Near-Term Priorities
 
-1. Continue the cleanup audit in `apps/web/src/lib/game`, `packages/core`, and `packages/ai` for dead code, duplicated logic, stale helpers, and component boundaries that should be cleaned before more features land. The first web UI pass removed the unused `@threlte/extras` dependency, split the status panel into focused sections, and trimmed a stale controller getter.
-2. Treat the remaining large Three.js/Threlte chunk warning as measured and acceptable for now: the 2026-06-07 cleanup removed accidental `@threlte/extras` and normal-path `@axial/ai` imports, reducing the client page chunk from `993.16 kB` minified / `273.01 kB` gzip to roughly `833 kB` minified / `216 kB` gzip after the follow-up section split. Revisit code-splitting when Axial gains a non-game first route, an intentional loading shell, or graphics-quality tiers.
-3. Keep refactors behavior-preserving unless Caden explicitly asks for gameplay changes in the same area.
-4. Respond to Caden-directed UI/gameplay changes after the cleanup pass has produced a clear map of risks and quick wins.
-5. Add progress messages for longer Classic AI searches.
-6. Extend the seeded evaluation harness with larger random/greedy/heuristic/basic-MCTS benchmark suites and JSONL-style match logs, including expanded board sizes, connect-5, and 2-3-line win targets.
-7. Tune the TypeScript heuristic/MCTS/lookahead engine against those benchmarks and direct Caden
+1. Begin the next session with a multiplayer architecture pass using
+   `dev/active/axial-web-rebuild/multiplayer.md` as the working design doc. Lock the first MVP scope
+   before code.
+2. Decide the first deploy shape: separate Cloudflare Worker on an `/api/rooms/*` route or a worker
+   subdomain/custom domain, plus Durable Object binding/migrations managed by Wrangler.
+3. Define and test the multiplayer protocol before UI polish: room creation/join, names, ready,
+   rules, moves, snapshots, revisions, reconnect, rematch, spectators/deferred features, and typed
+   errors.
+4. Confirm the portfolio origin and configure `PUBLIC_AXIAL_BRIDGE_ORIGINS` plus the production
+   `frame-ancestors` header only when the portfolio bridge becomes active again.
+5. Continue the cleanup audit in `apps/web/src/lib/game`, `packages/core`, and `packages/ai` for dead code, duplicated logic, stale helpers, and component boundaries that should be cleaned before more features land. The first web UI pass removed the unused `@threlte/extras` dependency, split the status panel into focused sections, and trimmed a stale controller getter.
+6. Treat the remaining large Three.js/Threlte chunk warning as measured and acceptable for now: the 2026-06-07 cleanup removed accidental `@threlte/extras` and normal-path `@axial/ai` imports, reducing the client page chunk from `993.16 kB` minified / `273.01 kB` gzip to roughly `833 kB` minified / `216 kB` gzip after the follow-up section split. Revisit code-splitting when Axial gains a non-game first route, an intentional loading shell, or graphics-quality tiers.
+7. Keep refactors behavior-preserving unless Caden explicitly asks for gameplay changes in the same area.
+8. Add progress messages for longer Classic AI searches.
+9. Extend the seeded evaluation harness with larger random/greedy/heuristic/basic-MCTS benchmark suites and JSONL-style match logs, including expanded board sizes, connect-5, and 2-3-line win targets.
+10. Tune the TypeScript heuristic/MCTS/lookahead engine against those benchmarks and direct Caden
    challenge games. First benchmark target after the 2026-06-07 fork/lookahead fixes is to measure
    tactical-suite pass rate and latency across 6 x 6 x 7 through 10 x 10 x 10 boards, including
    connect-5 and 2-3-line win conditions.
-8. Consider a dedicated benchmark CLI/script once match logging shape is clear.
-9. Keep the old Python MCTS runnable only as a reference/baseline through the root `uv` environment.
-10. Add PyTorch/training dependencies only when neural self-play work resumes.
-11. Treat AlphaZero/PyTorch/ONNX as a later measured upgrade once the teacher/evaluation harness can prove neural guidance improves strength.
-12. Benchmark and tune Classic AI latency/strength on expanded board sizes now that search geometry is dimension-aware.
-13. Keep Tactical/special-piece AI deferred until Classic-mode AI is locked.
-14. Add editable loadout UX for choosing the three Tactical specials when returning to Tactical polish.
-15. Keep the production deploy loop healthy with local checks, Cloudflare deployment review, and production smoke tests before/after significant changes.
+11. Consider a dedicated benchmark CLI/script once match logging shape is clear.
+12. Keep the old Python MCTS runnable only as a reference/baseline through the root `uv` environment.
+13. Add PyTorch/training dependencies only when neural self-play work resumes.
+14. Treat AlphaZero/PyTorch/ONNX as a later measured upgrade once the teacher/evaluation harness can prove neural guidance improves strength.
+15. Benchmark and tune Classic AI latency/strength on expanded board sizes now that search geometry is dimension-aware.
+16. Keep Tactical/special-piece AI deferred until Classic-mode AI is locked.
+17. Add editable loadout UX for choosing the three Tactical specials when returning to Tactical polish.
+18. Keep the production deploy loop healthy with local checks, Cloudflare deployment review, and production smoke tests before/after significant changes.
 
 ## Testing Expectations
 
@@ -136,6 +250,26 @@ For UI/visual changes:
 - Run `pnpm build`.
 - Use Browser plugin if its required runtime is exposed.
 - If Browser plugin runtime is missing, say so and use local Playwright screenshots.
+
+For portfolio embed/bridge changes:
+
+- Add protocol/serialization unit tests for state snapshots, payload validation, and command
+  handling.
+- Add a browser/e2e smoke with a parent page or test harness iframe that verifies `ready`,
+  `get-state`, settings changes, ack/error replies, and origin rejection.
+- Run `pnpm check`, `pnpm lint`, `pnpm build`, and focused web tests from `axial-web/`.
+- Before production release, verify response headers for `playaxial.dev` and the portfolio origin's
+  ability to iframe the app.
+
+For multiplayer changes:
+
+- Add worker/protocol unit tests for room lifecycle, payload validation, move validation,
+  reconnect/resync, duplicate-tab behavior, and typed errors.
+- Run package-specific Worker checks once `apps/multiplayer-worker` exists.
+- Add a two-browser-context Playwright smoke for create/join/name/ready/move/reconnect once the web
+  client is wired.
+- Run `pnpm --filter @axial/core test:unit` when server move validation touches core behavior or
+  depends on new core exports.
 
 For game-core changes:
 
@@ -151,7 +285,6 @@ For AI changes:
 
 - Training pipeline cleanup.
 - Neural model export/inference.
-- Multiplayer.
 - Hand tracking.
 
 Older architecture details are archived in `dev/active/axial-web-rebuild/archive/2026-05-26-background.md`.

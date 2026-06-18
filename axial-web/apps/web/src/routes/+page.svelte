@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { createAxialBridgeController } from '$lib/game/bridge/bridgeController';
 	import AxialScene from '$lib/game/scene/AxialScene.svelte';
 	import { createGameController } from '$lib/game/state/gameController.svelte';
 	import GameOverModal from '$lib/game/ui/GameOverModal.svelte';
@@ -7,6 +8,9 @@
 	import GameStatusPanel from '$lib/game/ui/GameStatusPanel.svelte';
 
 	const controller = createGameController();
+	const bridge = createAxialBridgeController(controller);
+	let embedMode = $state(false);
+	let bridgeEnabled = $state(false);
 	let fullscreenAvailable = $state(false);
 	let fullscreenActive = $state(false);
 	let sceneEpoch = $state(0);
@@ -17,6 +21,8 @@
 
 	onMount(() => {
 		controller.hydrateFromStorage();
+		embedMode = new URL(window.location.href).searchParams.get('embed') === '1';
+		bridgeEnabled = bridge.start();
 
 		const updateFullscreenState = () => {
 			fullscreenAvailable = isFullscreenSupported();
@@ -34,8 +40,14 @@
 			document.removeEventListener('webkitfullscreenchange', updateFullscreenState);
 			window.removeEventListener('error', handleGlobalError);
 			window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+			bridge.stop();
 			if (recoveryMessageTimeout) clearTimeout(recoveryMessageTimeout);
 		};
+	});
+
+	$effect(() => {
+		if (!bridgeEnabled) return;
+		bridge.publishState();
 	});
 
 	async function toggleFullscreen(): Promise<void> {
@@ -155,6 +167,7 @@
 	class="game-shell"
 	data-theme={controller.uiTheme}
 	data-status={controller.statusTone}
+	data-embed={embedMode ? 'true' : undefined}
 	style:--accent={controller.boardColor}
 >
 	<div class="aurora"></div>

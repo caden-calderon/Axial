@@ -1,0 +1,355 @@
+# Axial Online Multiplayer Plan
+
+## Goal
+
+Add a polished online friend-vs-friend mode for Axial without weakening the current local/AI game.
+Players should be able to create a private lobby, share a short join code/link/QR code, set display
+names, choose rules before the match starts, play a server-validated match, survive refreshes and
+mobile connection drops, and rematch cleanly.
+
+This is a major architecture feature. Plan the protocol and room lifecycle before implementation.
+
+## Product Shape
+
+First MVP:
+
+- Private room creation from the web app.
+- Short room code, copy invite link, and QR code.
+- Join-by-code and join-by-link flows.
+- Player display names with length/content validation.
+- Host-controlled pre-match rules:
+  - Classic mode first.
+  - Board dimensions.
+  - Connect length.
+  - Lines to win.
+- Player ready flow before the match starts.
+- Server-assigned seats: Player 1 / Player 2, with random/swap option later.
+- Server-authoritative moves and winner/draw detection.
+- Explicit connection states in UI.
+- Automatic reconnect after refresh, mobile sleep, network change, or transient server restart.
+- Rematch after game over.
+
+Do not include in v1 unless explicitly pulled in:
+
+- Tactical special-piece multiplayer.
+- Public matchmaking.
+- Accounts/auth.
+- Ranked stats.
+- Chat.
+- Host-controlled takebacks.
+- Cross-room spectator directory.
+
+## Architecture Decision
+
+Use a separate Cloudflare Worker plus Durable Objects room service.
+
+Rationale:
+
+- A multiplayer room needs one authoritative coordinator for turn order, move validation, reconnect
+  tokens, player presence, and event ordering.
+- Cloudflare Durable Objects are intended for stateful coordination among multiple clients, including
+  chat/collaboration/multiplayer-style workloads.
+- Durable Objects can act as WebSocket servers, and Cloudflare recommends the Hibernation WebSocket
+  API for cost-efficient idle connections.
+- Keeping the room service outside the Svelte app preserves the current frontend architecture and
+  lets the server import `@axial/core` without pulling WebSocket/server code into the game route.
+
+Suggested package layout:
+
+```text
+axial-web/
+  apps/
+    web/
+    multiplayer-worker/
+      src/
+        index.ts
+        roomObject.ts
+        protocol.ts
+        roomState.ts
+        validation.ts
+        roomCodes.ts
+      test/
+        roomObject.test.ts
+      wrangler.toml
+```
+
+Shared packages:
+
+- `@axial/core`: canonical rules, replay, move validation, win detection.
+- Optional later `@axial/protocol`: only if web/worker protocol types grow enough to justify a
+  shared package.
+
+## Server Authority
+
+The room service owns:
+
+- Room code and room metadata.
+- Player seats and reconnect tokens.
+- Player names and presence.
+- Host/ready state.
+- Match settings before start.
+- Canonical game state.
+- Move log and room event log.
+- Monotonic `revision`.
+- Game over and rematch state.
+- Room expiration.
+
+The client owns:
+
+- Rendering and animation.
+- Input collection.
+- Connection UI state.
+- Local optimistic affordances, if any.
+- Reconnect token storage.
+
+The client never owns canonical board state in multiplayer. If a client prediction disagrees with
+the room snapshot, the room snapshot wins.
+
+## Room Lifecycle
+
+1. `created`: host has a room code and reconnect token.
+2. `waiting`: second player can join; host can configure allowed rules.
+3. `ready`: both players have names and have pressed ready.
+4. `playing`: moves are accepted only from the current player's active seat.
+5. `ended`: winner/draw is final; rematch votes can begin.
+6. `rematching`: players choose same rules or proposed tweaks later.
+7. `expired`: room no longer accepts reconnects or commands.
+
+Room expiry policy:
+
+- Empty pre-match rooms expire quickly.
+- Active matches persist through a generous disconnect grace period.
+- Completed rooms expire after rematch window closes.
+- Store enough room state in Durable Object storage to recover after hibernation/restart.
+
+## Protocol Principles
+
+Use versioned JSON envelopes.
+
+```ts
+type ClientCommand = {
+  source: 'axial-client';
+  version: 1;
+  id: string;
+  roomCode?: string;
+  playerId?: string;
+  reconnectToken?: string;
+  lastSeenRevision?: number;
+  type: string;
+  payload?: unknown;
+};
+
+type ServerEvent = {
+  source: 'axial-room';
+  version: 1;
+  id: string;
+  revision: number;
+  type: string;
+  payload?: unknown;
+};
+```
+
+Command families:
+
+- `room:create`
+- `room:join`
+- `room:connect`
+- `room:set-name`
+- `room:set-rules`
+- `room:ready`
+- `game:play-move`
+- `room:resync`
+- `room:leave`
+- `room:rematch-vote`
+
+Server event families:
+
+- `room:created`
+- `room:snapshot`
+- `room:player-joined`
+- `room:player-updated`
+- `room:player-disconnected`
+- `room:player-reconnected`
+- `room:rules-updated`
+- `room:ready-updated`
+- `game:started`
+- `game:move-accepted`
+- `game:move-rejected`
+- `game:ended`
+- `room:rematch-updated`
+- `room:expired`
+- `room:error`
+
+Every accepted mutating command increments `revision`. Rejected commands should not mutate state and
+should return a typed error.
+
+## Reconnection Design
+
+Room code is public. Reconnect token is secret.
+
+On create/join:
+
+- Server returns `playerId` and `reconnectToken`.
+- Client stores them locally for that room.
+- Reconnect tokens are seat-specific and not displayed in share URLs.
+
+On reconnect:
+
+- Client sends `roomCode`, `playerId`, `reconnectToken`, and `lastSeenRevision`.
+- Server validates the token.
+- If the event gap is small and available, server sends missed events.
+- Otherwise server sends a full `room:snapshot`.
+- If another socket is already active for that seat, server applies duplicate-tab policy.
+
+Duplicate-tab policy:
+
+- Prefer "latest socket wins" for a player seat, with a clear event to the old socket.
+- Do not allow a socket with only the room code to take a seat.
+- Spectator mode can be added later for extra tabs.
+
+Grace periods:
+
+- Mobile sleep/refresh should not forfeit immediately.
+- Show opponent disconnected with countdown/soft waiting state.
+- Forfeit-on-timeout can be an optional later rule, not v1 default.
+
+## Network And Error Handling
+
+Client connection states:
+
+- `idle`
+- `creating`
+- `joining`
+- `connecting`
+- `connected`
+- `reconnecting`
+- `resyncing`
+- `opponent-disconnected`
+- `expired`
+- `fatal-error`
+
+Server error categories:
+
+- `invalid-message`
+- `unsupported-version`
+- `room-not-found`
+- `room-full`
+- `invalid-name`
+- `invalid-rules`
+- `not-host`
+- `not-your-turn`
+- `illegal-move`
+- `stale-revision`
+- `auth-failed`
+- `room-expired`
+- `rate-limited`
+- `internal-error`
+
+Error responses should be safe for UI display but also structured enough for tests and debugging.
+
+## Security
+
+- Generate room codes with enough entropy for private invites.
+- Rate-limit room creation and join attempts.
+- Keep reconnect tokens secret and random.
+- Validate all payloads before mutation.
+- Clamp display names by length and render as text only.
+- Reject HTML/control characters in names or normalize aggressively.
+- Never trust client board state.
+- Avoid logging reconnect tokens.
+- Consider origin checks for browser WebSocket requests, while remembering that WebSocket origins
+  are advisory and not a replacement for room/reconnect tokens.
+
+## UX Ideas
+
+Core:
+
+- Create room button in match setup.
+- Join room by code.
+- Copy invite link.
+- QR code join.
+- Display names.
+- Ready buttons.
+- Clear seat labels and "waiting for friend".
+- Connection pill for reconnecting/resyncing.
+- Opponent disconnected state with calm copy.
+- Rematch button.
+
+Polish:
+
+- QR code styled with the Axial cube mark.
+- "Opponent joined" board pulse.
+- Names floating near player indicators.
+- Sound/vibration when it becomes your turn.
+- Share final board/replay link.
+- Best-of-3 room option.
+- Rule preset chips: Classic, Connect 5, Bigger Board, Race to 2 Lines.
+- Practice vs AI while waiting, only if it does not complicate room state.
+
+Later:
+
+- Spectator mode with independent camera.
+- Rematch with rule tweaks.
+- Swap sides/random first player.
+- Optional turn timer.
+- Friend disconnect can become "let AI take over" after a grace period.
+- Replay export for future AI training/evaluation.
+
+## Testing Plan
+
+Worker/unit tests:
+
+- Room code generation uniqueness/format.
+- Create/join/name validation.
+- Host-only rule changes.
+- Ready/start transition.
+- Legal move acceptance.
+- Illegal/out-of-turn move rejection.
+- Game over detection.
+- Reconnect token validation.
+- Duplicate-tab behavior.
+- Revision/resync behavior.
+- Room expiration.
+
+Web/e2e tests:
+
+- Two browser contexts create and join a room.
+- Names appear for both players.
+- Host sets rules before start.
+- Both ready and match starts.
+- Player 1 move appears for Player 2.
+- Player 2 move appears for Player 1.
+- Refresh one player and reconnect to same seat.
+- Simulate network close and resync.
+- Complete a short forced game if using a tiny test board or seeded room helper.
+
+Manual smoke:
+
+- Desktop to mobile via QR code.
+- Mobile sleep/lock then reconnect.
+- Copy invite link across browsers.
+- Bad code, full room, expired room, and duplicate-tab UI.
+
+## Cloudflare Work Needed
+
+No Caden-side Cloudflare action is needed for design and local implementation.
+
+Before production deploy, the project will need:
+
+- A Worker app name.
+- Durable Object binding and migration in `wrangler.toml`.
+- Wrangler auth through `wrangler login` or a Cloudflare API token.
+- A route decision:
+  - mount under `https://playaxial.dev/api/rooms/*`, or
+  - use a worker subdomain/custom domain while prototyping.
+- Review of Workers/Durable Objects free-tier limits after the expected traffic shape is clearer.
+
+Do not block architecture work on dashboard setup. Build locally first, then deploy once the protocol
+and first room flow are passing.
+
+## Primary Sources
+
+- Cloudflare Durable Objects overview: https://developers.cloudflare.com/durable-objects/
+- Cloudflare Durable Objects WebSockets best practices: https://developers.cloudflare.com/durable-objects/best-practices/websockets/
+- Cloudflare WebSocket Hibernation server example: https://developers.cloudflare.com/durable-objects/examples/websocket-hibernation-server/
+- Cloudflare Durable Object lifecycle: https://developers.cloudflare.com/durable-objects/concepts/durable-object-lifecycle/

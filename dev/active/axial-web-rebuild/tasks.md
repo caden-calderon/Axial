@@ -38,7 +38,58 @@
 - [x] Add PWA install metadata, branded icons, and a lightweight service worker.
 - [x] Replace favicon/PWA icon assets with Caden's updated `AxialLOGO.png` render and derive the
   generated icon sizes from a modest app-icon-frame crop.
+- [ ] Verify production/custom-domain iframe headers for `playaxial.dev` from a clean network or
+  Cloudflare dashboard before portfolio embedding.
+- [ ] Add an explicit `frame-ancestors` policy for the portfolio origin once the portfolio URL is
+  known.
 - [ ] Add the future multiplayer Worker/Durable Object app when live invite links become the active task.
+
+## Online Multiplayer
+
+- [ ] Write and review the multiplayer architecture before implementation: room lifecycle, protocol,
+  server authority, reconnection, storage, deployment shape, security, error handling, tests, and
+  rollout.
+- [ ] Create a separate multiplayer Worker app/package, likely `axial-web/apps/multiplayer-worker`,
+  with Durable Object room bindings and `@axial/core` as the rules dependency.
+- [ ] Add a room creation endpoint that returns a short room code, invite URL, QR payload, and host
+  reconnect token.
+- [ ] Add join-by-code and join-by-link flow with display-name entry and validation.
+- [ ] Add server-authoritative lobby state: host settings, player seats, player names, ready state,
+  spectators if enabled, room expiration, and typed errors.
+- [ ] Add WebSocket protocol with versioned command/event envelopes and monotonic room revisions.
+- [ ] Validate every move server-side with `@axial/core`; clients must not decide canonical board
+  state.
+- [ ] Add reconnect tokens, refresh/mobile-sleep recovery, duplicate-tab handling, last-seen
+  revision resync, and opponent-disconnected grace state.
+- [ ] Add rematch flow after game over, with same rules first and optional rule tweaks later.
+- [ ] Add client UI for create room, join room, QR code, copy invite link, names, ready state,
+  connection state, reconnecting/resyncing, opponent disconnected, and room expired.
+- [ ] Add focused unit/integration tests for room lifecycle, command validation, move validation,
+  reconnect/resync, duplicate tabs, stale revisions, and error codes.
+- [ ] Add local end-to-end smoke with two browser contexts playing a full room match.
+
+## Portfolio Embed Bridge
+
+- [x] Write the bridge architecture before implementation: message protocol, state snapshot shape,
+  safe command list, file/module boundaries, security model, test plan, and rollout steps.
+- [x] Add opt-in iframe/embed mode, likely `?embed=1&bridge=1`, without changing normal standalone
+  play.
+- [x] Create a focused bridge module boundary under the web app, keeping protocol types,
+  serialization, validation, and browser lifecycle separate from scene/UI internals.
+- [x] Emit versioned `axial:ready`, `axial:state`, `axial:ack`, and `axial:error` messages to the
+  host.
+- [x] Accept only safe host commands initially: `axial:get-state` and `axial:set-settings`; leave
+  new-match/rule commands deferred until explicitly approved.
+- [x] Expose compact semantic state for the portfolio-side LLM: status, current player, winner,
+  move count, board dimensions, win condition, last move, move history, settings, and optional
+  threat context.
+- [x] Validate `postMessage` origin and payloads, use exact `targetOrigin` replies after handshake,
+  and reject unsupported commands without mutating state.
+- [x] Add unit tests for snapshot serialization and command validation.
+- [x] Add an iframe/e2e smoke harness for ready/state/settings/error flows and origin rejection.
+- [ ] Configure the real portfolio origin in `PUBLIC_AXIAL_BRIDGE_ORIGINS` and production
+  `frame-ancestors` once Caden confirms the URL.
+- [ ] Smoke the production iframe from the actual portfolio parent.
 
 ## Phase 1: Beautiful Playable 3D MVP
 

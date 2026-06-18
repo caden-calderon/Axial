@@ -117,6 +117,46 @@ Manual smoke:
 
 If a deployment is bad, use the Pages project's Deployments tab to roll back to the last known-good deployment while fixing `main`.
 
+## Iframe Embedding And Headers
+
+Caden plans to embed Axial in his portfolio site so visitors can play against Axial's existing AI
+while a portfolio-side LLM uses bridge state to speak as the opponent and adjust safe settings.
+
+Current notes from the 2026-06-09 investigation:
+
+- The repo currently has no `_headers`, app-level CSP, `X-Frame-Options`, or `frame-ancestors`
+  config.
+- `https://playaxial.pages.dev/` responded without `Content-Security-Policy` or
+  `X-Frame-Options`, so the Pages preview URL should be iframe-embeddable.
+- Local command-line checks against `https://playaxial.dev/` were inconsistent from this
+  environment because DNS/connection behavior did not match the browser/path that loaded the site.
+  Re-check the custom-domain headers from a clean network and/or Cloudflare dashboard before
+  relying on the production domain for embedding.
+- A follow-up check on 2026-06-09 still saw `https://playaxial.pages.dev/` return no CSP/XFO, while
+  `curl -I https://playaxial.dev/` failed from this shell with `Recv failure: Connection reset by peer`.
+  Treat the custom-domain header state as unresolved until checked from Cloudflare or another network.
+
+Bridge runtime configuration:
+
+- The v1 bridge starts only when Axial is framed with `?embed=1&bridge=1`.
+- Same-origin parents are allowed for local/static smoke tests.
+- External portfolio parents must be allow-listed with a comma-separated
+  `PUBLIC_AXIAL_BRIDGE_ORIGINS` value, for example:
+
+```text
+PUBLIC_AXIAL_BRIDGE_ORIGINS=https://<portfolio-origin>
+```
+
+Recommended production policy once the portfolio origin is known:
+
+```text
+Content-Security-Policy: frame-ancestors 'self' https://<portfolio-origin>;
+```
+
+Do not use `X-Frame-Options` for this allow-list because it cannot express modern multi-origin
+embedding policy. Pair the response header with bridge-level `event.origin` validation and exact
+`targetOrigin` replies.
+
 ## Multiplayer Direction
 
 Do not put real-time multiplayer inside the frontend bundle.
@@ -133,6 +173,21 @@ When ready, add a separate Cloudflare Worker app for room coordination:
 
 This keeps the current single-player deploy simple while leaving the architecture open for invite links, reconnects, spectators, and room persistence.
 
+Cloudflare setup notes for multiplayer:
+
+- An agent can plan and implement the Worker/Durable Object code locally without additional
+  dashboard work from Caden.
+- Before production deploy, Caden or the agent will need Cloudflare auth available to Wrangler
+  (`wrangler login` or an API token), a Worker name/route decision, and Durable Object bindings plus
+  migrations in Wrangler config.
+- Durable Objects are available on Workers Free and Paid plans. New free-plan Durable Objects use
+  SQLite-backed storage, which is suitable for a first room service if usage stays within free-tier
+  limits.
+- Prefer Durable Object WebSocket Hibernation for room sockets so idle rooms can sleep while
+  WebSocket clients remain connected.
+- Keep the first backend separate from the Pages frontend and route it explicitly, for example
+  `/api/rooms/*` on `playaxial.dev` or a dedicated worker subdomain while prototyping.
+
 ## Primary Sources Checked
 
 - SvelteKit Cloudflare adapter: https://svelte.dev/docs/kit/adapter-cloudflare
@@ -140,4 +195,5 @@ This keeps the current single-player deploy simple while leaving the architectur
 - Cloudflare Pages build settings and monorepos: https://developers.cloudflare.com/pages/configuration/build-configuration/ and https://developers.cloudflare.com/pages/configuration/monorepos/
 - Cloudflare Pages custom domains: https://developers.cloudflare.com/pages/configuration/custom-domains/
 - Cloudflare Durable Objects and WebSockets: https://developers.cloudflare.com/durable-objects/ and https://developers.cloudflare.com/durable-objects/best-practices/websockets/
+- Cloudflare WebSocket Hibernation example: https://developers.cloudflare.com/durable-objects/examples/websocket-hibernation-server/
 - Google Registry `.dev` HTTPS policy: https://www.registry.google/policies/registration/dev/
