@@ -161,10 +161,11 @@ embedding policy. Pair the response header with bridge-level `event.origin` vali
 
 Do not put real-time multiplayer inside the frontend bundle.
 
-When ready, add a separate Cloudflare Worker app for room coordination:
+The first local multiplayer foundation now exists:
 
 - `apps/multiplayer-worker`: Worker entrypoint.
-- Durable Object class per live room/code.
+- `packages/multiplayer-protocol`: shared web/worker protocol types.
+- Durable Object class per live room/code: `RoomObject` bound as `AXIAL_ROOM`.
 - Room IDs generated as short invite codes.
 - Client route shape: `/room/[code]`.
 - WebSocket endpoint shape: `/api/rooms/[code]/socket`.
@@ -187,6 +188,13 @@ Cloudflare setup notes for multiplayer:
   WebSocket clients remain connected.
 - Keep the first backend separate from the Pages frontend and route it explicitly, for example
   `/api/rooms/*` on `playaxial.dev` or a dedicated worker subdomain while prototyping.
+- Local dev uses `wrangler dev --port 8787` for the Worker. The web route defaults to
+  `http://localhost:8787` when loaded from localhost; production or custom preview endpoints can use
+  `PUBLIC_AXIAL_MULTIPLAYER_API`.
+- `wrangler.jsonc` currently allow-lists `playaxial.dev` and common Vite localhost ports. Update
+  `ALLOWED_ORIGINS` before deploying a preview domain or custom Worker subdomain.
+- Production deploy still needs Cloudflare auth, final route/custom-domain decision, and a
+  deploy/dry-run pass for the Worker and Durable Object migration.
 
 ## Primary Sources Checked
 

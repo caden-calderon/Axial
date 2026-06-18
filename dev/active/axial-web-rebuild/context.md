@@ -4,11 +4,11 @@
 
 Axial is being rebuilt from the preserved Unity/Python project into a polished browser-native strategy game. The active app is `axial-web/apps/web`, using SvelteKit, TypeScript, pnpm, Three.js, and Threlte. The old Unity project remains in `axial-unity/`.
 
-Current next-session priority: plan the first robust online multiplayer architecture before
-implementation. Caden wants private rooms with a short join code, invite link, QR code, player
-display names, smooth network handling, automatic reconnection, clear error states, and a polished
-friend-vs-friend experience. The preferred direction is a server-authoritative Cloudflare Worker
-plus Durable Object room service that imports `@axial/core` for canonical move validation.
+Current multiplayer status: the first robust online multiplayer foundation is implemented locally.
+It supports private Classic rooms with short room codes, invite links, QR payloads, display names,
+host rules, ready flow, server-authoritative moves, reconnect tokens, revision snapshots,
+duplicate-tab takeover, opponent-disconnected state, and rematch. Production deployment is not yet
+enabled.
 
 Classic-mode AI remains an important future lane. Caden wants an AI opponent that can beat him as the benchmark. Tactical/special-piece AI remains deferred.
 
@@ -53,7 +53,10 @@ Deployment state:
 - Deployment notes and dashboard values live in `dev/active/axial-web-rebuild/deployment.md`.
 - Porkbun remains the registrar, and Cloudflare is the authoritative DNS host with nameservers `gwen.ns.cloudflare.com` and `melnicoff.ns.cloudflare.com`.
 - Production smoke can be run with `pnpm smoke:production` from `axial-web/`.
-- Future live multiplayer should be a separate Cloudflare Worker plus Durable Objects room service, with the web app remaining the frontend and `@axial/core` validating server-side moves.
+- Live multiplayer now has a separate Cloudflare Worker plus Durable Objects room service under
+  `axial-web/apps/multiplayer-worker`, with shared protocol types in
+  `axial-web/packages/multiplayer-protocol`. The web app remains the frontend and `@axial/core`
+  validates server-side moves.
 - Multiplayer planning notes live in `dev/active/axial-web-rebuild/multiplayer.md`.
 - 2026-06-09 iframe/header check: the repo has no app-level CSP, `_headers`, `X-Frame-Options`,
   or `frame-ancestors` config. `https://playaxial.pages.dev/` responded without CSP/XFO and should
@@ -107,6 +110,12 @@ Multiplayer direction:
   opponent-disconnected UI, rematch, and graceful room expiration.
 - Multiplayer should eventually share core serialization concepts with replay/bridge work, but it
   needs its own protocol because it is authoritative and networked.
+- 2026-06-18 implementation status: `@axial/multiplayer-worker` exposes `POST /api/rooms`,
+  `POST /api/rooms/:code/join`, `GET /api/rooms/:code/socket`, and `GET /health`; `RoomObject`
+  stores room state and bounded event history in SQLite-backed Durable Object storage and uses
+  hibernatable WebSockets with compact socket attachments. `@axial/multiplayer-protocol` owns
+  command/event/snapshot/error types. The Svelte app has `/room` and `/room/[code]` routes that keep
+  multiplayer separate from the existing local/AI game route.
 
 Implemented gameplay/UX:
 
@@ -208,6 +217,14 @@ Implemented gameplay/UX:
 
 Latest checks passed from `axial-web/` unless noted:
 
+- 2026-06-18 multiplayer foundation: `pnpm check`, `pnpm lint`, `pnpm test:unit`, and `pnpm build`
+  passed. Worker-focused checks also passed: `pnpm --filter @axial/multiplayer-worker check` and
+  `pnpm --filter @axial/multiplayer-worker test:unit` with 6 Worker-runtime tests. Local Playwright
+  fallback smoke verified `http://localhost:5174/room` against Worker dev on `http://localhost:8787`:
+  host creates a room, guest joins on mobile viewport, both ready, host plays a server-validated
+  move, guest sees the revision/move update, and no browser console warnings/errors were observed.
+  Codex in-app Browser was not usable in this session because the plugin reported
+  `privileged native pipe bridge is not available; browser-client is not trusted`.
 - 2026-06-09 portfolio bridge v1: `pnpm check`,
   `pnpm --filter @axial/web test:unit -- --run`, `pnpm --filter @axial/web test:e2e`,
   `pnpm lint`, `pnpm build`, and `pnpm test:unit` passed. Build retained only the known large

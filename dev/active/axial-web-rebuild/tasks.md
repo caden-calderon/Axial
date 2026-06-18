@@ -42,31 +42,33 @@
   Cloudflare dashboard before portfolio embedding.
 - [ ] Add an explicit `frame-ancestors` policy for the portfolio origin once the portfolio URL is
   known.
-- [ ] Add the future multiplayer Worker/Durable Object app when live invite links become the active task.
+- [x] Add the future multiplayer Worker/Durable Object app when live invite links become the active task.
 
 ## Online Multiplayer
 
-- [ ] Write and review the multiplayer architecture before implementation: room lifecycle, protocol,
+- [x] Write and review the multiplayer architecture before implementation: room lifecycle, protocol,
   server authority, reconnection, storage, deployment shape, security, error handling, tests, and
   rollout.
-- [ ] Create a separate multiplayer Worker app/package, likely `axial-web/apps/multiplayer-worker`,
+- [x] Create a separate multiplayer Worker app/package, likely `axial-web/apps/multiplayer-worker`,
   with Durable Object room bindings and `@axial/core` as the rules dependency.
-- [ ] Add a room creation endpoint that returns a short room code, invite URL, QR payload, and host
+- [x] Add a room creation endpoint that returns a short room code, invite URL, QR payload, and host
   reconnect token.
-- [ ] Add join-by-code and join-by-link flow with display-name entry and validation.
-- [ ] Add server-authoritative lobby state: host settings, player seats, player names, ready state,
+- [x] Add join-by-code and join-by-link flow with display-name entry and validation.
+- [x] Add server-authoritative lobby state: host settings, player seats, player names, ready state,
   spectators if enabled, room expiration, and typed errors.
-- [ ] Add WebSocket protocol with versioned command/event envelopes and monotonic room revisions.
-- [ ] Validate every move server-side with `@axial/core`; clients must not decide canonical board
+- [x] Add WebSocket protocol with versioned command/event envelopes and monotonic room revisions.
+- [x] Validate every move server-side with `@axial/core`; clients must not decide canonical board
   state.
-- [ ] Add reconnect tokens, refresh/mobile-sleep recovery, duplicate-tab handling, last-seen
+- [x] Add reconnect tokens, refresh/mobile-sleep recovery, duplicate-tab handling, last-seen
   revision resync, and opponent-disconnected grace state.
-- [ ] Add rematch flow after game over, with same rules first and optional rule tweaks later.
-- [ ] Add client UI for create room, join room, QR code, copy invite link, names, ready state,
+- [x] Add rematch flow after game over, with same rules first and optional rule tweaks later.
+- [x] Add client UI for create room, join room, QR payload, copy invite link, names, ready state,
   connection state, reconnecting/resyncing, opponent disconnected, and room expired.
-- [ ] Add focused unit/integration tests for room lifecycle, command validation, move validation,
+- [x] Add focused unit/integration tests for room lifecycle, command validation, move validation,
   reconnect/resync, duplicate tabs, stale revisions, and error codes.
 - [ ] Add local end-to-end smoke with two browser contexts playing a full room match.
+  - 2026-06-18: ad hoc Playwright fallback smoke passed for two browser contexts and one
+    server-validated move. Commit this as a repeatable e2e test in a follow-up.
 
 ## Portfolio Embed Bridge
 

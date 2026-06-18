@@ -4,10 +4,11 @@
 
 Make Axial a polished browser-native strategy game. The active screen should remain the playable 3D board with compact controls, clear game state, and excellent visual readability.
 
-Near-term priority: plan online multiplayer before implementation. The goal is private
-friend-vs-friend Axial rooms with short join codes, invite links, QR codes, player names,
-server-authoritative move validation, robust reconnects, and clear network/error states. Portfolio
-bridge production setup is paused for now.
+Near-term priority: harden the first online multiplayer foundation and prepare it for a deliberate
+Cloudflare deployment. The first local implementation now covers private friend-vs-friend Classic
+rooms with short join codes, invite links, QR payloads, player names, server-authoritative move
+validation, robust reconnects, and clear network/error states. Portfolio bridge production setup is
+paused for now.
 
 Classic-mode AI remains an important future lane. The target is an AI opponent that can beat Caden, and the current recommendation is documented in `dev/active/axial-web-rebuild/classic-ai-research.md`.
 
@@ -43,10 +44,19 @@ Important boundaries:
 - Keep the first multiplayer backend as a separate worker app/package, likely
   `axial-web/apps/multiplayer-worker`, with `@axial/core` as a shared dependency. Avoid mixing room
   server code into Svelte route components.
+- Keep shared multiplayer protocol types in `axial-web/packages/multiplayer-protocol`; this avoids
+  web/worker drift while keeping Cloudflare and Svelte dependencies out of the protocol layer.
 
 ## Active Implementation Choices
 
 - WebGL game route disables SSR at the page boundary; do not leak Three/Threlte imports into server-executed code.
+- Online multiplayer is separate from the WebGL route. `/room` and `/room/[code]` are lightweight
+  Svelte routes for create/join/lobby/play/rematch, while `/` keeps the existing local/AI/bridge
+  controller.
+- `axial-web/apps/multiplayer-worker` owns canonical multiplayer state. It uses a Cloudflare Worker
+  entrypoint plus one SQLite-backed Durable Object per 8-character room code, validates Classic
+  moves through `@axial/core`, stores reconnect-token hashes, uses hibernatable WebSockets, and
+  returns full private snapshots on reconnect/resync.
 - Undo/redo/replay use canonical row/column move history and `replayMoves`.
 - Control UI is an acrylic top-right panel that expands downward with stable width/radius.
 - Expanded controls are organized as a match console: live state, Match, Appearance, and Session.
@@ -213,14 +223,14 @@ Initial recommendation:
 
 ## Near-Term Priorities
 
-1. Begin the next session with a multiplayer architecture pass using
-   `dev/active/axial-web-rebuild/multiplayer.md` as the working design doc. Lock the first MVP scope
-   before code.
-2. Decide the first deploy shape: separate Cloudflare Worker on an `/api/rooms/*` route or a worker
-   subdomain/custom domain, plus Durable Object binding/migrations managed by Wrangler.
-3. Define and test the multiplayer protocol before UI polish: room creation/join, names, ready,
-   rules, moves, snapshots, revisions, reconnect, rematch, spectators/deferred features, and typed
-   errors.
+1. Harden the multiplayer foundation with a committed two-browser Playwright e2e smoke, mobile sleep
+   manual pass, and production-route dry run.
+2. Decide and configure the first deploy shape: separate Cloudflare Worker on an `/api/rooms/*`
+   route or a worker subdomain/custom domain, plus Durable Object binding/migrations managed by
+   Wrangler.
+3. Continue protocol/UI polish only inside the v1 scope: private Classic rooms, reconnect, resync,
+   rematch, typed errors, and QR payload/link handling. Keep Tactical, public matchmaking,
+   accounts, chat, ranking, and host takebacks deferred.
 4. Confirm the portfolio origin and configure `PUBLIC_AXIAL_BRIDGE_ORIGINS` plus the production
    `frame-ancestors` header only when the portfolio bridge becomes active again.
 5. Continue the cleanup audit in `apps/web/src/lib/game`, `packages/core`, and `packages/ai` for dead code, duplicated logic, stale helpers, and component boundaries that should be cleaned before more features land. The first web UI pass removed the unused `@threlte/extras` dependency, split the status panel into focused sections, and trimmed a stale controller getter.

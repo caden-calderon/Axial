@@ -8,7 +8,7 @@
     "dev": "pnpm --filter @axial/web dev",
     "build": "pnpm --filter @axial/web build",
     "preview": "pnpm --filter @axial/web preview",
-    "check": "pnpm --filter @axial/web check",
+    "check": "pnpm -r --if-present check",
     "lint": "pnpm -r --if-present lint",
     "smoke:production": "pnpm --filter @axial/web smoke:production",
     "test": "pnpm -r --if-present test",

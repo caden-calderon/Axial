@@ -76,8 +76,53 @@ axial-web/
 Shared packages:
 
 - `@axial/core`: canonical rules, replay, move validation, win detection.
-- Optional later `@axial/protocol`: only if web/worker protocol types grow enough to justify a
-  shared package.
+- `@axial/multiplayer-protocol`: a small pure TypeScript protocol package shared by the Worker and
+  web route so command/event envelopes, serializable snapshots, room errors, and credentials do not
+  drift.
+
+### 2026-06-18 MVP Architecture Lock
+
+The first implementation landed as:
+
+- `axial-web/apps/multiplayer-worker`: standalone Cloudflare Worker app.
+- `axial-web/packages/multiplayer-protocol`: shared protocol/types only; no Cloudflare, Svelte, or
+  Three dependencies.
+- Durable Object binding: `AXIAL_ROOM`.
+- Durable Object class: `RoomObject`.
+- Wrangler config: `wrangler.jsonc` with `compatibility_date` set to `2026-06-18`,
+  `nodejs_compat`, observability enabled, and `new_sqlite_classes` migration for `RoomObject`.
+- Local/prototype API shape:
+  - `POST /api/rooms` creates a private room and host credentials.
+  - `POST /api/rooms/:code/join` joins the second player.
+  - `GET /api/rooms/:code/socket` upgrades to the room WebSocket.
+  - `GET /health` supports local smoke checks.
+- Production route preference: mount the Worker under `https://playaxial.dev/api/rooms/*` once
+  Wrangler auth/routes are available. A Worker subdomain is acceptable for early manual prototypes,
+  and the web app should read `PUBLIC_AXIAL_MULTIPLAYER_API` so the endpoint can move without
+  changing UI code.
+- Web route shape:
+  - `/room` for create/join.
+  - `/room/[code]` for lobby, reconnect, play, and rematch.
+  - Keep this route separate from `/`; do not thread multiplayer through the current local/AI game
+    controller in v1.
+- Room codes: 8 characters from a Crockford-style alphabet excluding ambiguous characters, displayed
+  as `XXXX-XXXX`. This is still voice/share friendly while giving roughly 40 bits of invite entropy.
+- QR payload: the canonical invite URL (`/room/[code]`). A styled QR image can come later; the
+  backend contract only needs to return the payload/link now.
+- Initial seat policy: creator is host and Player 1, joiner is Player 2. Random first player and
+  side swapping are deferred.
+- Spectators remain deferred. A third valid browser tab for the same player uses the duplicate-tab
+  policy below rather than spectator mode.
+
+Implementation status:
+
+- `@axial/multiplayer-worker` implements the HTTP and WebSocket room service.
+- `@axial/multiplayer-protocol` shares command/event/snapshot/error types between worker and web.
+- `/room` and `/room/[code]` implement a thin create/join/lobby/play/rematch client outside the
+  existing local/AI game route.
+- The first UI renders a compact authoritative column board rather than the full Threlte scene.
+  Reusing the 3D board for online play is a later polish step after the network contract settles.
+- QR payload and invite URL are available now. A styled QR image remains later polish.
 
 ## Server Authority
 
@@ -117,10 +162,16 @@ the room snapshot, the room snapshot wins.
 
 Room expiry policy:
 
-- Empty pre-match rooms expire quickly.
-- Active matches persist through a generous disconnect grace period.
-- Completed rooms expire after rematch window closes.
-- Store enough room state in Durable Object storage to recover after hibernation/restart.
+- Waiting rooms with no connected players expire after 15 minutes.
+- Waiting rooms with at least one connected player can live for up to 6 hours.
+- Active matches with no connected players expire after 2 hours. Active matches with at least one
+  connected player stay alive and show opponent-disconnected state instead of forcing a v1 forfeit.
+- Completed rooms expire 45 minutes after game over unless a rematch starts.
+- The Durable Object stores room metadata, player seats, reconnect-token hashes, match settings,
+  canonical replay/game snapshot, rematch votes, room event history, revision, and expiry metadata
+  in SQLite-backed storage. In-memory state is a cache only.
+- The Durable Object uses a single alarm per room to enforce expiry and reschedule the next expiry
+  point after relevant mutations.
 
 ## Protocol Principles
 
@@ -183,6 +234,10 @@ Server event families:
 Every accepted mutating command increments `revision`. Rejected commands should not mutate state and
 should return a typed error.
 
+For v1, reconnect always sends a fresh private `room:snapshot` after credentials are validated. The
+room also keeps a bounded event log for tests, debugging, and later event catch-up, but the full
+snapshot remains the correctness path because Axial snapshots are small.
+
 ## Reconnection Design
 
 Room code is public. Reconnect token is secret.
@@ -203,7 +258,9 @@ On reconnect:
 
 Duplicate-tab policy:
 
-- Prefer "latest socket wins" for a player seat, with a clear event to the old socket.
+- Latest valid socket wins for a player seat.
+- The new socket receives a private snapshot after auth.
+- The old socket receives a `room:error` with `duplicate-connection`, then closes.
 - Do not allow a socket with only the room code to take a seat.
 - Spectator mode can be added later for extra tabs.
 
@@ -232,6 +289,7 @@ Server error categories:
 
 - `invalid-message`
 - `unsupported-version`
+- `duplicate-connection`
 - `room-not-found`
 - `room-full`
 - `invalid-name`
@@ -250,15 +308,20 @@ Error responses should be safe for UI display but also structured enough for tes
 ## Security
 
 - Generate room codes with enough entropy for private invites.
-- Rate-limit room creation and join attempts.
+- Keep room creation/join payloads tiny and bounded. Production rate limiting should be enforced at
+  the Worker/Cloudflare route level before public launch; no global rate-limit Durable Object should
+  be introduced in v1.
 - Keep reconnect tokens secret and random.
+- Store only reconnect-token hashes in Durable Object storage.
+- Use timing-safe token verification.
 - Validate all payloads before mutation.
 - Clamp display names by length and render as text only.
 - Reject HTML/control characters in names or normalize aggressively.
 - Never trust client board state.
 - Avoid logging reconnect tokens.
-- Consider origin checks for browser WebSocket requests, while remembering that WebSocket origins
-  are advisory and not a replacement for room/reconnect tokens.
+- Enforce an allow-list for browser HTTP/WebSocket origins when `ALLOWED_ORIGINS` is configured,
+  while remembering that WebSocket origins are advisory and not a replacement for room/reconnect
+  tokens.
 
 ## UX Ideas
 
