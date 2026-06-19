@@ -4,11 +4,11 @@
 
 Make Axial a polished browser-native strategy game. The active screen should remain the playable 3D board with compact controls, clear game state, and excellent visual readability.
 
-Near-term priority: validate the first online multiplayer foundation on real desktop/phone clients
-now that the room Worker is deployed on Cloudflare. The implementation covers private
-friend-vs-friend Classic rooms with short join codes, invite links, QR payloads, player names,
-server-authoritative move validation, robust reconnects, and clear network/error states. Portfolio
-bridge production setup is paused for now.
+Near-term priority: validate the first online multiplayer foundation on real desktop/phone clients.
+The implementation covers private friend-vs-friend Classic rooms in the main 3D game route with
+short join codes, invite links, QR images, player names, server-authoritative move validation,
+robust reconnects, and clear network/error states. Portfolio bridge production setup is paused for
+now.
 
 Classic-mode AI remains an important future lane. The target is an AI opponent that can beat Caden, and the current recommendation is documented in `dev/active/axial-web-rebuild/classic-ai-research.md`.
 
@@ -50,20 +50,26 @@ Important boundaries:
 ## Active Implementation Choices
 
 - WebGL game route disables SSR at the page boundary; do not leak Three/Threlte imports into server-executed code.
-- Online multiplayer is separate from the WebGL route. `/room` and `/room/[code]` are lightweight
-  Svelte routes for create/join/lobby/play/rematch, while `/` keeps the existing local/AI/bridge
-  controller.
+- Online multiplayer is integrated into the WebGL game route. The right control panel exposes
+  Local, AI, and Online modes; Online reuses the existing 3D board for rendering/animation while the
+  room service remains authoritative. Legacy `/room` and `/room/[code]` routes are compatibility
+  redirects into `/?online=1` and `/?room=CODE`.
 - `axial-web/apps/multiplayer-worker` owns canonical multiplayer state. It uses a Cloudflare Worker
   entrypoint plus one SQLite-backed Durable Object per 8-character room code, validates Classic
   moves through `@axial/core`, stores reconnect-token hashes, uses hibernatable WebSockets, and
   returns full private snapshots on reconnect/resync. Production routes are same-origin:
   `playaxial.dev/api/rooms*` and `playaxial.dev/health`.
+- WebSocket remains the preferred online transport, but HTTPS sync/command fallback is treated as a
+  healthy transport when it is succeeding. The UI should only surface reconnecting when both
+  transports have gone stale long enough to matter to a player.
 - Undo/redo/replay use canonical row/column move history and `replayMoves`.
 - Control UI is an acrylic top-right panel that expands downward with stable width/radius.
 - Expanded controls are organized as a match console: live state, Match, Appearance, and Session.
   The panel body is split into focused section components while the shell owns expansion and
   toolbar mode state.
-- Match setup exposes local play, Classic AI, pre-match `Classic`/`Tactical` rules, board dimensions, win rules, and AI difficulty.
+- Match setup exposes Local, AI, and Online modes, pre-match `Classic`/`Tactical` rules, board
+  dimensions, win rules, and AI difficulty. Online v1 is Classic-only; Tactical multiplayer remains
+  locked out in the UI until explicitly scoped.
 - Tactical mode currently has a fixed three-piece kit per player: two Blocker Combos and one Double Adjacent.
 - Tactical sub-actions are replay-visible with special metadata so undo/redo and future AI training can reconstruct same-player continuations.
 - Tactical actions are exposed through a `Pieces` mode in the top-right control pill; the dropdown shows either normal setup/status or piece details depending on whether Pieces mode is active.
@@ -224,15 +230,17 @@ Initial recommendation:
 
 ## Near-Term Priorities
 
-1. Run the live desktop/phone manual smoke on a clean DNS path: open `https://playaxial.dev/room`
-   on both devices, create/join a private room, ready both players, make a server-validated move,
-   refresh one client, and confirm reconnect/resync.
+1. Run the live desktop/phone manual smoke on a clean DNS path: open `https://playaxial.dev`, choose
+   Online on desktop, create a private room, open the `https://playaxial.dev/?room=CODE` invite on
+   phone, ready both players, make a server-validated 3D-board move, refresh one client, and confirm
+   reconnect/resync.
 2. If the current CSU/HFS Wi-Fi still resolves `*.playaxial.dev` to `65.52.200.44`/`::1`, switch
    the test device to cellular or DNS `1.1.1.1`/`8.8.8.8` before debugging application behavior.
 3. Harden the multiplayer foundation with a committed two-browser Playwright e2e smoke, mobile sleep
    manual pass, and production-route smoke from a clean DNS/network.
 4. Continue protocol/UI polish only inside the v1 scope: private Classic rooms, reconnect, resync,
-   rematch, typed errors, and QR payload/link handling. Keep Tactical, public matchmaking,
+   rematch, typed errors, QR/link handling, and the compact integrated sidebar. Keep Tactical,
+   public matchmaking,
    accounts, chat, ranking, and host takebacks deferred.
 5. Confirm the portfolio origin and configure `PUBLIC_AXIAL_BRIDGE_ORIGINS` plus the production
    `frame-ancestors` header only when the portfolio bridge becomes active again.

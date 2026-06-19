@@ -763,7 +763,7 @@ export class RoomObject extends DurableObject<Env> {
 }
 
 function roomInviteUrl(origin: string, roomCode: string): string {
-  return `${origin.replace(/\/$/, "")}/room/${roomCode}`;
+  return `${origin.replace(/\/$/, "")}/?room=${roomCode}`;
 }
 
 function closeSocket(ws: WebSocket, code: number, reason: string): void {

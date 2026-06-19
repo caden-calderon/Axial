@@ -60,6 +60,7 @@ const STORAGE_KEYS = {
 const LEGACY_SCENE_THEME_KEY = 'axial-scene-theme';
 
 export type OpponentMode = 'local' | 'ai';
+export type PlayMode = OpponentMode | 'online';
 export type AiDifficulty = 'easy' | 'medium' | 'hard' | 'nightmare';
 
 export const WIN_LINE_LENGTH_OPTIONS: readonly {

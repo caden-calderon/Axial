@@ -369,6 +369,10 @@ button {
 	background: color-mix(in oklab, var(--surface) 40%, transparent);
 }
 
+.play-mode-switch {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .mode-switch button {
 	display: inline-flex;
 	min-width: 0;
@@ -921,8 +925,249 @@ button {
 	font-weight: 650;
 }
 
+.online-section {
+	gap: 0.5rem;
+}
+
+.online-section .section-heading {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.online-state {
+	min-width: 0;
+	overflow: hidden;
+	color: color-mix(in oklab, var(--muted) 88%, var(--text));
+	font-size: 0.6rem;
+	font-weight: 780;
+	text-overflow: ellipsis;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.online-state[data-state='connected'] {
+	color: color-mix(in oklab, var(--accent) 76%, var(--text));
+}
+
+.online-state[data-state='opponent-disconnected'],
+.online-state[data-state='reconnecting'],
+.online-state[data-state='resyncing'] {
+	color: #e5bf68;
+}
+
+.online-state[data-state='fatal-error'],
+.online-state[data-state='expired'] {
+	color: var(--solar);
+}
+
+.online-code-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 0.48rem;
+	padding: 0.48rem;
+	border: 1px solid color-mix(in oklab, var(--text) 10%, transparent);
+	border-radius: 0.95rem;
+	background: color-mix(in oklab, var(--surface) 36%, transparent);
+}
+
+.online-code-row > div:first-child {
+	display: grid;
+	min-width: 0;
+	gap: 0.1rem;
+}
+
+.online-code-row span,
+.online-field span {
+	color: var(--muted);
+	font-size: 0.62rem;
+	font-weight: 790;
+	text-transform: uppercase;
+}
+
+.online-code-row strong {
+	overflow: hidden;
+	color: var(--text);
+	font-size: 1rem;
+	font-weight: 860;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.online-code-actions,
+.online-actions,
+.online-join-row {
+	display: grid;
+	gap: 0.34rem;
+}
+
+.online-code-actions {
+	grid-template-columns: repeat(2, auto);
+}
+
+.mini-icon-button,
+.online-actions button,
+.online-join-row button,
+.primary-action {
+	display: inline-flex;
+	min-width: 0;
+	min-height: 1.9rem;
+	align-items: center;
+	justify-content: center;
+	gap: 0.28rem;
+	border: 1px solid color-mix(in oklab, var(--text) 12%, transparent);
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--surface) 42%, transparent);
+	color: var(--text);
+	cursor: pointer;
+	font-size: 0.68rem;
+	font-weight: 790;
+	transition:
+		transform 160ms ease,
+		background 160ms ease,
+		border-color 160ms ease;
+}
+
+.mini-icon-button {
+	min-height: 1.72rem;
+	padding: 0 0.48rem;
+}
+
+.mini-icon-button:hover,
+.mini-icon-button.active,
+.online-actions button:hover,
+.online-join-row button:hover,
+.primary-action:hover {
+	transform: translateY(-1px);
+	border-color: color-mix(in oklab, var(--accent) 46%, transparent);
+	background: color-mix(in oklab, var(--accent) 16%, var(--surface));
+}
+
+.primary-action {
+	width: 100%;
+	min-height: 2rem;
+	border-color: color-mix(in oklab, var(--accent) 42%, transparent);
+	background: color-mix(in oklab, var(--accent) 24%, var(--surface));
+	box-shadow: inset 0 1px 0 color-mix(in oklab, #fff 14%, transparent);
+}
+
+.qr-card {
+	display: grid;
+	place-items: center;
+	overflow: hidden;
+	padding: 0.44rem;
+	border: 1px solid color-mix(in oklab, var(--accent) 24%, transparent);
+	border-radius: 0.95rem;
+	background: color-mix(in oklab, #eef8f1 94%, var(--surface));
+}
+
+.qr-card img {
+	display: block;
+	width: min(9.5rem, 100%);
+	height: auto;
+}
+
+.qr-card span {
+	color: #10231b;
+	font-size: 0.68rem;
+	font-weight: 820;
+}
+
+.online-players {
+	display: grid;
+	gap: 0.34rem;
+}
+
+.online-player {
+	display: grid;
+	min-width: 0;
+	min-height: 2.1rem;
+	grid-template-columns: auto minmax(0, 1fr) auto auto;
+	align-items: center;
+	gap: 0.34rem;
+	padding: 0.32rem 0.42rem;
+	border: 1px solid color-mix(in oklab, var(--text) 9%, transparent);
+	border-radius: 0.82rem;
+	background: color-mix(in oklab, var(--surface) 34%, transparent);
+}
+
+.online-player[data-self='true'] {
+	border-color: color-mix(in oklab, var(--accent) 42%, transparent);
+}
+
+.online-seat {
+	display: inline-grid;
+	min-width: 1.42rem;
+	height: 1.22rem;
+	place-items: center;
+	border-radius: 0.4rem;
+	background: color-mix(in oklab, var(--accent) 54%, var(--text));
+	color: var(--field);
+	font-size: 0.62rem;
+	font-weight: 900;
+}
+
+.online-player strong {
+	overflow: hidden;
+	color: var(--text);
+	font-size: 0.76rem;
+	font-weight: 820;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.online-player small {
+	color: var(--muted);
+	font-size: 0.62rem;
+	font-weight: 780;
+}
+
+.online-field {
+	display: grid;
+	gap: 0.3rem;
+}
+
+.online-field input {
+	width: 100%;
+	min-width: 0;
+	min-height: 2rem;
+	border: 1px solid color-mix(in oklab, var(--text) 12%, transparent);
+	border-radius: 0.72rem;
+	background: color-mix(in oklab, var(--surface) 42%, transparent);
+	color: var(--text);
+	font: inherit;
+	font-size: 0.76rem;
+	font-weight: 720;
+	outline: none;
+	padding: 0 0.62rem;
+}
+
+.online-field input:focus {
+	border-color: color-mix(in oklab, var(--accent) 52%, transparent);
+	box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 16%, transparent);
+}
+
+.online-actions {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.online-join-row {
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: end;
+}
+
+.online-join-row button {
+	min-width: 4.2rem;
+	min-height: 2rem;
+	padding: 0 0.62rem;
+}
+
 .mode-switch button:focus-visible,
 .dimension-buttons button:focus-visible,
+.mini-icon-button:focus-visible,
+.online-actions button:focus-visible,
+.online-join-row button:focus-visible,
+.primary-action:focus-visible,
 .board-color-picker:focus-within,
 .piece-color:focus-within,
 .shape-switch button:focus-visible,
@@ -1053,5 +1298,18 @@ button {
 	.toggle-row {
 		min-height: 2.05rem;
 		font-size: 0.72rem;
+	}
+
+	.online-code-row {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.online-code-actions {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.online-code-row strong {
+		font-size: 0.9rem;
+		white-space: normal;
 	}
 }

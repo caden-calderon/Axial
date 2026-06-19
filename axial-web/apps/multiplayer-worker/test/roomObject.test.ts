@@ -21,7 +21,7 @@ describe("Axial multiplayer room service", () => {
 
     expect(created.roomCode).toMatch(/^[A-HJ-NP-Z2-9]{8}$/);
     expect(created.inviteUrl).toBe(
-      `https://playaxial.dev/room/${created.roomCode}`,
+      `https://playaxial.dev/?room=${created.roomCode}`,
     );
     expect(created.qrPayload).toBe(created.inviteUrl);
     expect(created.player.seat).toBe(1);

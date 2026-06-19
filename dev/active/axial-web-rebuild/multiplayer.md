@@ -101,14 +101,17 @@ The first implementation landed as:
   public game domain. The web app still reads `PUBLIC_AXIAL_MULTIPLAYER_API` so preview/fallback
   endpoints can move without changing UI code.
 - Web route shape:
-  - `/room` for create/join.
-  - `/room/[code]` for lobby, reconnect, play, and rematch.
-  - Keep this route separate from `/`; do not thread multiplayer through the current local/AI game
-    controller in v1.
+  - `/` remains the playable game route and now exposes Local, AI, and Online in the existing setup
+    sidebar.
+  - Online mode uses the existing 3D board for rendering and routes moves to the room service.
+  - Invite links use `/?room=CODE`; `/room` and `/room/[code]` remain as compatibility redirects to
+    `/?online=1` and `/?room=CODE`.
+  - Keep room networking in `src/lib/multiplayer` and the Worker package, not inside the local/AI
+    controller.
 - Room codes: 8 characters from a Crockford-style alphabet excluding ambiguous characters, displayed
   as `XXXX-XXXX`. This is still voice/share friendly while giving roughly 40 bits of invite entropy.
-- QR payload: the canonical invite URL (`/room/[code]`). A styled QR image can come later; the
-  backend contract only needs to return the payload/link now.
+- QR payload: the canonical invite URL (`/?room=CODE`). The web sidebar renders a scannable QR image
+  from that payload; the backend contract still only returns the payload/link.
 - Initial seat policy: creator is host and Player 1, joiner is Player 2. Random first player and
   side swapping are deferred.
 - Spectators remain deferred. A third valid browser tab for the same player uses the duplicate-tab
@@ -118,19 +121,21 @@ Implementation status:
 
 - `@axial/multiplayer-worker` implements the HTTP and WebSocket room service.
 - `@axial/multiplayer-protocol` shares command/event/snapshot/error types between worker and web.
-- `/room` and `/room/[code]` implement a thin create/join/lobby/play/rematch client outside the
-  existing local/AI game route.
+- The main Svelte game route implements Local, AI, and Online modes in the existing sidebar and 3D
+  board. `/room` and `/room/[code]` are legacy shims that redirect into the main route.
 - Production Worker deployment is live as `axial-multiplayer`, current verified version
-  `e2524009-da3a-4562-9b77-b21fcb6c70d0`, with routes `playaxial.dev/api/rooms*` and
+  `4a0f9b12-361c-4f1e-ae21-d4f2d7671514`, with routes `playaxial.dev/api/rooms*` and
   `playaxial.dev/health`.
 - 2026-06-18/19 production hardening: WebSocket remains the preferred live transport, but the room
   service also exposes HTTPS fallback endpoints `POST /api/rooms/:code/sync` and
   `POST /api/rooms/:code/commands`. The web client starts fallback polling/commands when WSS cannot
   connect, so desktop browsers or networks that block WebSockets can still host, ready, play, and
-  resync through the same server-authoritative Durable Object.
-- The first UI renders a compact authoritative column board rather than the full Threlte scene.
-  Reusing the 3D board for online play is a later polish step after the network contract settles.
-- QR payload and invite URL are available now. A styled QR image remains later polish.
+  resync through the same server-authoritative Durable Object. Successful fallback traffic counts as
+  a healthy connection; the UI only shows reconnecting when both transports have gone stale.
+- 2026-06-19 integrated UI pass: Online mode now renders the authoritative snapshot through the
+  existing Threlte board, places lobby/invite/QR/ready controls inside the main sidebar, and preserves
+  the local/AI controller for offline play.
+- QR payload, invite URL, copy button, and scannable QR image are available in the Online sidebar.
 
 ## Server Authority
 
@@ -335,8 +340,8 @@ Error responses should be safe for UI display but also structured enough for tes
 
 Core:
 
-- Create room button in match setup.
-- Join room by code.
+- Online mode in the existing Match setup.
+- Create room and join-by-code controls in the Online sidebar.
 - Copy invite link.
 - QR code join.
 - Display names.
@@ -393,6 +398,9 @@ Web/e2e tests:
 - Refresh one player and reconnect to same seat.
 - Simulate network close and resync.
 - Complete a short forced game if using a tiny test board or seeded room helper.
+- 2026-06-19 ad hoc local smoke covered the integrated 3D route: host creates a room from `/?online=1`,
+  guest joins on a mobile viewport through `/?room=CODE`, both ready, host makes a server-validated
+  move on the 3D canvas, and both clients receive the revision/move update.
 
 Manual smoke:
 

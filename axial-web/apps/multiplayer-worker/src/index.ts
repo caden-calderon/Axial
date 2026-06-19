@@ -233,7 +233,7 @@ function publicWebOrigin(request: Request, env: Env): string {
 }
 
 function roomInviteUrl(origin: string, roomCode: string): string {
-  return `${origin.replace(/\/$/, "")}/room/${roomCode}`;
+  return `${origin.replace(/\/$/, "")}/?room=${roomCode}`;
 }
 
 function enforceOrigin(request: Request, env: Env): void {

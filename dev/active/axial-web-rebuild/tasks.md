@@ -66,6 +66,14 @@
 - [x] Add rematch flow after game over, with same rules first and optional rule tweaks later.
 - [x] Add client UI for create room, join room, QR payload, copy invite link, names, ready state,
   connection state, reconnecting/resyncing, opponent disconnected, and room expired.
+- [x] Integrate Online mode into the existing main 3D game route/sidebar with Local, AI, and Online
+  mode selection.
+- [x] Replace the temporary authoritative 2D online board with the existing Threlte 3D board fed by
+  server snapshots.
+- [x] Keep `/room` and `/room/[code]` as compatibility redirects into `/?online=1` and `/?room=CODE`.
+- [x] Render a real scannable QR image from the invite URL in the Online sidebar.
+- [x] Reduce false reconnect noise by treating successful HTTPS sync/command fallback as a healthy
+  transport when WebSocket is flaky.
 - [x] Add focused unit/integration tests for room lifecycle, command validation, move validation,
   reconnect/resync, duplicate tabs, stale revisions, and error codes.
 - [x] Add Worker production deploy helpers and a production multiplayer smoke runner.
@@ -76,7 +84,15 @@
     the failure as an app bug.
 - [ ] Add local end-to-end smoke with two browser contexts playing a full room match.
   - 2026-06-18: ad hoc Playwright fallback smoke passed for two browser contexts and one
-    server-validated move. Commit this as a repeatable e2e test in a follow-up.
+    server-validated move.
+  - 2026-06-19: ad hoc Playwright smoke passed for the integrated main-route 3D Online flow with
+    desktop host, mobile guest, QR image, both ready, and one server-validated 3D-board move. Commit
+    this as a repeatable e2e test in a follow-up.
+  - 2026-06-19: Worker dry-run passed and `pnpm deploy:multiplayer` deployed version
+    `4a0f9b12-361c-4f1e-ae21-d4f2d7671514`.
+  - 2026-06-19: `pnpm smoke:production:multiplayer` is still blocked on this workstation by local
+    resolution to `::1`/`65.52.200.44`, while authoritative Cloudflare nameservers and `@8.8.8.8`
+    return Cloudflare proxy IPs.
 
 ## Portfolio Embed Bridge
 

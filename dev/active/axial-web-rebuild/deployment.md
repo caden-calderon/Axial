@@ -127,9 +127,9 @@ Manual smoke:
 6. Toggle light/dark mode and adjust the board color picker.
 7. On a phone-width viewport, confirm the board, HUD, compact controls, fullscreen button, and install metadata work without text overlap.
 8. On a mobile device, use the browser install/add-to-home-screen flow and confirm Axial opens in an app-like display mode when launched from the home screen.
-9. Open `https://playaxial.dev/room` on desktop and create a private room.
-10. Open the invite link or enter the code on a phone using a clean DNS path.
-11. Set different display names, ready both players, make one legal move from the correct seat, refresh one client, and confirm it reconnects/resyncs.
+9. Open `https://playaxial.dev` on desktop, choose Online in the match setup, and create a private room.
+10. Open the `https://playaxial.dev/?room=CODE` invite link or scan the QR code on a phone using a clean DNS path.
+11. Set different display names, ready both players, make one legal move on the 3D board from the correct seat, refresh one client, and confirm it reconnects/resyncs.
 
 If a deployment is bad, use the Pages project's Deployments tab to roll back to the last known-good deployment while fixing `main`.
 
@@ -201,8 +201,10 @@ The first live multiplayer foundation now exists:
 - `packages/multiplayer-protocol`: shared web/worker protocol types.
 - Durable Object class per live room/code: `RoomObject` bound as `AXIAL_ROOM`.
 - Room IDs generated as short invite codes.
-- Client route shape: `/room/[code]`.
+- Client route shape: the main game route with `/?room=CODE` invite links. Legacy `/room` and
+  `/room/[code]` paths redirect into the main route.
 - WebSocket endpoint shape: `/api/rooms/[code]/socket`.
+- HTTPS fallback endpoint shape: `/api/rooms/[code]/sync` and `/api/rooms/[code]/commands`.
 - The Worker imports `@axial/core` so the server validates every move and broadcasts canonical game snapshots.
 - The Worker is mounted under same-origin `/api/rooms*` routes on `playaxial.dev`.
 
@@ -221,6 +223,8 @@ Cloudflare setup notes for multiplayer:
   WebSocket clients remain connected.
 - Keep the first backend separate from the Pages frontend and route it explicitly under
   `/api/rooms*` on `playaxial.dev`.
+- Keep Online UI integrated into the existing game route/sidebar; do not create a second production
+  board surface unless a future feature truly needs it.
 - Local dev uses `wrangler dev --port 8787` for the Worker. The web route defaults to
   `http://localhost:8787` when loaded from localhost; production or custom preview endpoints can use
   `PUBLIC_AXIAL_MULTIPLAYER_API`.

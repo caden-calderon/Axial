@@ -5,12 +5,12 @@
 Axial is being rebuilt from the preserved Unity/Python project into a polished browser-native strategy game. The active app is `axial-web/apps/web`, using SvelteKit, TypeScript, pnpm, Three.js, and Threlte. The old Unity project remains in `axial-unity/`.
 
 Current multiplayer status: the first robust online multiplayer foundation is implemented and the
-room Worker is deployed on Cloudflare. It supports private Classic rooms with short room codes,
-invite links, QR payloads, display names, host rules, ready flow, server-authoritative moves,
-reconnect tokens, revision snapshots, duplicate-tab takeover, opponent-disconnected state, and
-rematch. Production browser smoke from this machine is currently blocked by the local CSU/HFS
-recursive DNS path returning stale/bad `*.playaxial.dev` records even though Cloudflare
-authoritative DNS and Google DNS return the correct Cloudflare records.
+room Worker is deployed on Cloudflare. It supports private Classic rooms inside the main 3D game
+route with short room codes, invite links, QR images, display names, host rules, ready flow,
+server-authoritative moves, reconnect tokens, revision snapshots, duplicate-tab takeover,
+opponent-disconnected state, and rematch. Production browser smoke from this machine has previously
+been blocked by the local CSU/HFS recursive DNS path returning stale/bad `*.playaxial.dev` records
+even though Cloudflare authoritative DNS and Google DNS returned the correct Cloudflare records.
 
 Classic-mode AI remains an important future lane. Caden wants an AI opponent that can beat him as the benchmark. Tactical/special-piece AI remains deferred.
 
@@ -58,11 +58,12 @@ Deployment state:
 - Live multiplayer now has a separate Cloudflare Worker plus Durable Objects room service under
   `axial-web/apps/multiplayer-worker`, with shared protocol types in
   `axial-web/packages/multiplayer-protocol`. The web app remains the frontend and `@axial/core`
-  validates server-side moves.
+  validates server-side moves. Online UI lives in the existing main route/sidebar; `/room` paths are
+  compatibility redirects into the main route.
 - 2026-06-18/19 multiplayer production deploy: Worker `axial-multiplayer` is deployed with Durable
   Object binding `AXIAL_ROOM` and routes `playaxial.dev/api/rooms*` plus `playaxial.dev/health`.
-  Pages production deployed commit `f0289aa`, so `/room` is live on the Pages project. The local
-  shell/Chromium resolver on the current network returns `65.52.200.44` and `::1` for
+  Pages production deployed commit `f0289aa`, so the first standalone `/room` UI reached production.
+  The local shell/Chromium resolver on that network returned `65.52.200.44` and `::1` for
   `playaxial.dev`, while `@8.8.8.8` and Cloudflare authoritative nameservers return Cloudflare
   proxy IPs. Use a clean DNS path, phone cellular, or DNS override before judging the live
   desktop/phone multiplayer smoke.
@@ -123,8 +124,12 @@ Multiplayer direction:
   `POST /api/rooms/:code/join`, `GET /api/rooms/:code/socket`, and `GET /health`; `RoomObject`
   stores room state and bounded event history in SQLite-backed Durable Object storage and uses
   hibernatable WebSockets with compact socket attachments. `@axial/multiplayer-protocol` owns
-  command/event/snapshot/error types. The Svelte app has `/room` and `/room/[code]` routes that keep
-  multiplayer separate from the existing local/AI game route.
+  command/event/snapshot/error types.
+- 2026-06-19 integrated Online UI status: the Svelte app exposes Local, AI, and Online modes in the
+  existing setup sidebar. Online mode creates/joins private rooms, shows invite code/link/QR/player
+  state/ready/rematch controls in the sidebar, hydrates `@axial/core` snapshots from the room service,
+  and renders play through the existing Threlte board. `/room` and `/room/[code]` now redirect to
+  `/?online=1` and `/?room=CODE`.
 
 Implemented gameplay/UX:
 
@@ -226,6 +231,15 @@ Implemented gameplay/UX:
 
 Latest checks passed from `axial-web/` unless noted:
 
+- 2026-06-19 integrated Online/3D pass: local Worker dev plus Vite smoke verified desktop host
+  `/?online=1`, mobile guest `/?room=CODE`, real QR image rendering, both players readying, a
+  server-validated move made on the 3D canvas, and both clients receiving the move/revision update.
+  Console output from the smoke had no app/Svelte/room errors; observed browser noise was limited to
+  headless WebGL context/readback warnings. `pnpm check`, `pnpm lint`, `pnpm test:unit`,
+  `pnpm build`, and `pnpm deploy:multiplayer:dry-run` passed; `pnpm deploy:multiplayer` deployed
+  Worker version `4a0f9b12-361c-4f1e-ae21-d4f2d7671514`. `pnpm smoke:production:multiplayer`
+  remains blocked from this workstation by local resolution to `::1`/`65.52.200.44`; authoritative
+  Cloudflare nameservers and `@8.8.8.8` return `104.21.94.131`/`172.67.136.79`.
 - 2026-06-18/19 multiplayer HTTPS fallback pass: desktop Firefox showed repeated failures opening
   `wss://playaxial.dev/api/rooms/:code/socket`, leaving the host lobby stuck as `Away` while phone
   join HTTP still worked. Added Worker fallback endpoints `POST /api/rooms/:code/sync` and
@@ -298,8 +312,10 @@ Bundle cleanup decision from the 2026-06-07 pass:
 
 ## Key Files For Next Work
 
-For multiplayer, start with `dev/active/axial-web-rebuild/multiplayer.md` and the proposed
-`axial-web/apps/multiplayer-worker` package layout in `next-session-prompt.md`.
+For multiplayer, start with `dev/active/axial-web-rebuild/multiplayer.md`,
+`axial-web/apps/multiplayer-worker`, `axial-web/apps/web/src/lib/multiplayer`, and the main
+Svelte route/sidebar integration in `axial-web/apps/web/src/routes/+page.svelte` and
+`axial-web/apps/web/src/lib/game/ui`.
 
 For existing web/game work:
 

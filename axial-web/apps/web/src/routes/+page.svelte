@@ -1,14 +1,21 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import type { MatchMode, Move } from '@axial/core';
 	import { createAxialBridgeController } from '$lib/game/bridge/bridgeController';
 	import AxialScene from '$lib/game/scene/AxialScene.svelte';
-	import { createGameController } from '$lib/game/state/gameController.svelte';
+	import { createGameController, type PlayMode } from '$lib/game/state/gameController.svelte';
 	import GameOverModal from '$lib/game/ui/GameOverModal.svelte';
 	import GameHud from '$lib/game/ui/GameHud.svelte';
 	import GameStatusPanel from '$lib/game/ui/GameStatusPanel.svelte';
+	import {
+		createOnlineController,
+		type BoardDimensionKey
+	} from '$lib/multiplayer/onlineController.svelte';
 
 	const controller = createGameController();
+	const online = createOnlineController();
 	const bridge = createAxialBridgeController(controller);
+	let playMode = $state<PlayMode>('local');
 	let embedMode = $state(false);
 	let bridgeEnabled = $state(false);
 	let fullscreenAvailable = $state(false);
@@ -18,10 +25,45 @@
 	let sceneBoundaryRecoveries = 0;
 	let lastRecoveryAt = 0;
 	let recoveryMessageTimeout: number | null = null;
+	const activeGame = $derived(playMode === 'online' ? online.game : controller.game);
+	const activeStatusTitle = $derived(
+		playMode === 'online' ? online.statusTitle : controller.statusTitle
+	);
+	const activeCurrentLabel = $derived(
+		playMode === 'online' ? online.currentLabel : controller.currentLabel
+	);
+	const activeCurrentPlayer = $derived(
+		playMode === 'online' ? online.currentPlayer : controller.currentPlayer
+	);
+	const activeBoardDimensions = $derived(
+		playMode === 'online' ? online.boardDimensions : controller.boardDimensions
+	);
+	const activeWinCondition = $derived(
+		playMode === 'online' ? online.winCondition : controller.winCondition
+	);
+	const activeMatchMode = $derived(playMode === 'online' ? online.matchMode : controller.matchMode);
+	const activeSetupLocked = $derived(
+		playMode === 'online' ? online.setupLocked : controller.setupLocked
+	);
+	const activeMoveError = $derived(playMode === 'online' ? online.moveError : controller.moveError);
+	const activePreviewMove = $derived(
+		playMode === 'online' ? online.previewMove : controller.previewMove
+	);
+	const activeLockedMove = $derived(
+		playMode === 'online' ? online.lockedMove : controller.lockedMove
+	);
 
 	onMount(() => {
 		controller.hydrateFromStorage();
 		embedMode = new URL(window.location.href).searchParams.get('embed') === '1';
+		if (online.hydrateFromBrowser(new URL(window.location.href).searchParams)) {
+			online.useRules({
+				mode: 'classic',
+				board: controller.boardDimensions,
+				winCondition: controller.winCondition
+			});
+			playMode = 'online';
+		}
 		bridgeEnabled = bridge.start();
 
 		const updateFullscreenState = () => {
@@ -40,6 +82,7 @@
 			document.removeEventListener('webkitfullscreenchange', updateFullscreenState);
 			window.removeEventListener('error', handleGlobalError);
 			window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+			online.destroy();
 			bridge.stop();
 			if (recoveryMessageTimeout) clearTimeout(recoveryMessageTimeout);
 		};
@@ -145,6 +188,77 @@
 		return error instanceof Error ? error.message : 'Board renderer error';
 	}
 
+	function setPlayMode(nextMode: PlayMode): void {
+		if (nextMode === playMode) return;
+
+		if (playMode !== 'online' && controller.setupLocked) {
+			controller.setOpponentMode(nextMode === 'online' ? controller.opponentMode : nextMode);
+			return;
+		}
+
+		if (nextMode === 'online') {
+			online.useRules({
+				mode: 'classic',
+				board: controller.boardDimensions,
+				winCondition: controller.winCondition
+			});
+			playMode = 'online';
+			return;
+		}
+
+		if (playMode === 'online' && online.hasRoom) online.leaveRoom();
+		playMode = nextMode;
+		controller.setOpponentMode(nextMode);
+	}
+
+	function setSceneHover(move: Move | null): void {
+		if (playMode === 'online') {
+			online.setHover(move);
+			return;
+		}
+		controller.setHover(move);
+	}
+
+	function playSceneMove(move: Move): void {
+		if (playMode === 'online') {
+			online.selectOrPlayMove(move, controller.confirmDropEnabled);
+			return;
+		}
+		controller.selectOrPlayMove(move);
+	}
+
+	function setActiveMatchMode(mode: MatchMode): void {
+		if (playMode === 'online') {
+			online.setMatchMode(mode);
+			return;
+		}
+		controller.setMatchMode(mode);
+	}
+
+	function setActiveBoardDimension(key: BoardDimensionKey, value: number): void {
+		if (playMode === 'online') {
+			online.setBoardDimension(key, value);
+			return;
+		}
+		controller.setBoardDimension(key, value);
+	}
+
+	function setActiveWinLineLength(lineLength: number): void {
+		if (playMode === 'online') {
+			online.setWinLineLength(lineLength);
+			return;
+		}
+		controller.setWinLineLength(lineLength);
+	}
+
+	function setActiveLinesToWin(linesToWin: number): void {
+		if (playMode === 'online') {
+			online.setLinesToWin(linesToWin);
+			return;
+		}
+		controller.setLinesToWin(linesToWin);
+	}
+
 	type WebkitFullscreenDocument = Document & {
 		webkitExitFullscreen?: () => Promise<void> | void;
 		webkitFullscreenElement?: Element | null;
@@ -166,7 +280,7 @@
 <main
 	class="game-shell"
 	data-theme={controller.uiTheme}
-	data-status={controller.statusTone}
+	data-status={playMode === 'online' ? online.statusTone : controller.statusTone}
 	data-embed={embedMode ? 'true' : undefined}
 	style:--accent={controller.boardColor}
 >
@@ -174,19 +288,19 @@
 	<svelte:boundary onerror={handleSceneBoundaryError}>
 		{#key sceneEpoch}
 			<AxialScene
-				game={controller.game}
-				hoveredMove={controller.previewMove}
-				previewLocked={controller.lockedMove !== null}
+				game={activeGame}
+				hoveredMove={activePreviewMove}
+				previewLocked={activeLockedMove !== null}
 				labelsVisible={controller.labelsVisible}
 				gridLayersVisible={controller.gridLayersVisible}
 				uiTheme={controller.uiTheme}
 				boardColor={controller.boardColor}
 				pieceShape={controller.pieceShape}
 				pieceColors={controller.pieceColors}
-				placementMode={controller.placementMode}
-				doubleAdjacentAnchor={controller.pendingDoubleAdjacentOrigin}
-				onHover={controller.setHover}
-				onPlay={controller.selectOrPlayMove}
+				placementMode={playMode === 'online' ? 'piece' : controller.placementMode}
+				doubleAdjacentAnchor={playMode === 'online' ? null : controller.pendingDoubleAdjacentOrigin}
+				onHover={setSceneHover}
+				onPlay={playSceneMove}
 				onRecoverableError={handleRecoverableSceneError}
 			/>
 		{/key}
@@ -205,28 +319,32 @@
 	</svelte:boundary>
 
 	<GameHud
-		currentLabel={controller.currentLabel}
-		currentPlayer={controller.currentPlayer}
-		boardDimensions={controller.boardDimensions}
+		currentLabel={activeCurrentLabel}
+		currentPlayer={activeCurrentPlayer}
+		boardDimensions={activeBoardDimensions}
 	/>
 
 	<GameStatusPanel
-		statusTitle={controller.statusTitle}
-		moveCount={controller.game.moveHistory.length}
+		statusTitle={activeStatusTitle}
+		moveCount={activeGame.moveHistory.length}
 		boardColor={controller.boardColor}
 		uiTheme={controller.uiTheme}
 		labelsVisible={controller.labelsVisible}
 		gridLayersVisible={controller.gridLayersVisible}
 		confirmDropEnabled={controller.confirmDropEnabled}
+		{playMode}
+		{online}
 		opponentMode={controller.opponentMode}
 		aiDifficulty={controller.aiDifficulty}
-		matchMode={controller.matchMode}
-		boardDimensions={controller.boardDimensions}
-		winCondition={controller.winCondition}
+		matchMode={activeMatchMode}
+		boardDimensions={activeBoardDimensions}
+		winCondition={activeWinCondition}
 		aiThinking={controller.aiThinking}
 		pieceShape={controller.pieceShape}
 		pieceColors={controller.pieceColors}
-		setupLocked={controller.setupLocked}
+		setupLocked={activeSetupLocked}
+		playModeLocked={playMode !== 'online' && controller.setupLocked}
+		onlineRulesLocked={playMode === 'online'}
 		appearanceLocked={controller.appearanceLocked}
 		activeSpecialCharges={controller.activeSpecialCharges}
 		activeSpecialCounts={controller.activeSpecialCounts}
@@ -237,21 +355,22 @@
 		mustCompleteBlockerCombo={controller.mustCompleteBlockerCombo}
 		mustCompleteDoubleAdjacent={controller.mustCompleteDoubleAdjacent}
 		sessionRecord={controller.sessionRecord}
-		moveError={controller.moveError}
-		canUndo={controller.canUndo}
-		canRedo={controller.canRedo}
+		moveError={activeMoveError}
+		canUndo={playMode === 'online' ? false : controller.canUndo}
+		canRedo={playMode === 'online' ? false : controller.canRedo}
 		{fullscreenAvailable}
 		{fullscreenActive}
-		onReset={controller.resetGame}
+		onReset={playMode === 'online' ? online.resync : controller.resetGame}
 		onUndo={controller.undoMove}
 		onRedo={controller.redoMove}
 		onToggleFullscreen={toggleFullscreen}
+		onPlayModeChange={setPlayMode}
 		onOpponentModeChange={controller.setOpponentMode}
 		onAiDifficultyChange={controller.setAiDifficulty}
-		onMatchModeChange={controller.setMatchMode}
-		onBoardDimensionChange={controller.setBoardDimension}
-		onWinLineLengthChange={controller.setWinLineLength}
-		onLinesToWinChange={controller.setLinesToWin}
+		onMatchModeChange={setActiveMatchMode}
+		onBoardDimensionChange={setActiveBoardDimension}
+		onWinLineLengthChange={setActiveWinLineLength}
+		onLinesToWinChange={setActiveLinesToWin}
 		onToggleBlockerCombo={controller.toggleBlockerCombo}
 		onToggleDoubleAdjacent={controller.toggleDoubleAdjacent}
 		onPieceShapeChange={controller.setPieceShape}
@@ -263,7 +382,7 @@
 		onToggleTheme={controller.toggleTheme}
 	/>
 
-	{#if controller.showGameOverModal}
+	{#if playMode !== 'online' && controller.showGameOverModal}
 		<GameOverModal
 			status={controller.game.status}
 			moveCount={controller.game.moveHistory.length}

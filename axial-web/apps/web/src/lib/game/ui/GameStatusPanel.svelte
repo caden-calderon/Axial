@@ -19,12 +19,15 @@
 		AiDifficulty,
 		OpponentMode,
 		BoardDimensionKey,
+		PlayMode,
 		TacticalSpecialCounts
 	} from '../state/gameController.svelte';
+	import type { OnlineController } from '$lib/multiplayer/onlineController.svelte';
 	import type { SessionRecord } from '../state/sessionRecord';
 	import type { UiThemeName } from '../theming/sceneThemes';
 	import AppearancePanel from './AppearancePanel.svelte';
 	import MatchSettingsPanel from './MatchSettingsPanel.svelte';
+	import OnlineRoomPanel from './OnlineRoomPanel.svelte';
 	import PanelLiveStrip from './PanelLiveStrip.svelte';
 	import SessionRecordPanel from './SessionRecordPanel.svelte';
 	import TacticalLoadoutPanel from './TacticalLoadoutPanel.svelte';
@@ -37,6 +40,8 @@
 		labelsVisible,
 		gridLayersVisible,
 		confirmDropEnabled,
+		playMode,
+		online,
 		opponentMode,
 		aiDifficulty,
 		matchMode,
@@ -46,6 +51,8 @@
 		pieceShape,
 		pieceColors,
 		setupLocked,
+		playModeLocked,
+		onlineRulesLocked,
 		appearanceLocked,
 		activeSpecialCharges,
 		activeSpecialCounts,
@@ -65,6 +72,7 @@
 		onUndo,
 		onRedo,
 		onToggleFullscreen,
+		onPlayModeChange,
 		onOpponentModeChange,
 		onAiDifficultyChange,
 		onMatchModeChange,
@@ -88,6 +96,8 @@
 		labelsVisible: boolean;
 		gridLayersVisible: boolean;
 		confirmDropEnabled: boolean;
+		playMode: PlayMode;
+		online: OnlineController;
 		opponentMode: OpponentMode;
 		aiDifficulty: AiDifficulty;
 		matchMode: MatchMode;
@@ -97,6 +107,8 @@
 		pieceShape: PieceShape;
 		pieceColors: PieceColors;
 		setupLocked: boolean;
+		playModeLocked: boolean;
+		onlineRulesLocked: boolean;
 		appearanceLocked: boolean;
 		activeSpecialCharges: number;
 		activeSpecialCounts: TacticalSpecialCounts;
@@ -116,6 +128,7 @@
 		onUndo: () => void;
 		onRedo: () => void;
 		onToggleFullscreen: () => void;
+		onPlayModeChange: (mode: PlayMode) => void;
 		onOpponentModeChange: (mode: OpponentMode) => void;
 		onAiDifficultyChange: (difficulty: AiDifficulty) => void;
 		onMatchModeChange: (mode: MatchMode) => void;
@@ -144,6 +157,10 @@
 
 	onMount(() => {
 		expanded = !isCompactViewport();
+	});
+
+	$effect(() => {
+		if (playMode === 'online') expanded = true;
 	});
 
 	function togglePiecesMode(): void {
@@ -308,20 +325,27 @@
 					<PanelLiveStrip label="Now" title={statusTitle} meta={moveLabel} />
 
 					<MatchSettingsPanel
-						{opponentMode}
+						{playMode}
 						{aiDifficulty}
 						{matchMode}
 						{boardDimensions}
 						{winCondition}
 						{aiThinking}
 						{setupLocked}
+						{playModeLocked}
+						{onlineRulesLocked}
 						{onOpponentModeChange}
+						{onPlayModeChange}
 						{onAiDifficultyChange}
 						{onMatchModeChange}
 						{onBoardDimensionChange}
 						{onWinLineLengthChange}
 						{onLinesToWinChange}
 					/>
+
+					{#if playMode === 'online'}
+						<OnlineRoomPanel {online} />
+					{/if}
 
 					<AppearancePanel
 						{boardColor}
@@ -341,7 +365,9 @@
 						{onToggleTheme}
 					/>
 
-					<SessionRecordPanel {sessionRecord} {opponentMode} />
+					{#if playMode !== 'online'}
+						<SessionRecordPanel {sessionRecord} {opponentMode} />
+					{/if}
 				{/if}
 
 				{#if moveError}

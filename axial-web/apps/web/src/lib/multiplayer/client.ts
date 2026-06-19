@@ -5,6 +5,7 @@ import type {
 	RoomCommandResponse,
 	CreateRoomResponse,
 	JoinRoomResponse,
+	MultiplayerRules,
 	PlayerCredentials,
 	PrivateRoomSnapshot,
 	RoomSyncResponse,
@@ -38,8 +39,11 @@ export function multiplayerWsBase(): string {
 	return base.replace(/^http/, 'ws');
 }
 
-export async function createRoom(displayName: string): Promise<CreateRoomResponse> {
-	return postJson<CreateRoomResponse>('/api/rooms', { displayName });
+export async function createRoom(
+	displayName: string,
+	rules?: MultiplayerRules
+): Promise<CreateRoomResponse> {
+	return postJson<CreateRoomResponse>('/api/rooms', { displayName, ...(rules ? { rules } : {}) });
 }
 
 export async function joinRoom(roomCode: string, displayName: string): Promise<JoinRoomResponse> {

@@ -6,39 +6,46 @@
 		type MatchMode,
 		type WinCondition
 	} from '@axial/core';
-	import { Bot, Boxes, CircleDot, Shield, Sparkles, Trophy, Users } from '@lucide/svelte';
+	import { Bot, Boxes, CircleDot, Shield, Sparkles, Trophy, Users, Wifi } from '@lucide/svelte';
 	import {
 		AI_DIFFICULTY_OPTIONS,
 		LINES_TO_WIN_OPTIONS,
 		WIN_LINE_LENGTH_OPTIONS,
 		type AiDifficulty,
 		type BoardDimensionKey,
-		type OpponentMode
+		type OpponentMode,
+		type PlayMode
 	} from '../state/gameController.svelte';
 
 	let {
-		opponentMode,
+		playMode,
 		aiDifficulty,
 		matchMode,
 		boardDimensions,
 		winCondition,
 		aiThinking,
 		setupLocked,
+		playModeLocked,
+		onlineRulesLocked,
 		onOpponentModeChange,
+		onPlayModeChange,
 		onAiDifficultyChange,
 		onMatchModeChange,
 		onBoardDimensionChange,
 		onWinLineLengthChange,
 		onLinesToWinChange
 	}: {
-		opponentMode: OpponentMode;
+		playMode: PlayMode;
 		aiDifficulty: AiDifficulty;
 		matchMode: MatchMode;
 		boardDimensions: BoardDimensions;
 		winCondition: WinCondition;
 		aiThinking: boolean;
 		setupLocked: boolean;
+		playModeLocked: boolean;
+		onlineRulesLocked: boolean;
 		onOpponentModeChange: (mode: OpponentMode) => void;
+		onPlayModeChange: (mode: PlayMode) => void;
 		onAiDifficultyChange: (difficulty: AiDifficulty) => void;
 		onMatchModeChange: (mode: MatchMode) => void;
 		onBoardDimensionChange: (key: BoardDimensionKey, value: number) => void;
@@ -61,6 +68,11 @@
 		const next = current >= MAX_BOARD_DIMENSIONS[key] ? MIN_BOARD_DIMENSIONS[key] : current + 1;
 		onBoardDimensionChange(key, next);
 	}
+
+	function choosePlayMode(mode: PlayMode): void {
+		onPlayModeChange(mode);
+		if (mode === 'local' || mode === 'ai') onOpponentModeChange(mode);
+	}
 </script>
 
 <section class="panel-section">
@@ -69,29 +81,40 @@
 		<span>Match</span>
 	</div>
 
-	<div class="mode-switch" role="group" aria-label="Opponent mode">
+	<div class="mode-switch play-mode-switch" role="group" aria-label="Opponent mode">
 		<button
 			type="button"
-			class:selected={opponentMode === 'local'}
-			aria-pressed={opponentMode === 'local'}
-			disabled={setupLocked}
-			title={setupLocked ? 'Start a new match to change opponent mode' : 'Local mode'}
-			onclick={() => onOpponentModeChange('local')}
+			class:selected={playMode === 'local'}
+			aria-pressed={playMode === 'local'}
+			disabled={playModeLocked}
+			title={playModeLocked ? 'Start a new match to change opponent mode' : 'Local mode'}
+			onclick={() => choosePlayMode('local')}
 		>
 			<Users size={14} strokeWidth={2} />
 			<span>Local</span>
 		</button>
 		<button
 			type="button"
-			class:selected={opponentMode === 'ai'}
+			class:selected={playMode === 'ai'}
 			class:thinking={aiThinking}
-			aria-pressed={opponentMode === 'ai'}
-			disabled={setupLocked}
-			title={setupLocked ? 'Start a new match to change opponent mode' : 'AI mode'}
-			onclick={() => onOpponentModeChange('ai')}
+			aria-pressed={playMode === 'ai'}
+			disabled={playModeLocked}
+			title={playModeLocked ? 'Start a new match to change opponent mode' : 'AI mode'}
+			onclick={() => choosePlayMode('ai')}
 		>
 			<Bot size={14} strokeWidth={2} />
 			<span>AI</span>
+		</button>
+		<button
+			type="button"
+			class:selected={playMode === 'online'}
+			aria-pressed={playMode === 'online'}
+			disabled={playModeLocked}
+			title={playModeLocked ? 'Start a new match to change opponent mode' : 'Online room'}
+			onclick={() => choosePlayMode('online')}
+		>
+			<Wifi size={14} strokeWidth={2} />
+			<span>Online</span>
 		</button>
 	</div>
 
@@ -111,8 +134,12 @@
 			type="button"
 			class:selected={matchMode === 'tactical'}
 			aria-pressed={matchMode === 'tactical'}
-			disabled={setupLocked}
-			title={setupLocked ? 'Start a new match to change rules' : 'Tactical rules'}
+			disabled={setupLocked || onlineRulesLocked}
+			title={onlineRulesLocked
+				? 'Online v1 uses Classic rules'
+				: setupLocked
+					? 'Start a new match to change rules'
+					: 'Tactical rules'}
 			onclick={() => onMatchModeChange('tactical')}
 		>
 			<Shield size={14} strokeWidth={2} />
@@ -187,7 +214,7 @@
 		</div>
 	</div>
 
-	{#if opponentMode === 'ai'}
+	{#if playMode === 'ai'}
 		<div class="control-label">
 			<Bot size={13} strokeWidth={2} />
 			<span>AI difficulty</span>
