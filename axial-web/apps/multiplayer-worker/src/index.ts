@@ -9,6 +9,8 @@ import { RoomServiceError, fail } from "./errors";
 import {
   parseCreateRoomRequest,
   parseJoinRoomRequest,
+  parseRoomCommandRequest,
+  parseRoomSyncRequest,
   readJsonRequest,
 } from "./validation";
 
@@ -37,6 +39,10 @@ export default {
           response = await handleJoinRoom(request, env, route.roomCode);
         } else if (route?.action === "socket" && request.method === "GET") {
           response = await handleRoomSocket(request, env, route.roomCode);
+        } else if (route?.action === "sync" && request.method === "POST") {
+          response = await handleRoomSync(request, env, route.roomCode);
+        } else if (route?.action === "commands" && request.method === "POST") {
+          response = await handleRoomCommand(request, env, route.roomCode);
         } else {
           response = errorResponse(
             { code: "invalid-message", message: "Route not found." },
@@ -98,6 +104,45 @@ async function handleCreateRoom(request: Request, env: Env): Promise<Response> {
   );
 }
 
+async function handleRoomSync(
+  request: Request,
+  env: Env,
+  roomCode: string,
+): Promise<Response> {
+  const payload = parseRoomSyncRequest(await readJsonRequest(request));
+  const result = await roomStub(env, roomCode).syncPlayer(
+    {
+      playerId: payload.playerId,
+      reconnectToken: payload.reconnectToken,
+    },
+    roomInviteUrl(publicWebOrigin(request, env), roomCode),
+  );
+
+  return result.ok
+    ? Response.json(result.value)
+    : errorResponse(result.error, result.status);
+}
+
+async function handleRoomCommand(
+  request: Request,
+  env: Env,
+  roomCode: string,
+): Promise<Response> {
+  const payload = parseRoomCommandRequest(await readJsonRequest(request));
+  const result = await roomStub(env, roomCode).submitHttpCommand(
+    {
+      playerId: payload.playerId,
+      reconnectToken: payload.reconnectToken,
+    },
+    payload.command,
+    roomInviteUrl(publicWebOrigin(request, env), roomCode),
+  );
+
+  return result.ok
+    ? Response.json(result.value)
+    : errorResponse(result.error, result.status);
+}
+
 async function handleJoinRoom(
   request: Request,
   env: Env,
@@ -155,10 +200,13 @@ function roomStub(env: Env, roomCode: string): RoomObjectRpc {
   return env.AXIAL_ROOM.getByName(roomCode) as unknown as RoomObjectRpc;
 }
 
-function parseRoomRoute(
-  pathname: string,
-): { roomCode: string; action: "join" | "socket" } | null {
-  const match = /^\/api\/rooms\/([^/]+)\/(join|socket)$/.exec(pathname);
+function parseRoomRoute(pathname: string): {
+  roomCode: string;
+  action: "join" | "socket" | "sync" | "commands";
+} | null {
+  const match = /^\/api\/rooms\/([^/]+)\/(join|socket|sync|commands)$/.exec(
+    pathname,
+  );
   if (!match) return null;
 
   const roomCode = normalizeRoomCode(decodeURIComponent(match[1]));
@@ -173,7 +221,10 @@ function parseRoomRoute(
     );
   }
 
-  return { roomCode, action: match[2] as "join" | "socket" };
+  return {
+    roomCode,
+    action: match[2] as "join" | "socket" | "sync" | "commands",
+  };
 }
 
 function publicWebOrigin(request: Request, env: Env): string {

@@ -120,9 +120,14 @@ Implementation status:
 - `@axial/multiplayer-protocol` shares command/event/snapshot/error types between worker and web.
 - `/room` and `/room/[code]` implement a thin create/join/lobby/play/rematch client outside the
   existing local/AI game route.
-- Production Worker deployment is live as `axial-multiplayer`, version
-  `77cccbe4-3a41-4984-9983-dcf8a1d7bd03`, with routes `playaxial.dev/api/rooms*` and
+- Production Worker deployment is live as `axial-multiplayer`, current verified version
+  `e2524009-da3a-4562-9b77-b21fcb6c70d0`, with routes `playaxial.dev/api/rooms*` and
   `playaxial.dev/health`.
+- 2026-06-18/19 production hardening: WebSocket remains the preferred live transport, but the room
+  service also exposes HTTPS fallback endpoints `POST /api/rooms/:code/sync` and
+  `POST /api/rooms/:code/commands`. The web client starts fallback polling/commands when WSS cannot
+  connect, so desktop browsers or networks that block WebSockets can still host, ready, play, and
+  resync through the same server-authoritative Durable Object.
 - The first UI renders a compact authoritative column board rather than the full Threlte scene.
   Reusing the 3D board for online play is a later polish step after the network contract settles.
 - QR payload and invite URL are available now. A styled QR image remains later polish.

@@ -2,10 +2,12 @@ import { browser } from '$app/environment';
 import { env } from '$env/dynamic/public';
 import type {
 	ClientCommand,
+	RoomCommandResponse,
 	CreateRoomResponse,
 	JoinRoomResponse,
 	PlayerCredentials,
 	PrivateRoomSnapshot,
+	RoomSyncResponse,
 	RoomSnapshot,
 	RoomErrorPayload,
 	ServerEvent
@@ -86,6 +88,31 @@ export function openRoomSocket(input: {
 		}
 	});
 	return socket;
+}
+
+export async function syncRoom(
+	credentials: MultiplayerCredentials,
+	lastSeenRevision?: number
+): Promise<RoomSyncResponse> {
+	return postJson<RoomSyncResponse>(`/api/rooms/${encodeURIComponent(credentials.roomCode)}/sync`, {
+		playerId: credentials.playerId,
+		reconnectToken: credentials.reconnectToken,
+		...(typeof lastSeenRevision === 'number' ? { lastSeenRevision } : {})
+	});
+}
+
+export async function submitRoomCommand(
+	credentials: MultiplayerCredentials,
+	command: ClientCommand
+): Promise<RoomCommandResponse> {
+	return postJson<RoomCommandResponse>(
+		`/api/rooms/${encodeURIComponent(credentials.roomCode)}/commands`,
+		{
+			playerId: credentials.playerId,
+			reconnectToken: credentials.reconnectToken,
+			command
+		}
+	);
 }
 
 export function sendRoomCommand(socket: WebSocket | null, command: ClientCommand): boolean {

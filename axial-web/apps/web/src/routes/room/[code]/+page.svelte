@@ -25,6 +25,8 @@
 		saveCredentials,
 		saveRoomSnapshot,
 		sendRoomCommand,
+		submitRoomCommand,
+		syncRoom,
 		type MultiplayerCredentials
 	} from '$lib/multiplayer/client';
 
@@ -47,6 +49,7 @@
 
 	let socket: WebSocket | null = null;
 	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+	let fallbackTimer: ReturnType<typeof setInterval> | null = null;
 	let manualClose = false;
 
 	const roomCode = $derived(data.code.toUpperCase().replace(/[\s-]/g, ''));
@@ -86,6 +89,7 @@
 	onDestroy(() => {
 		manualClose = true;
 		if (reconnectTimer) clearTimeout(reconnectTimer);
+		stopHttpFallback();
 		socket?.close();
 	});
 
@@ -115,11 +119,14 @@
 		if (reconnectTimer) clearTimeout(reconnectTimer);
 		connectionState = nextState;
 		manualClose = false;
+		let opened = false;
 		socket?.close();
 		socket = openRoomSocket({
 			credentials,
 			lastSeenRevision: snapshot?.revision ?? 0,
 			onOpen: () => {
+				opened = true;
+				stopHttpFallback();
 				connectionState = snapshot ? derivedConnectionState(snapshot, opponent) : 'connected';
 			},
 			onEvent: handleEvent,
@@ -127,13 +134,68 @@
 				socket = null;
 				if (manualClose || connectionState === 'fatal-error' || connectionState === 'expired')
 					return;
+				if (!opened) startHttpFallback();
 				connectionState = 'reconnecting';
-				reconnectTimer = setTimeout(() => connect('reconnecting'), 1200);
+				reconnectTimer = setTimeout(() => connect('reconnecting'), fallbackTimer ? 10000 : 1200);
 			},
 			onError: () => {
-				if (connectionState !== 'fatal-error') connectionState = 'reconnecting';
+				if (connectionState !== 'fatal-error') {
+					connectionState = 'reconnecting';
+					startHttpFallback();
+				}
 			}
 		});
+	}
+
+	function startHttpFallback(): void {
+		if (!credentials || fallbackTimer) return;
+		void syncFallback();
+		fallbackTimer = setInterval(() => {
+			void syncFallback();
+		}, 2500);
+	}
+
+	function stopHttpFallback(): void {
+		if (!fallbackTimer) return;
+		clearInterval(fallbackTimer);
+		fallbackTimer = null;
+	}
+
+	async function syncFallback(): Promise<void> {
+		if (!credentials || manualClose) return;
+		try {
+			const result = await syncRoom(credentials, snapshot?.revision);
+			applySnapshot(result.snapshot);
+			error = '';
+			connectionState = derivedConnectionState(result.snapshot, opponent);
+		} catch (reason) {
+			connectionState = 'reconnecting';
+			error =
+				reason instanceof MultiplayerRequestError
+					? reason.error.message
+					: reason instanceof Error
+						? reason.message
+						: 'Room sync failed.';
+		}
+	}
+
+	async function submitFallback(commandToSend: ClientCommand): Promise<void> {
+		if (!credentials) return;
+		try {
+			const result = await submitRoomCommand(credentials, commandToSend);
+			applySnapshot(result.snapshot);
+			error = '';
+			connectionState = derivedConnectionState(result.snapshot, opponent);
+		} catch (reason) {
+			connectionState = 'reconnecting';
+			error =
+				reason instanceof MultiplayerRequestError
+					? reason.error.message
+					: reason instanceof Error
+						? reason.message
+						: 'Room command failed.';
+			startHttpFallback();
+		}
 	}
 
 	function handleEvent(event: import('@axial/multiplayer-protocol').ServerEvent): void {
@@ -239,10 +301,13 @@
 			connect('resyncing');
 			return;
 		}
-		if (!send(command('room:resync', { lastSeenRevision: snapshot.revision }))) {
-			connect('resyncing');
+		if (socket?.readyState === WebSocket.OPEN) {
+			send(command('room:resync', { lastSeenRevision: snapshot.revision }));
+			connectionState = 'resyncing';
 		} else {
 			connectionState = 'resyncing';
+			startHttpFallback();
+			void syncFallback();
 		}
 	}
 
@@ -252,6 +317,7 @@
 			clearCredentials(credentials.roomCode);
 			clearRoomSnapshot(credentials.roomCode);
 		}
+		stopHttpFallback();
 		socket?.close();
 		credentials = null;
 		snapshot = null;
@@ -270,8 +336,13 @@
 	function send(commandToSend: ClientCommand): boolean {
 		error = '';
 		if (!sendRoomCommand(socket, commandToSend)) {
-			error = 'Room connection is not ready.';
-			connect('reconnecting');
+			if (!credentials) {
+				error = 'Room connection is not ready.';
+				connect('reconnecting');
+				return false;
+			}
+			startHttpFallback();
+			void submitFallback(commandToSend);
 			return false;
 		}
 		return true;

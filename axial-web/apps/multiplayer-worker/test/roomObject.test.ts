@@ -8,7 +8,9 @@ import {
   type JoinRoomResponse,
   type PlayerCredentials,
   type PrivateRoomSnapshot,
+  type RoomCommandResponse,
   type RoomErrorPayload,
+  type RoomSyncResponse,
   type ServerEvent,
 } from "@axial/multiplayer-protocol";
 import type { RoomObjectRpc } from "../src/roomObject";
@@ -262,6 +264,36 @@ describe("Axial multiplayer room service", () => {
 
     second.socket.close();
   });
+
+  it("supports HTTPS sync and command fallback when sockets are unavailable", async () => {
+    const created = await createRoom("Host");
+    const synced = await syncRoom(created.player);
+
+    expect(synced.snapshot.players[0]?.connected).toBe(true);
+    expect(synced.snapshot.you.playerId).toBe(created.player.playerId);
+
+    const joined = await joinRoom(created.roomCode, "Friend");
+    const hostReady = await sendHttpCommand(
+      created.player,
+      command("room:ready", { ready: true }),
+    );
+
+    expect(
+      hostReady.snapshot.players.find(
+        (player) => player.playerId === created.player.playerId,
+      )?.ready,
+    ).toBe(true);
+
+    const friendReady = await sendHttpCommand(
+      joined.player,
+      command("room:ready", { ready: true }),
+    );
+
+    expect(friendReady.snapshot.phase).toBe("playing");
+    expect(
+      friendReady.events.some((event) => event.type === "game:started"),
+    ).toBe(true);
+  });
 });
 
 async function createRoom(displayName: string): Promise<CreateRoomResponse> {
@@ -286,6 +318,42 @@ async function joinRoom(
   );
   expect(response.status).toBe(200);
   return (await response.json()) as JoinRoomResponse;
+}
+
+async function syncRoom(
+  credentials: PlayerCredentials,
+): Promise<RoomSyncResponse> {
+  const response = await SELF.fetch(
+    `https://worker.test/api/rooms/${credentials.roomCode}/sync`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        playerId: credentials.playerId,
+        reconnectToken: credentials.reconnectToken,
+      }),
+    },
+  );
+  expect(response.status).toBe(200);
+  return (await response.json()) as RoomSyncResponse;
+}
+
+async function sendHttpCommand<T extends ClientCommand>(
+  credentials: PlayerCredentials,
+  command: T,
+): Promise<RoomCommandResponse> {
+  const response = await SELF.fetch(
+    `https://worker.test/api/rooms/${credentials.roomCode}/commands`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        playerId: credentials.playerId,
+        reconnectToken: credentials.reconnectToken,
+        command,
+      }),
+    },
+  );
+  expect(response.status).toBe(200);
+  return (await response.json()) as RoomCommandResponse;
 }
 
 async function readyBoth(

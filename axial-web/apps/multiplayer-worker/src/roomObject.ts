@@ -5,6 +5,8 @@ import type {
   JoinRoomResponse,
   PlayerCredentials,
   PrivateRoomSnapshot,
+  RoomCommandResponse,
+  RoomSyncResponse,
   ServerEvent,
 } from "@axial/multiplayer-protocol";
 import {
@@ -76,6 +78,15 @@ export type RoomObjectRpc = {
   ): Promise<
     RoomResult<{ events: ServerEvent[]; snapshot: PrivateRoomSnapshot }>
   >;
+  submitHttpCommand(
+    credentials: CommandCredentials,
+    command: ClientCommand,
+    inviteUrl: string,
+  ): Promise<RoomResult<RoomCommandResponse>>;
+  syncPlayer(
+    credentials: CommandCredentials,
+    inviteUrl: string,
+  ): Promise<RoomResult<RoomSyncResponse>>;
   fetch(request: Request): Promise<Response>;
 };
 
@@ -199,6 +210,71 @@ export class RoomObject extends DurableObject<Env> {
         events: outcome.events.map((entry) => entry.event),
         snapshot: toPrivateSnapshot(
           outcome.state,
+          credentials.playerId,
+          inviteUrl,
+        ),
+      });
+    } catch (error) {
+      return fail(error);
+    }
+  }
+
+  async submitHttpCommand(
+    credentials: CommandCredentials,
+    command: ClientCommand,
+    inviteUrl: string,
+  ): Promise<RoomResult<RoomCommandResponse>> {
+    try {
+      const state = await this.authenticate(
+        credentials.playerId,
+        credentials.reconnectToken,
+      );
+      await this.markHttpFallbackConnected(state, credentials.playerId);
+
+      if (command.type === "room:resync") {
+        return ok({
+          events: [],
+          snapshot: toPrivateSnapshot(
+            this.requireState(),
+            credentials.playerId,
+            inviteUrl,
+          ),
+        });
+      }
+
+      const outcome = this.executeCommand(
+        this.requireState(),
+        credentials.playerId,
+        command,
+      );
+      await this.commit(outcome);
+      this.broadcast(outcome.events);
+      return ok({
+        events: outcome.events.map((entry) => entry.event),
+        snapshot: toPrivateSnapshot(
+          outcome.state,
+          credentials.playerId,
+          inviteUrl,
+        ),
+      });
+    } catch (error) {
+      return fail(error);
+    }
+  }
+
+  async syncPlayer(
+    credentials: CommandCredentials,
+    inviteUrl: string,
+  ): Promise<RoomResult<RoomSyncResponse>> {
+    try {
+      const state = await this.authenticate(
+        credentials.playerId,
+        credentials.reconnectToken,
+      );
+      await this.markHttpFallbackConnected(state, credentials.playerId);
+      return ok({
+        snapshot: toPrivateSnapshot(
+          this.requireState(),
           credentials.playerId,
           inviteUrl,
         ),
@@ -480,6 +556,20 @@ export class RoomObject extends DurableObject<Env> {
       outcome.events.filter((entry) => !entry.privateOnly),
     );
     await this.scheduleExpiry(outcome.state);
+  }
+
+  private async markHttpFallbackConnected(
+    state: StoredRoomState,
+    playerId: string,
+  ): Promise<void> {
+    const outcome = markConnected(
+      state,
+      playerId,
+      `http-fallback:${playerId}`,
+      Date.now(),
+    );
+    await this.commit(outcome);
+    this.broadcast(outcome.events);
   }
 
   private loadState(): StoredRoomState | null {

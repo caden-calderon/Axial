@@ -12,6 +12,8 @@ import type {
   CreateRoomRequest,
   JoinRoomRequest,
   MultiplayerRules,
+  RoomCommandRequest,
+  RoomSyncRequest,
 } from "@axial/multiplayer-protocol";
 import {
   AXIAL_CLIENT_SOURCE,
@@ -77,6 +79,40 @@ export function parseJoinRoomRequest(value: unknown): JoinRoomRequest {
     ...(typeof value.displayName === "string"
       ? { displayName: value.displayName }
       : {}),
+  };
+}
+
+export function parseRoomSyncRequest(value: unknown): RoomSyncRequest {
+  if (!isRecord(value)) {
+    throw new RoomServiceError(
+      "invalid-message",
+      "Sync payload must be an object.",
+      400,
+    );
+  }
+
+  return {
+    playerId: parseCredentialText(value.playerId, "playerId"),
+    reconnectToken: parseCredentialText(value.reconnectToken, "reconnectToken"),
+    ...(typeof value.lastSeenRevision === "number"
+      ? { lastSeenRevision: value.lastSeenRevision }
+      : {}),
+  };
+}
+
+export function parseRoomCommandRequest(value: unknown): RoomCommandRequest {
+  if (!isRecord(value)) {
+    throw new RoomServiceError(
+      "invalid-message",
+      "Command payload must be an object.",
+      400,
+    );
+  }
+
+  return {
+    playerId: parseCredentialText(value.playerId, "playerId"),
+    reconnectToken: parseCredentialText(value.reconnectToken, "reconnectToken"),
+    command: parseClientCommand(value.command),
   };
 }
 
@@ -320,6 +356,17 @@ function base(value: Record<string, unknown>) {
     version: AXIAL_MULTIPLAYER_PROTOCOL_VERSION,
     id: value.id as string,
   };
+}
+
+function parseCredentialText(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.length < 1 || value.length > 256) {
+    throw new RoomServiceError(
+      "auth-failed",
+      `Room ${label} credential is missing or invalid.`,
+      403,
+    );
+  }
+  return value;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

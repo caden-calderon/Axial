@@ -120,6 +120,28 @@ export type JoinRoomResponse = {
   snapshot: PrivateRoomSnapshot;
 };
 
+export type RoomAuthPayload = {
+  playerId: string;
+  reconnectToken: string;
+};
+
+export type RoomSyncRequest = RoomAuthPayload & {
+  lastSeenRevision?: number;
+};
+
+export type RoomSyncResponse = {
+  snapshot: PrivateRoomSnapshot;
+};
+
+export type RoomCommandRequest = RoomAuthPayload & {
+  command: ClientCommand;
+};
+
+export type RoomCommandResponse = {
+  events: ServerEvent[];
+  snapshot: PrivateRoomSnapshot;
+};
+
 export type RoomErrorCode =
   | "invalid-message"
   | "unsupported-version"

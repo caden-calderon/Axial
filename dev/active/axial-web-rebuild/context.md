@@ -226,6 +226,16 @@ Implemented gameplay/UX:
 
 Latest checks passed from `axial-web/` unless noted:
 
+- 2026-06-18/19 multiplayer HTTPS fallback pass: desktop Firefox showed repeated failures opening
+  `wss://playaxial.dev/api/rooms/:code/socket`, leaving the host lobby stuck as `Away` while phone
+  join HTTP still worked. Added Worker fallback endpoints `POST /api/rooms/:code/sync` and
+  `POST /api/rooms/:code/commands`; the room page now keeps WebSocket as the preferred transport
+  but starts HTTPS polling/command fallback when WSS fails. Worker fallback sync marks the player
+  connected and command fallback uses the same server-authoritative reducer/broadcast path. Verified
+  with `pnpm check`, `pnpm lint`, `pnpm test:unit`, `pnpm build`, Worker dry-run/deploy, and a
+  Playwright smoke where the host browser's `WebSocket` constructor was deliberately sabotaged:
+  host created a room, guest joined normally, both readied, and the match started. Worker version
+  `e2524009-da3a-4562-9b77-b21fcb6c70d0` is deployed.
 - 2026-06-18/19 multiplayer creator-handoff fix: fixed `/room/[code]` so a browser that already
   owns host/joiner credentials does not fall back to the public join form while waiting for the
   first socket snapshot. Create/join responses now seed a session snapshot so the creator lands in
