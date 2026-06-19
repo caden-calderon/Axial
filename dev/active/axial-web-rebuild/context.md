@@ -226,6 +226,12 @@ Implemented gameplay/UX:
 
 Latest checks passed from `axial-web/` unless noted:
 
+- 2026-06-18/19 multiplayer creator-handoff fix: fixed `/room/[code]` so a browser that already
+  owns host/joiner credentials does not fall back to the public join form while waiting for the
+  first socket snapshot. Create/join responses now seed a session snapshot so the creator lands in
+  the lobby immediately, and the reconnecting-with-credentials state no longer offers a second-seat
+  join button. Verified with a Playwright smoke against local Vite using a mocked room-create
+  response, plus `pnpm check`, `pnpm lint`, `pnpm test:unit`, and `pnpm build`.
 - 2026-06-18/19 multiplayer production-route pass: `pnpm --filter @axial/multiplayer-worker types`,
   `pnpm --filter @axial/multiplayer-worker check`, `pnpm --filter @axial/multiplayer-worker
   test:unit`, `pnpm --filter @axial/multiplayer-worker lint`, `pnpm check`, and `pnpm

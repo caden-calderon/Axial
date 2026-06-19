@@ -15,12 +15,15 @@
 	import {
 		MultiplayerRequestError,
 		clearCredentials,
+		clearRoomSnapshot,
 		eventError,
 		eventSnapshot,
 		joinRoom,
 		loadCredentials,
+		loadRoomSnapshot,
 		openRoomSocket,
 		saveCredentials,
+		saveRoomSnapshot,
 		sendRoomCommand,
 		type MultiplayerCredentials
 	} from '$lib/multiplayer/client';
@@ -74,6 +77,8 @@
 		credentials = loadCredentials(roomCode);
 		if (credentials) {
 			displayName = credentials.displayName;
+			const storedSnapshot = loadRoomSnapshot(roomCode, credentials);
+			if (storedSnapshot) applySnapshot(storedSnapshot);
 			connect('connecting');
 		}
 	});
@@ -91,6 +96,7 @@
 			const joined = await joinRoom(roomCode, displayName);
 			credentials = joined.player;
 			saveCredentials(joined.player);
+			saveRoomSnapshot(joined.snapshot);
 			applySnapshot(joined.snapshot);
 			connect('connecting');
 		} catch (reason) {
@@ -174,6 +180,7 @@
 			inviteUrl,
 			qrPayload: 'qrPayload' in incoming ? incoming.qrPayload : inviteUrl
 		};
+		saveRoomSnapshot(snapshot);
 		rulesDraft = {
 			height: snapshot.rules.board.height,
 			rows: snapshot.rules.board.rows,
@@ -241,7 +248,10 @@
 
 	function leaveRoom(): void {
 		manualClose = true;
-		if (credentials) clearCredentials(credentials.roomCode);
+		if (credentials) {
+			clearCredentials(credentials.roomCode);
+			clearRoomSnapshot(credentials.roomCode);
+		}
 		socket?.close();
 		credentials = null;
 		snapshot = null;
@@ -306,7 +316,14 @@
 		state: ConnectionState,
 		nextOpponent: typeof opponent
 	): string {
-		if (!nextSnapshot) return state === 'joining' ? 'Joining' : 'Ready to join';
+		if (!nextSnapshot) {
+			if (state === 'joining') return 'Joining';
+			if (state === 'connecting') return 'Connecting';
+			if (state === 'reconnecting') return 'Reconnecting';
+			if (state === 'resyncing') return 'Resyncing';
+			if (state === 'fatal-error') return 'Connection failed';
+			return 'Ready to join';
+		}
 		if (state === 'reconnecting') return 'Reconnecting';
 		if (state === 'resyncing') return 'Resyncing';
 		if (state === 'opponent-disconnected')
@@ -352,7 +369,27 @@
 		</div>
 	</header>
 
-	{#if !credentials || !snapshot}
+	{#if credentials && !snapshot}
+		<section class="join-panel pending-panel" aria-labelledby="reconnect-title">
+			<p>ROOM {roomCode}</p>
+			<h1 id="reconnect-title">Opening private match</h1>
+			<p class="helper">
+				Connecting as {credentials.displayName}. Keep this seat if this is your room; use the
+				alternate player action only when you intentionally want to release this browser's saved
+				seat.
+			</p>
+			<div class="pending-actions">
+				<button type="button" class="primary" onclick={resync}>
+					<RefreshCcw size={18} aria-hidden="true" />
+					<span>Reconnect</span>
+				</button>
+				<button type="button" onclick={leaveRoom}>Join as different player</button>
+			</div>
+			{#if error}
+				<p class="error" role="alert">{error}</p>
+			{/if}
+		</section>
+	{:else if !credentials}
 		<section class="join-panel" aria-labelledby="join-title">
 			<p>ROOM {roomCode}</p>
 			<h1 id="join-title">Join private match</h1>
@@ -373,7 +410,7 @@
 				<p class="error" role="alert">{error}</p>
 			{/if}
 		</section>
-	{:else}
+	{:else if snapshot}
 		<section class="room-grid">
 			<aside class="side-panel">
 				<div class="room-code">
@@ -619,7 +656,7 @@
 		letter-spacing: 0;
 	}
 
-	.join-panel > p,
+	.join-panel > p:not(.helper),
 	.board-heading p,
 	.room-code span,
 	.qr-payload span,
@@ -628,6 +665,18 @@
 		font-size: 0.74rem;
 		font-weight: 900;
 		letter-spacing: 0;
+	}
+
+	.helper {
+		color: rgba(244, 241, 232, 0.68);
+		font-size: 0.96rem;
+		font-weight: 650;
+		line-height: 1.45;
+	}
+
+	.pending-actions {
+		display: grid;
+		gap: 10px;
 	}
 
 	label {

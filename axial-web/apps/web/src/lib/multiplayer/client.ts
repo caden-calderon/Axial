@@ -12,6 +12,7 @@ import type {
 } from '@axial/multiplayer-protocol';
 
 const STORAGE_PREFIX = 'axial-room-credentials:';
+const SNAPSHOT_PREFIX = 'axial-room-snapshot:';
 
 export type MultiplayerClientConfig = {
 	baseUrl?: string;
@@ -95,26 +96,31 @@ export function sendRoomCommand(socket: WebSocket | null, command: ClientCommand
 
 export function saveCredentials(credentials: MultiplayerCredentials): void {
 	if (!browser) return;
-	localStorage.setItem(storageKey(credentials.roomCode), JSON.stringify(credentials));
+	const serialized = JSON.stringify(credentials);
+	writeStorage(localStorage, storageKey(credentials.roomCode), serialized);
+	writeStorage(sessionStorage, storageKey(credentials.roomCode), serialized);
 }
 
 export function loadCredentials(roomCode: string): MultiplayerCredentials | null {
 	if (!browser) return null;
-	const raw = localStorage.getItem(storageKey(roomCode));
+	const key = storageKey(roomCode);
+	const raw = readStorage(localStorage, key) ?? readStorage(sessionStorage, key);
 	if (!raw) return null;
 
 	try {
 		const parsed = JSON.parse(raw) as MultiplayerCredentials;
 		if (
-			parsed.roomCode &&
+			normalizeRoomCode(parsed.roomCode) === normalizeRoomCode(roomCode) &&
 			parsed.playerId &&
 			parsed.reconnectToken &&
-			(parsed.seat === 1 || parsed.seat === 2)
+			(parsed.seat === 1 || parsed.seat === 2) &&
+			typeof parsed.displayName === 'string'
 		) {
 			return parsed;
 		}
 	} catch {
-		localStorage.removeItem(storageKey(roomCode));
+		removeStorage(localStorage, key);
+		removeStorage(sessionStorage, key);
 	}
 
 	return null;
@@ -122,7 +128,38 @@ export function loadCredentials(roomCode: string): MultiplayerCredentials | null
 
 export function clearCredentials(roomCode: string): void {
 	if (!browser) return;
-	localStorage.removeItem(storageKey(roomCode));
+	const key = storageKey(roomCode);
+	removeStorage(localStorage, key);
+	removeStorage(sessionStorage, key);
+}
+
+export function saveRoomSnapshot(snapshot: PrivateRoomSnapshot): void {
+	if (!browser) return;
+	writeStorage(sessionStorage, snapshotKey(snapshot.roomCode), JSON.stringify(snapshot));
+}
+
+export function loadRoomSnapshot(
+	roomCode: string,
+	credentials?: MultiplayerCredentials | null
+): PrivateRoomSnapshot | null {
+	if (!browser) return null;
+	const key = snapshotKey(roomCode);
+	const raw = readStorage(sessionStorage, key);
+	if (!raw) return null;
+
+	try {
+		const parsed = JSON.parse(raw) as PrivateRoomSnapshot;
+		if (isPrivateRoomSnapshot(parsed, roomCode, credentials)) return parsed;
+	} catch {
+		removeStorage(sessionStorage, key);
+	}
+
+	return null;
+}
+
+export function clearRoomSnapshot(roomCode: string): void {
+	if (!browser) return;
+	removeStorage(sessionStorage, snapshotKey(roomCode));
 }
 
 export function eventSnapshot(event: ServerEvent): RoomSnapshot | PrivateRoomSnapshot | null {
@@ -155,7 +192,60 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 }
 
 function storageKey(roomCode: string): string {
-	return `${STORAGE_PREFIX}${roomCode.toUpperCase().replace(/[\s-]/g, '')}`;
+	return `${STORAGE_PREFIX}${normalizeRoomCode(roomCode)}`;
+}
+
+function snapshotKey(roomCode: string): string {
+	return `${SNAPSHOT_PREFIX}${normalizeRoomCode(roomCode)}`;
+}
+
+function normalizeRoomCode(roomCode: string): string {
+	return roomCode.toUpperCase().replace(/[\s-]/g, '');
+}
+
+function isPrivateRoomSnapshot(
+	value: PrivateRoomSnapshot,
+	roomCode: string,
+	credentials?: MultiplayerCredentials | null
+): boolean {
+	if (
+		normalizeRoomCode(value.roomCode) !== normalizeRoomCode(roomCode) ||
+		typeof value.revision !== 'number' ||
+		!Array.isArray(value.players) ||
+		!value.rules ||
+		!value.game ||
+		!value.you ||
+		typeof value.you.playerId !== 'string' ||
+		typeof value.inviteUrl !== 'string'
+	) {
+		return false;
+	}
+
+	return !credentials || value.you.playerId === credentials.playerId;
+}
+
+function readStorage(storage: Storage, key: string): string | null {
+	try {
+		return storage.getItem(key);
+	} catch {
+		return null;
+	}
+}
+
+function writeStorage(storage: Storage, key: string, value: string): void {
+	try {
+		storage.setItem(key, value);
+	} catch {
+		// A failed storage write should not turn a successful room request into a failed request.
+	}
+}
+
+function removeStorage(storage: Storage, key: string): void {
+	try {
+		storage.removeItem(key);
+	} catch {
+		// Ignore storage backends that are unavailable in private or restricted contexts.
+	}
 }
 
 export class MultiplayerRequestError extends Error {

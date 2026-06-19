@@ -6,7 +6,8 @@
 		MultiplayerRequestError,
 		createRoom,
 		joinRoom,
-		saveCredentials
+		saveCredentials,
+		saveRoomSnapshot
 	} from '$lib/multiplayer/client';
 
 	let displayName = $state('');
@@ -18,6 +19,7 @@
 		await run(async () => {
 			const room = await createRoom(displayName);
 			saveCredentials(room.player);
+			saveRoomSnapshot(room.snapshot);
 			await goto(resolve('/room/[code]', { code: room.roomCode }));
 		});
 	}
@@ -26,6 +28,7 @@
 		await run(async () => {
 			const room = await joinRoom(roomCode, displayName);
 			saveCredentials(room.player);
+			saveRoomSnapshot(room.snapshot);
 			await goto(resolve('/room/[code]', { code: room.roomCode }));
 		});
 	}
