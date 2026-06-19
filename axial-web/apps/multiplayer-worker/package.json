@@ -6,8 +6,10 @@
   "scripts": {
     "check": "tsc --noEmit",
     "deploy": "wrangler deploy",
+    "deploy:dry-run": "wrangler deploy --dry-run",
     "dev": "wrangler dev",
     "lint": "prettier --check . && eslint .",
+    "smoke:production": "node ./scripts/smoke-production.mjs",
     "test": "vitest run",
     "test:unit": "vitest run",
     "types": "wrangler types"

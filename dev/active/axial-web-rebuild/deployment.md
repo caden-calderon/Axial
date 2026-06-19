@@ -18,6 +18,11 @@ Why Cloudflare:
 - DNS host: Cloudflare.
 - Frontend host: Cloudflare Pages.
 - Pages project name: `playaxial`.
+- Multiplayer room service: Cloudflare Worker `axial-multiplayer` with Durable Object class
+  `RoomObject`.
+- Multiplayer production routes:
+  - `https://playaxial.dev/api/rooms*`
+  - `https://playaxial.dev/health`
 
 ## Cloudflare Pages Build Settings
 
@@ -80,6 +85,9 @@ pnpm test:unit
 pnpm build
 pnpm --filter @axial/web test:e2e
 pnpm smoke:production
+pnpm deploy:multiplayer:dry-run
+pnpm deploy:multiplayer
+pnpm smoke:production:multiplayer
 git add ...
 git commit -m "..."
 git push origin main
@@ -94,6 +102,10 @@ After the push:
 5. Wait for the deployment to finish successfully.
 6. Run the production smoke again if the change touched runtime behavior or rendering.
 
+For multiplayer-only Worker changes, `pnpm deploy:multiplayer` deploys directly through Wrangler
+and does not wait for the GitHub Pages pipeline. Commit and push the matching `wrangler.jsonc`,
+scripts, and docs afterward so production can be reproduced.
+
 For branch work, Cloudflare can create preview deployments when preview builds are enabled. Treat `main` as the production branch.
 
 ## Production Smoke Checklist
@@ -102,6 +114,7 @@ Automated smoke:
 
 ```text
 pnpm smoke:production
+pnpm smoke:production:multiplayer
 ```
 
 Manual smoke:
@@ -114,8 +127,29 @@ Manual smoke:
 6. Toggle light/dark mode and adjust the board color picker.
 7. On a phone-width viewport, confirm the board, HUD, compact controls, fullscreen button, and install metadata work without text overlap.
 8. On a mobile device, use the browser install/add-to-home-screen flow and confirm Axial opens in an app-like display mode when launched from the home screen.
+9. Open `https://playaxial.dev/room` on desktop and create a private room.
+10. Open the invite link or enter the code on a phone using a clean DNS path.
+11. Set different display names, ready both players, make one legal move from the correct seat, refresh one client, and confirm it reconnects/resyncs.
 
 If a deployment is bad, use the Pages project's Deployments tab to roll back to the last known-good deployment while fixing `main`.
+
+## Current DNS Caveat
+
+As of 2026-06-18/19, Cloudflare authoritative nameservers and Google DNS return the expected
+Cloudflare proxy records for `playaxial.dev`, and Cloudflare Pages shows `playaxial.dev` attached
+to the `playaxial` project.
+
+This workstation's current CSU/HFS DNS resolver returns stale/bad records for `*.playaxial.dev`:
+
+```text
+A     65.52.200.44
+AAAA  ::1
+```
+
+That causes shell fetches and Chromium on this machine to fail with connection resets before the
+request reaches Cloudflare. Use phone cellular, another network, or a DNS override such as
+Cloudflare `1.1.1.1` or Google `8.8.8.8` before treating a `playaxial.dev` load failure as an Axial
+deployment failure.
 
 ## Iframe Embedding And Headers
 
@@ -161,7 +195,7 @@ embedding policy. Pair the response header with bridge-level `event.origin` vali
 
 Do not put real-time multiplayer inside the frontend bundle.
 
-The first local multiplayer foundation now exists:
+The first live multiplayer foundation now exists:
 
 - `apps/multiplayer-worker`: Worker entrypoint.
 - `packages/multiplayer-protocol`: shared web/worker protocol types.
@@ -170,7 +204,7 @@ The first local multiplayer foundation now exists:
 - Client route shape: `/room/[code]`.
 - WebSocket endpoint shape: `/api/rooms/[code]/socket`.
 - The Worker imports `@axial/core` so the server validates every move and broadcasts canonical game snapshots.
-- Pages either calls the Worker through a service binding or the Worker is mounted under an `/api/*` route on `playaxial.dev`.
+- The Worker is mounted under same-origin `/api/rooms*` routes on `playaxial.dev`.
 
 This keeps the current single-player deploy simple while leaving the architecture open for invite links, reconnects, spectators, and room persistence.
 
@@ -178,23 +212,22 @@ Cloudflare setup notes for multiplayer:
 
 - An agent can plan and implement the Worker/Durable Object code locally without additional
   dashboard work from Caden.
-- Before production deploy, Caden or the agent will need Cloudflare auth available to Wrangler
-  (`wrangler login` or an API token), a Worker name/route decision, and Durable Object bindings plus
-  migrations in Wrangler config.
+- Wrangler auth is available on this workstation. Worker name/route decision is locked for v1:
+  same-origin `playaxial.dev/api/rooms*` plus `playaxial.dev/health`.
 - Durable Objects are available on Workers Free and Paid plans. New free-plan Durable Objects use
   SQLite-backed storage, which is suitable for a first room service if usage stays within free-tier
   limits.
 - Prefer Durable Object WebSocket Hibernation for room sockets so idle rooms can sleep while
   WebSocket clients remain connected.
-- Keep the first backend separate from the Pages frontend and route it explicitly, for example
-  `/api/rooms/*` on `playaxial.dev` or a dedicated worker subdomain while prototyping.
+- Keep the first backend separate from the Pages frontend and route it explicitly under
+  `/api/rooms*` on `playaxial.dev`.
 - Local dev uses `wrangler dev --port 8787` for the Worker. The web route defaults to
   `http://localhost:8787` when loaded from localhost; production or custom preview endpoints can use
   `PUBLIC_AXIAL_MULTIPLAYER_API`.
 - `wrangler.jsonc` currently allow-lists `playaxial.dev` and common Vite localhost ports. Update
   `ALLOWED_ORIGINS` before deploying a preview domain or custom Worker subdomain.
-- Production deploy still needs Cloudflare auth, final route/custom-domain decision, and a
-  deploy/dry-run pass for the Worker and Durable Object migration.
+- Production deploy completed through `pnpm deploy:multiplayer` after a successful
+  `pnpm deploy:multiplayer:dry-run`. Repeat both commands for Worker changes.
 
 ## Primary Sources Checked
 

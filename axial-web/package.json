@@ -7,9 +7,12 @@
   "scripts": {
     "dev": "pnpm --filter @axial/web dev",
     "build": "pnpm --filter @axial/web build",
+    "deploy:multiplayer": "pnpm --filter @axial/multiplayer-worker run deploy",
+    "deploy:multiplayer:dry-run": "pnpm --filter @axial/multiplayer-worker run deploy:dry-run",
     "preview": "pnpm --filter @axial/web preview",
     "check": "pnpm -r --if-present check",
     "lint": "pnpm -r --if-present lint",
+    "smoke:production:multiplayer": "pnpm --filter @axial/multiplayer-worker smoke:production",
     "smoke:production": "pnpm --filter @axial/web smoke:production",
     "test": "pnpm -r --if-present test",
     "test:unit": "pnpm -r --if-present test:unit"

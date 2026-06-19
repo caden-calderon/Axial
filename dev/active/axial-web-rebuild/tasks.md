@@ -38,6 +38,8 @@
 - [x] Add PWA install metadata, branded icons, and a lightweight service worker.
 - [x] Replace favicon/PWA icon assets with Caden's updated `AxialLOGO.png` render and derive the
   generated icon sizes from a modest app-icon-frame crop.
+- [x] Deploy the first multiplayer Worker/Durable Object service to production routes on
+  `playaxial.dev/api/rooms*` and `playaxial.dev/health`.
 - [ ] Verify production/custom-domain iframe headers for `playaxial.dev` from a clean network or
   Cloudflare dashboard before portfolio embedding.
 - [ ] Add an explicit `frame-ancestors` policy for the portfolio origin once the portfolio URL is
@@ -66,6 +68,12 @@
   connection state, reconnecting/resyncing, opponent disconnected, and room expired.
 - [x] Add focused unit/integration tests for room lifecycle, command validation, move validation,
   reconnect/resync, duplicate tabs, stale revisions, and error codes.
+- [x] Add Worker production deploy helpers and a production multiplayer smoke runner.
+- [ ] Run the production desktop/phone manual multiplayer smoke from a clean DNS path.
+  - 2026-06-18/19: Worker deploy succeeded and Pages production deployed the multiplayer UI, but
+    this workstation's CSU/HFS resolver returns stale/bad `*.playaxial.dev` records
+    (`65.52.200.44` and `::1`). Test on phone cellular or DNS `1.1.1.1`/`8.8.8.8` before treating
+    the failure as an app bug.
 - [ ] Add local end-to-end smoke with two browser contexts playing a full room match.
   - 2026-06-18: ad hoc Playwright fallback smoke passed for two browser contexts and one
     server-validated move. Commit this as a repeatable e2e test in a follow-up.

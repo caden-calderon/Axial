@@ -4,11 +4,11 @@
 
 Make Axial a polished browser-native strategy game. The active screen should remain the playable 3D board with compact controls, clear game state, and excellent visual readability.
 
-Near-term priority: harden the first online multiplayer foundation and prepare it for a deliberate
-Cloudflare deployment. The first local implementation now covers private friend-vs-friend Classic
-rooms with short join codes, invite links, QR payloads, player names, server-authoritative move
-validation, robust reconnects, and clear network/error states. Portfolio bridge production setup is
-paused for now.
+Near-term priority: validate the first online multiplayer foundation on real desktop/phone clients
+now that the room Worker is deployed on Cloudflare. The implementation covers private
+friend-vs-friend Classic rooms with short join codes, invite links, QR payloads, player names,
+server-authoritative move validation, robust reconnects, and clear network/error states. Portfolio
+bridge production setup is paused for now.
 
 Classic-mode AI remains an important future lane. The target is an AI opponent that can beat Caden, and the current recommendation is documented in `dev/active/axial-web-rebuild/classic-ai-research.md`.
 
@@ -56,7 +56,8 @@ Important boundaries:
 - `axial-web/apps/multiplayer-worker` owns canonical multiplayer state. It uses a Cloudflare Worker
   entrypoint plus one SQLite-backed Durable Object per 8-character room code, validates Classic
   moves through `@axial/core`, stores reconnect-token hashes, uses hibernatable WebSockets, and
-  returns full private snapshots on reconnect/resync.
+  returns full private snapshots on reconnect/resync. Production routes are same-origin:
+  `playaxial.dev/api/rooms*` and `playaxial.dev/health`.
 - Undo/redo/replay use canonical row/column move history and `replayMoves`.
 - Control UI is an acrylic top-right panel that expands downward with stable width/radius.
 - Expanded controls are organized as a match console: live state, Match, Appearance, and Session.
@@ -223,33 +224,35 @@ Initial recommendation:
 
 ## Near-Term Priorities
 
-1. Harden the multiplayer foundation with a committed two-browser Playwright e2e smoke, mobile sleep
-   manual pass, and production-route dry run.
-2. Decide and configure the first deploy shape: separate Cloudflare Worker on an `/api/rooms/*`
-   route or a worker subdomain/custom domain, plus Durable Object binding/migrations managed by
-   Wrangler.
-3. Continue protocol/UI polish only inside the v1 scope: private Classic rooms, reconnect, resync,
+1. Run the live desktop/phone manual smoke on a clean DNS path: open `https://playaxial.dev/room`
+   on both devices, create/join a private room, ready both players, make a server-validated move,
+   refresh one client, and confirm reconnect/resync.
+2. If the current CSU/HFS Wi-Fi still resolves `*.playaxial.dev` to `65.52.200.44`/`::1`, switch
+   the test device to cellular or DNS `1.1.1.1`/`8.8.8.8` before debugging application behavior.
+3. Harden the multiplayer foundation with a committed two-browser Playwright e2e smoke, mobile sleep
+   manual pass, and production-route smoke from a clean DNS/network.
+4. Continue protocol/UI polish only inside the v1 scope: private Classic rooms, reconnect, resync,
    rematch, typed errors, and QR payload/link handling. Keep Tactical, public matchmaking,
    accounts, chat, ranking, and host takebacks deferred.
-4. Confirm the portfolio origin and configure `PUBLIC_AXIAL_BRIDGE_ORIGINS` plus the production
+5. Confirm the portfolio origin and configure `PUBLIC_AXIAL_BRIDGE_ORIGINS` plus the production
    `frame-ancestors` header only when the portfolio bridge becomes active again.
-5. Continue the cleanup audit in `apps/web/src/lib/game`, `packages/core`, and `packages/ai` for dead code, duplicated logic, stale helpers, and component boundaries that should be cleaned before more features land. The first web UI pass removed the unused `@threlte/extras` dependency, split the status panel into focused sections, and trimmed a stale controller getter.
-6. Treat the remaining large Three.js/Threlte chunk warning as measured and acceptable for now: the 2026-06-07 cleanup removed accidental `@threlte/extras` and normal-path `@axial/ai` imports, reducing the client page chunk from `993.16 kB` minified / `273.01 kB` gzip to roughly `833 kB` minified / `216 kB` gzip after the follow-up section split. Revisit code-splitting when Axial gains a non-game first route, an intentional loading shell, or graphics-quality tiers.
-7. Keep refactors behavior-preserving unless Caden explicitly asks for gameplay changes in the same area.
-8. Add progress messages for longer Classic AI searches.
-9. Extend the seeded evaluation harness with larger random/greedy/heuristic/basic-MCTS benchmark suites and JSONL-style match logs, including expanded board sizes, connect-5, and 2-3-line win targets.
-10. Tune the TypeScript heuristic/MCTS/lookahead engine against those benchmarks and direct Caden
+6. Continue the cleanup audit in `apps/web/src/lib/game`, `packages/core`, and `packages/ai` for dead code, duplicated logic, stale helpers, and component boundaries that should be cleaned before more features land. The first web UI pass removed the unused `@threlte/extras` dependency, split the status panel into focused sections, and trimmed a stale controller getter.
+7. Treat the remaining large Three.js/Threlte chunk warning as measured and acceptable for now: the 2026-06-07 cleanup removed accidental `@threlte/extras` and normal-path `@axial/ai` imports, reducing the client page chunk from `993.16 kB` minified / `273.01 kB` gzip to roughly `833 kB` minified / `216 kB` gzip after the follow-up section split. Revisit code-splitting when Axial gains a non-game first route, an intentional loading shell, or graphics-quality tiers.
+8. Keep refactors behavior-preserving unless Caden explicitly asks for gameplay changes in the same area.
+9. Add progress messages for longer Classic AI searches.
+10. Extend the seeded evaluation harness with larger random/greedy/heuristic/basic-MCTS benchmark suites and JSONL-style match logs, including expanded board sizes, connect-5, and 2-3-line win targets.
+11. Tune the TypeScript heuristic/MCTS/lookahead engine against those benchmarks and direct Caden
    challenge games. First benchmark target after the 2026-06-07 fork/lookahead fixes is to measure
    tactical-suite pass rate and latency across 6 x 6 x 7 through 10 x 10 x 10 boards, including
    connect-5 and 2-3-line win conditions.
-11. Consider a dedicated benchmark CLI/script once match logging shape is clear.
-12. Keep the old Python MCTS runnable only as a reference/baseline through the root `uv` environment.
-13. Add PyTorch/training dependencies only when neural self-play work resumes.
-14. Treat AlphaZero/PyTorch/ONNX as a later measured upgrade once the teacher/evaluation harness can prove neural guidance improves strength.
-15. Benchmark and tune Classic AI latency/strength on expanded board sizes now that search geometry is dimension-aware.
-16. Keep Tactical/special-piece AI deferred until Classic-mode AI is locked.
-17. Add editable loadout UX for choosing the three Tactical specials when returning to Tactical polish.
-18. Keep the production deploy loop healthy with local checks, Cloudflare deployment review, and production smoke tests before/after significant changes.
+12. Consider a dedicated benchmark CLI/script once match logging shape is clear.
+13. Keep the old Python MCTS runnable only as a reference/baseline through the root `uv` environment.
+14. Add PyTorch/training dependencies only when neural self-play work resumes.
+15. Treat AlphaZero/PyTorch/ONNX as a later measured upgrade once the teacher/evaluation harness can prove neural guidance improves strength.
+16. Benchmark and tune Classic AI latency/strength on expanded board sizes now that search geometry is dimension-aware.
+17. Keep Tactical/special-piece AI deferred until Classic-mode AI is locked.
+18. Add editable loadout UX for choosing the three Tactical specials when returning to Tactical polish.
+19. Keep the production deploy loop healthy with local checks, Cloudflare deployment review, and production smoke tests before/after significant changes.
 
 ## Testing Expectations
 

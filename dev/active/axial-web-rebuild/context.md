@@ -4,11 +4,13 @@
 
 Axial is being rebuilt from the preserved Unity/Python project into a polished browser-native strategy game. The active app is `axial-web/apps/web`, using SvelteKit, TypeScript, pnpm, Three.js, and Threlte. The old Unity project remains in `axial-unity/`.
 
-Current multiplayer status: the first robust online multiplayer foundation is implemented locally.
-It supports private Classic rooms with short room codes, invite links, QR payloads, display names,
-host rules, ready flow, server-authoritative moves, reconnect tokens, revision snapshots,
-duplicate-tab takeover, opponent-disconnected state, and rematch. Production deployment is not yet
-enabled.
+Current multiplayer status: the first robust online multiplayer foundation is implemented and the
+room Worker is deployed on Cloudflare. It supports private Classic rooms with short room codes,
+invite links, QR payloads, display names, host rules, ready flow, server-authoritative moves,
+reconnect tokens, revision snapshots, duplicate-tab takeover, opponent-disconnected state, and
+rematch. Production browser smoke from this machine is currently blocked by the local CSU/HFS
+recursive DNS path returning stale/bad `*.playaxial.dev` records even though Cloudflare
+authoritative DNS and Google DNS return the correct Cloudflare records.
 
 Classic-mode AI remains an important future lane. Caden wants an AI opponent that can beat him as the benchmark. Tactical/special-piece AI remains deferred.
 
@@ -57,6 +59,13 @@ Deployment state:
   `axial-web/apps/multiplayer-worker`, with shared protocol types in
   `axial-web/packages/multiplayer-protocol`. The web app remains the frontend and `@axial/core`
   validates server-side moves.
+- 2026-06-18/19 multiplayer production deploy: Worker `axial-multiplayer` is deployed with Durable
+  Object binding `AXIAL_ROOM` and routes `playaxial.dev/api/rooms*` plus `playaxial.dev/health`.
+  Pages production deployed commit `f0289aa`, so `/room` is live on the Pages project. The local
+  shell/Chromium resolver on the current network returns `65.52.200.44` and `::1` for
+  `playaxial.dev`, while `@8.8.8.8` and Cloudflare authoritative nameservers return Cloudflare
+  proxy IPs. Use a clean DNS path, phone cellular, or DNS override before judging the live
+  desktop/phone multiplayer smoke.
 - Multiplayer planning notes live in `dev/active/axial-web-rebuild/multiplayer.md`.
 - 2026-06-09 iframe/header check: the repo has no app-level CSP, `_headers`, `X-Frame-Options`,
   or `frame-ancestors` config. `https://playaxial.pages.dev/` responded without CSP/XFO and should
@@ -217,6 +226,16 @@ Implemented gameplay/UX:
 
 Latest checks passed from `axial-web/` unless noted:
 
+- 2026-06-18/19 multiplayer production-route pass: `pnpm --filter @axial/multiplayer-worker types`,
+  `pnpm --filter @axial/multiplayer-worker check`, `pnpm --filter @axial/multiplayer-worker
+  test:unit`, `pnpm --filter @axial/multiplayer-worker lint`, `pnpm check`, and `pnpm
+  deploy:multiplayer:dry-run` passed. `pnpm deploy:multiplayer` deployed Worker version
+  `77cccbe4-3a41-4984-9983-dcf8a1d7bd03` and attached routes `playaxial.dev/api/rooms*` and
+  `playaxial.dev/health`. The new smoke runner passed against local Worker dev with
+  `AXIAL_MULTIPLAYER_SMOKE_URL=http://localhost:8787 pnpm smoke:production:multiplayer`.
+  `pnpm smoke:production:multiplayer` and Chromium navigation to `https://playaxial.dev/room` are
+  blocked from this machine by upstream DNS returning `65.52.200.44`/`::1` for `playaxial.dev`;
+  authoritative Cloudflare DNS and `@8.8.8.8` return the expected Cloudflare records.
 - 2026-06-18 multiplayer foundation: `pnpm check`, `pnpm lint`, `pnpm test:unit`, and `pnpm build`
   passed. Worker-focused checks also passed: `pnpm --filter @axial/multiplayer-worker check` and
   `pnpm --filter @axial/multiplayer-worker test:unit` with 6 Worker-runtime tests. Local Playwright
