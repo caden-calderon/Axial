@@ -1,6 +1,7 @@
 import {
   applyMove,
   createGame,
+  otherPlayer,
   replayMoves,
   type GameSnapshot,
   type Player,
@@ -33,6 +34,8 @@ export const WAITING_ACTIVE_TTL_MS = 6 * 60 * 60 * 1000;
 export const PLAYING_EMPTY_TTL_MS = 2 * 60 * 60 * 1000;
 export const PLAYING_ACTIVE_TTL_MS = 24 * 60 * 60 * 1000;
 export const ENDED_TTL_MS = 45 * 60 * 1000;
+export const START_COUNTDOWN_MS = 3500;
+export const REMATCH_DECISION_MS = 30_000;
 
 export type StoredPlayer = {
   playerId: string;
@@ -61,6 +64,11 @@ export type StoredRoomState = {
   rules: MultiplayerRules;
   players: StoredPlayer[];
   moveHistory: ReplayMove[];
+  matchNumber: number;
+  startingPlayer: Player;
+  matchStartedAt: number | null;
+  matchPlayableAt: number | null;
+  rematchDeadlineAt: number | null;
 };
 
 export type RoomEventRecord = {
@@ -116,6 +124,11 @@ export function createInitialRoomState(input: {
       },
     ],
     moveHistory: [],
+    matchNumber: 1,
+    startingPlayer: 1,
+    matchStartedAt: null,
+    matchPlayableAt: null,
+    rematchDeadlineAt: null,
   };
 
   return refreshExpiry(state, input.now);
@@ -287,19 +300,61 @@ export function setReadyState(
   player.ready = ready;
   player.lastSeenAt = now;
 
-  const bothReady =
-    next.players.length === 2 &&
-    next.players.every((roomPlayer) => roomPlayer.ready);
-  if (bothReady) {
-    next.phase = "playing";
-    next.moveHistory = [];
-    for (const roomPlayer of next.players) roomPlayer.rematchReady = false;
-    touch(next, now);
-    return withPublicEvent(next, "game:started", commandId);
-  }
-
   touch(next, now);
   return withPublicEvent(next, "room:ready-updated", commandId);
+}
+
+export function startMatch(
+  state: StoredRoomState,
+  playerId: string,
+  expectedRevision: number | undefined,
+  now: number,
+  commandId?: string,
+): RoomCommandOutcome {
+  assertUsableRoom(state);
+  assertExpectedRevision(state, expectedRevision);
+  const player = requirePlayer(state, playerId);
+  if (!player.isHost) {
+    throw new RoomServiceError(
+      "not-host",
+      "Only the host can start the match.",
+      403,
+    );
+  }
+  if (state.phase !== "waiting") {
+    throw new RoomServiceError(
+      "invalid-message",
+      "This match has already started.",
+      409,
+    );
+  }
+  if (state.players.length !== 2) {
+    throw new RoomServiceError(
+      "room-full",
+      "A friend needs to join before the match can start.",
+      409,
+    );
+  }
+  if (!state.players.every((roomPlayer) => roomPlayer.ready)) {
+    throw new RoomServiceError(
+      "invalid-message",
+      "Both players need to ready up first.",
+      409,
+    );
+  }
+
+  const next = cloneState(state);
+  next.phase = "playing";
+  next.moveHistory = [];
+  next.matchStartedAt = now;
+  next.matchPlayableAt = now + START_COUNTDOWN_MS;
+  next.rematchDeadlineAt = null;
+  for (const roomPlayer of next.players) {
+    roomPlayer.ready = false;
+    roomPlayer.rematchReady = false;
+  }
+  touch(next, now);
+  return withPublicEvent(next, "game:started", commandId);
 }
 
 export function playClassicMove(
@@ -357,6 +412,7 @@ export function playClassicMove(
   next.moveHistory = nextGame.moveHistory.map(toReplayMove);
   if (nextGame.status.state !== "playing") {
     next.phase = "ended";
+    next.rematchDeadlineAt = now + REMATCH_DECISION_MS;
     for (const roomPlayer of next.players) {
       roomPlayer.ready = false;
       roomPlayer.rematchReady = false;
@@ -392,6 +448,17 @@ export function setRematchVote(
 
   const next = cloneState(state);
   const player = requirePlayer(next, playerId);
+  if (
+    ready &&
+    next.rematchDeadlineAt !== null &&
+    now > next.rematchDeadlineAt
+  ) {
+    throw new RoomServiceError(
+      "rematch-expired",
+      "The rematch window has closed.",
+      409,
+    );
+  }
   player.rematchReady = ready;
   player.lastSeenAt = now;
 
@@ -401,6 +468,11 @@ export function setRematchVote(
   ) {
     next.phase = "playing";
     next.moveHistory = [];
+    next.matchNumber += 1;
+    next.startingPlayer = otherPlayer(next.startingPlayer);
+    next.matchStartedAt = now;
+    next.matchPlayableAt = now + START_COUNTDOWN_MS;
+    next.rematchDeadlineAt = null;
     for (const roomPlayer of next.players) {
       roomPlayer.ready = false;
       roomPlayer.rematchReady = false;
@@ -439,12 +511,17 @@ export function shouldExpire(state: StoredRoomState, now: number): boolean {
 
 export function currentGame(state: StoredRoomState): GameSnapshot {
   if (state.moveHistory.length === 0) {
-    return createGame(state.rules.winCondition, state.rules.board);
+    return createGame(
+      state.rules.winCondition,
+      state.rules.board,
+      state.startingPlayer,
+    );
   }
   return replayMoves(
     state.moveHistory,
     state.rules.winCondition,
     state.rules.board,
+    state.startingPlayer,
   );
 }
 
@@ -461,10 +538,17 @@ export function toPublicSnapshot(state: StoredRoomState): RoomSnapshot {
     rules: cloneRules(state.rules),
     players: state.players.map(toPublicPlayer),
     game: toSerializableGame(game),
+    match: {
+      number: state.matchNumber,
+      startingPlayer: state.startingPlayer,
+      startedAt: state.matchStartedAt,
+      playableAt: state.matchPlayableAt,
+    },
     rematch: {
       readyPlayerIds: state.players
         .filter((player) => player.rematchReady)
         .map((player) => player.playerId),
+      deadlineAt: state.rematchDeadlineAt,
     },
   };
 }
@@ -496,6 +580,23 @@ export function toCredentials(
     seat: player.seat,
     isHost: player.isHost,
     displayName: player.displayName,
+  };
+}
+
+export function normalizeStoredRoomState(
+  state: StoredRoomState,
+): StoredRoomState {
+  return {
+    ...state,
+    matchNumber: state.matchNumber ?? 1,
+    startingPlayer: state.startingPlayer === 2 ? 2 : 1,
+    matchStartedAt: state.matchStartedAt ?? null,
+    matchPlayableAt: state.matchPlayableAt ?? null,
+    rematchDeadlineAt: state.rematchDeadlineAt ?? null,
+    players: state.players.map((player) => ({
+      ...player,
+      rematchReady: player.rematchReady ?? false,
+    })),
   };
 }
 

@@ -129,7 +129,10 @@ Manual smoke:
 8. On a mobile device, use the browser install/add-to-home-screen flow and confirm Axial opens in an app-like display mode when launched from the home screen.
 9. Open `https://playaxial.dev` on desktop, choose Online in the match setup, and create a private room.
 10. Open the `https://playaxial.dev/?room=CODE` invite link or scan the QR code on a phone using a clean DNS path.
-11. Set different display names, ready both players, make one legal move on the 3D board from the correct seat, refresh one client, and confirm it reconnects/resyncs.
+11. Set different display names, ready both players, click `Start game` from the host, confirm the
+    VS/countdown overlay appears with the match settings, make one legal move on the 3D board from
+    the correct seat, finish or force a short match, confirm the result/rematch overlay, start a
+    rematch, confirm the opener swaps, refresh one client, and confirm it reconnects/resyncs.
 
 If a deployment is bad, use the Pages project's Deployments tab to roll back to the last known-good deployment while fixing `main`.
 
@@ -207,6 +210,10 @@ The first live multiplayer foundation now exists:
 - HTTPS fallback endpoint shape: `/api/rooms/[code]/sync` and `/api/rooms/[code]/commands`.
 - The Worker imports `@axial/core` so the server validates every move and broadcasts canonical game snapshots.
 - The Worker is mounted under same-origin `/api/rooms*` routes on `playaxial.dev`.
+- Current Online flow: both seats ready up, the host sends `room:start`, the server broadcasts match
+  metadata with a short countdown, and the frontend renders the existing 3D board underneath the
+  start overlay. After game over, the server exposes a 30-second rematch deadline and swaps the
+  opening player if both players rematch.
 
 This keeps the current single-player deploy simple while leaving the architecture open for invite links, reconnects, spectators, and room persistence.
 
@@ -232,6 +239,8 @@ Cloudflare setup notes for multiplayer:
   `ALLOWED_ORIGINS` before deploying a preview domain or custom Worker subdomain.
 - Production deploy completed through `pnpm deploy:multiplayer` after a successful
   `pnpm deploy:multiplayer:dry-run`. Repeat both commands for Worker changes.
+- Latest Worker deploy for the Online start/result/rematch protocol is
+  `b158cd16-5485-4179-8207-1a81891930f0` on 2026-06-19.
 
 ## Primary Sources Checked
 

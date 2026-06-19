@@ -13,6 +13,7 @@ import {
 	legalMoves,
 	normalizeBoardDimensions,
 	normalizeWinCondition,
+	otherPlayer,
 	replayMoves,
 	type BoardDimensions,
 	type GameSnapshot,
@@ -220,6 +221,7 @@ type PersistedActiveMatch = {
 	aiDifficulty: AiDifficulty;
 	winCondition: WinCondition;
 	boardDimensions: BoardDimensions;
+	startingPlayer: Player;
 	moveHistory: ReplayMove[];
 	redoMoves: ReplayMove[];
 	gameOverDismissed: boolean;
@@ -236,10 +238,12 @@ export type BoardDimensionKey = keyof BoardDimensions;
 export function createGameController() {
 	let winCondition = $state<WinCondition>({ ...DEFAULT_WIN_CONDITION });
 	let boardDimensions = $state<BoardDimensions>({ ...DEFAULT_BOARD_DIMENSIONS });
+	let startingPlayer = $state<Player>(1);
 	let game = $state<GameSnapshot>(
 		createGame(
 			DEFAULT_WIN_CONDITION,
-			untrack(() => boardDimensions)
+			untrack(() => boardDimensions),
+			untrack(() => startingPlayer)
 		)
 	);
 	let hoveredMove = $state<Move | null>(null);
@@ -395,7 +399,7 @@ export function createGameController() {
 			winCondition = savedWinCondition;
 		}
 		if (savedBoardDimensions || savedWinCondition) {
-			game = createGame(winCondition, boardDimensions);
+			game = createGame(winCondition, boardDimensions, startingPlayer);
 		}
 		if (savedPieceShape) pieceShape = savedPieceShape;
 
@@ -424,10 +428,12 @@ export function createGameController() {
 			const restoredGame = replayMoves(
 				saved.moveHistory,
 				saved.winCondition,
-				saved.boardDimensions
+				saved.boardDimensions,
+				saved.startingPlayer ?? 1
 			);
 			boardDimensions = saved.boardDimensions;
 			winCondition = saved.winCondition;
+			startingPlayer = saved.startingPlayer ?? 1;
 			matchMode = saved.matchMode;
 			opponentMode = saved.opponentMode;
 			aiDifficulty = saved.aiDifficulty;
@@ -462,6 +468,7 @@ export function createGameController() {
 			aiDifficulty,
 			winCondition: { ...winCondition },
 			boardDimensions: { ...boardDimensions },
+			startingPlayer,
 			moveHistory: game.moveHistory.map(toMove),
 			redoMoves: redoMoves.map((move) => ({ ...move, special: cloneSpecial(move.special) })),
 			gameOverDismissed
@@ -568,11 +575,13 @@ export function createGameController() {
 	}
 
 	function resetGame(): void {
+		const shouldAlternateStarter = game.moveHistory.length > 0 || game.status.state !== 'playing';
 		clearQueuedAiMove();
 		clearGameOverModalDelay();
 		matchId += 1;
 		recordedMatchId = null;
-		game = createGame(winCondition, boardDimensions);
+		if (shouldAlternateStarter) startingPlayer = otherPlayer(startingPlayer);
+		game = createGame(winCondition, boardDimensions, startingPlayer);
 		hoveredMove = null;
 		lockedMove = null;
 		moveError = '';
@@ -581,6 +590,7 @@ export function createGameController() {
 		gameOverDismissed = false;
 		gameOverModalReady = false;
 		clearSavedActiveMatch();
+		queueAiMove();
 	}
 
 	function undoMove(): void {
@@ -591,7 +601,7 @@ export function createGameController() {
 		clearGameOverModalDelay();
 		const previousMoves = game.moveHistory.slice(0, -1).map(toMove);
 		redoMoves = [toMove(lastMove), ...redoMoves];
-		game = replayMoves(previousMoves, winCondition, boardDimensions);
+		game = replayMoves(previousMoves, winCondition, boardDimensions, startingPlayer);
 		hoveredMove = null;
 		lockedMove = null;
 		moveError = '';
@@ -613,7 +623,8 @@ export function createGameController() {
 			game = replayMoves(
 				[...game.moveHistory.map(toMove), nextMove],
 				winCondition,
-				boardDimensions
+				boardDimensions,
+				startingPlayer
 			);
 			redoMoves = remainingMoves;
 			hoveredMove = null;
@@ -634,7 +645,7 @@ export function createGameController() {
 		clearQueuedAiMove();
 		clearGameOverModalDelay();
 		redoMoves = [...game.moveHistory.map(toMove), ...redoMoves];
-		game = createGame(winCondition, boardDimensions);
+		game = createGame(winCondition, boardDimensions, startingPlayer);
 		hoveredMove = null;
 		lockedMove = null;
 		moveError = '';
@@ -726,7 +737,7 @@ export function createGameController() {
 		clearQueuedAiMove();
 		clearGameOverModalDelay();
 		boardDimensions = normalized;
-		game = createGame(winCondition, boardDimensions);
+		game = createGame(winCondition, boardDimensions, startingPlayer);
 		hoveredMove = null;
 		lockedMove = null;
 		redoMoves = [];
@@ -763,7 +774,7 @@ export function createGameController() {
 		clearQueuedAiMove();
 		clearGameOverModalDelay();
 		winCondition = normalized;
-		game = createGame(winCondition, boardDimensions);
+		game = createGame(winCondition, boardDimensions, startingPlayer);
 		hoveredMove = null;
 		lockedMove = null;
 		redoMoves = [];
@@ -1183,6 +1194,7 @@ function parsePersistedActiveMatch(serialized: string | null): PersistedActiveMa
 		const aiDifficulty = parseAiDifficulty(readString(value.aiDifficulty));
 		const winCondition = parseSavedWinCondition(value.winCondition);
 		const boardDimensions = parseSavedBoardDimensions(value.boardDimensions);
+		const startingPlayer = parseSavedPlayer(value.startingPlayer) ?? 1;
 		const moveHistory = parseReplayMoveList(value.moveHistory);
 		const redoMoves = parseReplayMoveList(value.redoMoves);
 		const gameOverDismissed =
@@ -1207,6 +1219,7 @@ function parsePersistedActiveMatch(serialized: string | null): PersistedActiveMa
 			aiDifficulty,
 			winCondition,
 			boardDimensions,
+			startingPlayer,
 			moveHistory,
 			redoMoves,
 			gameOverDismissed
@@ -1241,6 +1254,10 @@ function parseSavedBoardDimensions(value: unknown): BoardDimensions | null {
 	} catch {
 		return null;
 	}
+}
+
+function parseSavedPlayer(value: unknown): Player | null {
+	return value === 1 || value === 2 ? value : null;
 }
 
 function parseReplayMoveList(value: unknown): ReplayMove[] | null {

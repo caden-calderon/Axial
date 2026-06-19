@@ -166,19 +166,21 @@ type CellCoordinate = {
 export function createGame(
   winCondition: WinCondition = DEFAULT_WIN_CONDITION,
   dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+  startingPlayer: Player = 1,
 ): GameSnapshot {
   const normalizedWinCondition = normalizeWinCondition(winCondition);
   const normalizedDimensions = normalizeBoardDimensions(dimensions);
+  const currentPlayer = normalizePlayer(startingPlayer);
 
   return {
     board: new Uint8Array(cellCount(normalizedDimensions)),
     dimensions: normalizedDimensions,
-    currentPlayer: 1,
+    currentPlayer,
     winCondition: normalizedWinCondition,
     completedLines: [],
     lastMove: null,
     moveHistory: [],
-    status: { state: "playing", currentPlayer: 1 },
+    status: { state: "playing", currentPlayer },
   };
 }
 
@@ -186,10 +188,11 @@ export function replayMoves(
   moves: readonly ReplayMove[],
   winCondition: WinCondition = DEFAULT_WIN_CONDITION,
   dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
+  startingPlayer: Player = 1,
 ): GameSnapshot {
   return moves.reduce(
     (game, move) => applyReplayMove(game, move),
-    createGame(winCondition, dimensions),
+    createGame(winCondition, dimensions, startingPlayer),
   );
 }
 
@@ -659,6 +662,11 @@ export function sameBoardDimensions(
 
 export function otherPlayer(player: Player): Player {
   return player === 1 ? 2 : 1;
+}
+
+function normalizePlayer(player: Player): Player {
+  if (player === 1 || player === 2) return player;
+  throw new Error("Player must be 1 or 2");
 }
 
 function collectLine(

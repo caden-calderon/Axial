@@ -6,6 +6,7 @@
 	import { createGameController, type PlayMode } from '$lib/game/state/gameController.svelte';
 	import GameOverModal from '$lib/game/ui/GameOverModal.svelte';
 	import GameHud from '$lib/game/ui/GameHud.svelte';
+	import OnlineMatchOverlay from '$lib/game/ui/OnlineMatchOverlay.svelte';
 	import GameStatusPanel from '$lib/game/ui/GameStatusPanel.svelte';
 	import {
 		createOnlineController,
@@ -391,6 +392,10 @@
 			onReviewFromStart={controller.rewindGame}
 			onKeepBoard={controller.dismissGameOver}
 		/>
+	{/if}
+
+	{#if playMode === 'online'}
+		<OnlineMatchOverlay {online} />
 	{/if}
 
 	{#if recoveryMessage}

@@ -269,6 +269,16 @@ export function parseClientCommand(value: unknown): ClientCommand {
         type: value.type,
         payload: { ready: payload.ready },
       };
+    case "room:start":
+      return {
+        ...base(value),
+        type: value.type,
+        payload: {
+          ...(typeof payload.expectedRevision === "number"
+            ? { expectedRevision: payload.expectedRevision }
+            : {}),
+        },
+      };
     case "game:play-move":
       return {
         ...base(value),

@@ -7,6 +7,7 @@ import {
 	type GameSnapshot,
 	type MatchMode,
 	type Move,
+	type Player,
 	type WinCondition
 } from '@axial/core';
 import {
@@ -46,6 +47,7 @@ const STORAGE_KEYS = {
 const FALLBACK_SYNC_INTERVAL_MS = 2500;
 const SOCKET_RETRY_WITH_FALLBACK_MS = 30000;
 const TRANSPORT_HEALTH_GRACE_MS = 7000;
+const ONLINE_TICK_MS = 200;
 
 export type BoardDimensionKey = keyof BoardDimensions;
 export type OnlineController = ReturnType<typeof createOnlineController>;
@@ -62,12 +64,19 @@ export function createOnlineController() {
 	let connectionState = $state<ConnectionState>('idle');
 	let copied = $state(false);
 	let showQr = $state(false);
+	let resultOverlayDismissed = $state(false);
+	let now = $state(Date.now());
 	let hoveredMove = $state<Move | null>(null);
 	let lockedMove = $state<Move | null>(null);
 	let rulesDraft = $state<MultiplayerRules>(defaultRules());
 	let socket: WebSocket | null = null;
 	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	let fallbackTimer: ReturnType<typeof setInterval> | null = null;
+	let ticker: ReturnType<typeof setInterval> | null = browser
+		? setInterval(() => {
+				now = Date.now();
+			}, ONLINE_TICK_MS)
+		: null;
 	let manualClose = false;
 	let lastHealthyAt = 0;
 
@@ -83,16 +92,33 @@ export function createOnlineController() {
 	const canReady = $derived(
 		Boolean(snapshot && snapshot.phase === 'waiting' && snapshot.players.length === 2)
 	);
+	const allPlayersReady = $derived(
+		Boolean(
+			snapshot?.phase === 'waiting' &&
+			snapshot.players.length === 2 &&
+			snapshot.players.every((player) => player.ready)
+		)
+	);
+	const canStart = $derived(Boolean(snapshot?.you.isHost && allPlayersReady));
+	const startRemainingMs = $derived(Math.max(0, (snapshot?.match.playableAt ?? 0) - now));
+	const isStarting = $derived(Boolean(snapshot?.phase === 'playing' && startRemainingMs > 0));
+	const startSeconds = $derived(Math.max(1, Math.ceil(startRemainingMs / 1000)));
+	const rematchRemainingMs = $derived(Math.max(0, (snapshot?.rematch.deadlineAt ?? 0) - now));
+	const rematchSeconds = $derived(Math.ceil(rematchRemainingMs / 1000));
+	const rematchExpired = $derived(
+		Boolean(snapshot?.phase === 'ended' && snapshot.rematch.deadlineAt && rematchRemainingMs <= 0)
+	);
 	const yourTurn = $derived(
 		Boolean(
 			snapshot?.phase === 'playing' &&
+			!isStarting &&
 			snapshot.game.status.state === 'playing' &&
 			snapshot.game.currentPlayer === snapshot.you.seat
 		)
 	);
 	const setupLocked = $derived(Boolean(snapshot && !canEditRules));
 	const previewMove = $derived(lockedMove ?? hoveredMove);
-	const statusTitle = $derived(roomStatusLabel(snapshot, connectionState, opponent));
+	const statusTitle = $derived(roomStatusLabel(snapshot, connectionState, opponent, isStarting));
 	const currentLabel = $derived(statusTitle);
 	const statusTone = $derived(
 		game.status.state === 'won' ? `player-${game.status.winner}` : game.status.state
@@ -101,6 +127,17 @@ export function createOnlineController() {
 	const formattedRoomCode = $derived(
 		formatRoomCode(snapshot?.roomCode ?? credentials?.roomCode ?? joinCodeDraft)
 	);
+	const startingPlayer = $derived(
+		snapshot?.players.find((player) => player.seat === snapshot?.match.startingPlayer) ?? null
+	);
+	const matchSummary = $derived(
+		`${rules.board.height}H x ${rules.board.rows}R x ${rules.board.columns}C - Connect ${rules.winCondition.lineLength} - ${rules.winCondition.linesToWin} line${rules.winCondition.linesToWin === 1 ? '' : 's'}`
+	);
+	const showStartOverlay = $derived(Boolean(snapshot && isStarting));
+	const showResultOverlay = $derived(
+		Boolean(snapshot?.phase === 'ended' && !resultOverlayDismissed)
+	);
+	const opponentRematchReady = $derived(Boolean(opponent?.rematchReady));
 
 	function hydrateFromBrowser(searchParams?: RoomSearchParams): boolean {
 		if (!browser) return false;
@@ -266,26 +303,30 @@ export function createOnlineController() {
 		options: { networkHealthy: boolean }
 	): void {
 		const previous = snapshot;
+		const normalizedIncoming = normalizeSnapshot(incoming);
 		const retainedIdentity =
-			'you' in incoming ? incoming.you : (previous?.you ?? credentialsToIdentity(credentials));
+			'you' in normalizedIncoming
+				? normalizedIncoming.you
+				: (previous?.you ?? credentialsToIdentity(credentials));
 		if (!retainedIdentity) return;
 
 		const inviteUrl =
-			'inviteUrl' in incoming
-				? incoming.inviteUrl
-				: (previous?.inviteUrl ?? roomInviteUrl(incoming.roomCode));
-		const updatedSelf = incoming.players.find(
+			'inviteUrl' in normalizedIncoming
+				? normalizedIncoming.inviteUrl
+				: (previous?.inviteUrl ?? roomInviteUrl(normalizedIncoming.roomCode));
+		const updatedSelf = normalizedIncoming.players.find(
 			(player) => player.playerId === retainedIdentity.playerId
 		);
 		snapshot = {
-			...incoming,
+			...normalizedIncoming,
 			you: {
 				...retainedIdentity,
 				...(updatedSelf ? { displayName: updatedSelf.displayName } : {})
 			},
 			inviteUrl,
-			qrPayload: 'qrPayload' in incoming ? incoming.qrPayload : inviteUrl
+			qrPayload: 'qrPayload' in normalizedIncoming ? normalizedIncoming.qrPayload : inviteUrl
 		};
+		if (previous?.phase !== snapshot.phase) resultOverlayDismissed = false;
 		saveRoomSnapshot(snapshot);
 		joinCodeDraft = formatRoomCode(snapshot.roomCode);
 		rulesDraft = cloneRules(snapshot.rules);
@@ -365,9 +406,26 @@ export function createOnlineController() {
 		send(command('room:ready', { ready: !self?.ready }));
 	}
 
+	function startGame(): void {
+		if (!snapshot) return;
+		if (!canStart) {
+			error = snapshot.you.isHost ? 'Both players need to ready up.' : 'The host starts the match.';
+			return;
+		}
+		send(command('room:start', { expectedRevision: snapshot.revision }));
+	}
+
 	function rematch(): void {
 		if (!snapshot) return;
+		if (rematchExpired) {
+			error = 'The rematch window closed.';
+			return;
+		}
 		send(command('room:rematch-vote', { ready: !self?.rematchReady }));
+	}
+
+	function dismissResultOverlay(): void {
+		resultOverlayDismissed = true;
 	}
 
 	function selectOrPlayMove(move: Move, confirmDropEnabled: boolean): void {
@@ -394,6 +452,10 @@ export function createOnlineController() {
 	}
 
 	function playMove(move: Move): void {
+		if (isStarting) {
+			error = 'Match starting.';
+			return;
+		}
 		if (!snapshot || !yourTurn) {
 			error =
 				snapshot?.phase === 'playing' ? 'Waiting for opponent.' : 'Start the online match first.';
@@ -445,6 +507,7 @@ export function createOnlineController() {
 		error = '';
 		copied = false;
 		showQr = false;
+		resultOverlayDismissed = false;
 		lockedMove = null;
 		hoveredMove = null;
 	}
@@ -467,6 +530,8 @@ export function createOnlineController() {
 		manualClose = true;
 		if (reconnectTimer) clearTimeout(reconnectTimer);
 		stopHttpFallback();
+		if (ticker) clearInterval(ticker);
+		ticker = null;
 		socket?.close();
 		socket = null;
 	}
@@ -571,6 +636,9 @@ export function createOnlineController() {
 		get canReady() {
 			return canReady;
 		},
+		get canStart() {
+			return canStart;
+		},
 		get connectionLabel() {
 			return connectionLabel(connectionState);
 		},
@@ -584,7 +652,7 @@ export function createOnlineController() {
 			return currentLabel;
 		},
 		get currentPlayer() {
-			return game.status.state === 'playing' ? game.currentPlayer : null;
+			return game.status.state === 'playing' && !isStarting ? game.currentPlayer : null;
 		},
 		get displayName() {
 			return displayName;
@@ -619,11 +687,17 @@ export function createOnlineController() {
 		get matchMode(): MatchMode {
 			return 'classic';
 		},
+		get matchSummary() {
+			return matchSummary;
+		},
 		get moveError() {
 			return error;
 		},
 		get opponent() {
 			return opponent;
+		},
+		get opponentRematchReady() {
+			return opponentRematchReady;
 		},
 		get previewMove() {
 			return previewMove;
@@ -636,6 +710,12 @@ export function createOnlineController() {
 		},
 		get self() {
 			return self;
+		},
+		get showResultOverlay() {
+			return showResultOverlay;
+		},
+		get showStartOverlay() {
+			return showStartOverlay;
 		},
 		get setupLocked() {
 			return setupLocked;
@@ -652,6 +732,18 @@ export function createOnlineController() {
 		get statusTone() {
 			return statusTone;
 		},
+		get startSeconds() {
+			return startSeconds;
+		},
+		get startingPlayer() {
+			return startingPlayer;
+		},
+		get rematchExpired() {
+			return rematchExpired;
+		},
+		get rematchSeconds() {
+			return rematchSeconds;
+		},
 		get winCondition() {
 			return rules.winCondition;
 		},
@@ -663,6 +755,7 @@ export function createOnlineController() {
 		},
 		copyInvite,
 		createPrivateRoom,
+		dismissResultOverlay,
 		destroy,
 		hydrateFromBrowser,
 		joinPrivateRoom,
@@ -674,6 +767,7 @@ export function createOnlineController() {
 		setHover,
 		setLinesToWin,
 		setMatchMode,
+		startGame,
 		setWinLineLength,
 		toggleQr,
 		toggleReady,
@@ -739,6 +833,24 @@ function cloneRules(rules: MultiplayerRules): MultiplayerRules {
 	};
 }
 
+function normalizeSnapshot<T extends RoomSnapshot | PrivateRoomSnapshot>(snapshot: T): T {
+	const fallbackStartingPlayer: Player = snapshot.game.currentPlayer === 2 ? 2 : 1;
+	return {
+		...snapshot,
+		match: snapshot.match ?? {
+			number: 1,
+			startingPlayer: fallbackStartingPlayer,
+			startedAt:
+				snapshot.phase === 'playing' || snapshot.phase === 'ended' ? snapshot.updatedAt : null,
+			playableAt: null
+		},
+		rematch: {
+			readyPlayerIds: snapshot.rematch?.readyPlayerIds ?? [],
+			deadlineAt: snapshot.rematch?.deadlineAt ?? null
+		}
+	};
+}
+
 function credentialsToIdentity(value: MultiplayerCredentials | null): PlayerIdentity | null {
 	if (!value) return null;
 	return {
@@ -763,7 +875,8 @@ function derivedConnectionState(
 function roomStatusLabel(
 	nextSnapshot: PrivateRoomSnapshot | null,
 	state: ConnectionState,
-	nextOpponent: PrivateRoomSnapshot['players'][number] | null
+	nextOpponent: PrivateRoomSnapshot['players'][number] | null,
+	isMatchStarting: boolean
 ): string {
 	if (!nextSnapshot) {
 		if (state === 'creating') return 'Creating room';
@@ -780,7 +893,10 @@ function roomStatusLabel(
 		return `${nextOpponent?.displayName ?? 'Opponent'} disconnected`;
 	if (nextSnapshot.phase === 'waiting') {
 		if (nextSnapshot.players.length < 2) return 'Waiting for friend';
-		return nextSnapshot.players.every((player) => player.ready) ? 'Starting' : 'Ready check';
+		if (nextSnapshot.players.every((player) => player.ready)) {
+			return nextSnapshot.you.isHost ? 'Ready to start' : 'Waiting for host';
+		}
+		return 'Ready check';
 	}
 	if (nextSnapshot.phase === 'ended') {
 		const status = nextSnapshot.game.status;
@@ -790,6 +906,7 @@ function roomStatusLabel(
 		}
 		return 'Draw';
 	}
+	if (isMatchStarting) return 'Match starting';
 	if (nextSnapshot.game.status.state === 'playing') {
 		const active = nextSnapshot.players.find(
 			(player) => player.seat === nextSnapshot.game.currentPlayer

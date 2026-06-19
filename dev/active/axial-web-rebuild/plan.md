@@ -54,11 +54,22 @@ Important boundaries:
   Local, AI, and Online modes; Online reuses the existing 3D board for rendering/animation while the
   room service remains authoritative. Legacy `/room` and `/room/[code]` routes are compatibility
   redirects into `/?online=1` and `/?room=CODE`.
+- Online ready no longer auto-starts the match. Once both players are ready, the host explicitly
+  starts the game, locking the room settings and producing server match metadata. The frontend shows
+  a short VS/countdown overlay from `match.playableAt`, with the opener and settings visible, and
+  blocks normal board input until the countdown clears.
+- Online game over is a room-level rematch decision state. The server publishes a 30-second rematch
+  deadline, records each player's vote, rejects late votes, and starts the next match only when both
+  players vote rematch. The result overlay shows the winner/draw, move count, deadline countdown,
+  opponent rematch intent, rematch/cancel, keep-board, and leave actions.
 - `axial-web/apps/multiplayer-worker` owns canonical multiplayer state. It uses a Cloudflare Worker
   entrypoint plus one SQLite-backed Durable Object per 8-character room code, validates Classic
   moves through `@axial/core`, stores reconnect-token hashes, uses hibernatable WebSockets, and
   returns full private snapshots on reconnect/resync. Production routes are same-origin:
   `playaxial.dev/api/rooms*` and `playaxial.dev/health`.
+- Online rematches alternate the starting player by server authority. Local/AI reset/rematch mirrors
+  that behavior after any played or completed match so repeat games do not always give Player 1 the
+  first move.
 - WebSocket remains the preferred online transport, but HTTPS sync/command fallback is treated as a
   healthy transport when it is succeeding. The UI should only surface reconnecting when both
   transports have gone stale long enough to matter to a player.
@@ -232,7 +243,8 @@ Initial recommendation:
 
 1. Run the live desktop/phone manual smoke on a clean DNS path: open `https://playaxial.dev`, choose
    Online on desktop, create a private room, open the `https://playaxial.dev/?room=CODE` invite on
-   phone, ready both players, make a server-validated 3D-board move, refresh one client, and confirm
+   phone, ready both players, start the match from the host, make a server-validated 3D-board move,
+   play through game over/rematch, confirm the opener swaps, refresh one client, and confirm
    reconnect/resync.
 2. If the current CSU/HFS Wi-Fi still resolves `*.playaxial.dev` to `65.52.200.44`/`::1`, switch
    the test device to cellular or DNS `1.1.1.1`/`8.8.8.8` before debugging application behavior.

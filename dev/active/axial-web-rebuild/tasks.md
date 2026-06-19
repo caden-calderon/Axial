@@ -64,10 +64,16 @@
 - [x] Add reconnect tokens, refresh/mobile-sleep recovery, duplicate-tab handling, last-seen
   revision resync, and opponent-disconnected grace state.
 - [x] Add rematch flow after game over, with same rules first and optional rule tweaks later.
+- [x] Add explicit host `Start game` after both players are ready, including a start/countdown
+  overlay that displays players, match settings, and opening player.
+- [x] Add online result/rematch overlay with rematch/leave/keep-board actions, opponent rematch
+  intent, and a server-enforced 30-second rematch decision deadline.
+- [x] Swap the starting player on online rematches.
 - [x] Add client UI for create room, join room, QR payload, copy invite link, names, ready state,
   connection state, reconnecting/resyncing, opponent disconnected, and room expired.
 - [x] Integrate Online mode into the existing main 3D game route/sidebar with Local, AI, and Online
   mode selection.
+- [x] Preserve full formatted room-code visibility in the integrated sidebar on desktop and mobile.
 - [x] Replace the temporary authoritative 2D online board with the existing Threlte 3D board fed by
   server snapshots.
 - [x] Keep `/room` and `/room/[code]` as compatibility redirects into `/?online=1` and `/?room=CODE`.
@@ -90,6 +96,10 @@
     this as a repeatable e2e test in a follow-up.
   - 2026-06-19: Worker dry-run passed and `pnpm deploy:multiplayer` deployed version
     `4a0f9b12-361c-4f1e-ae21-d4f2d7671514`.
+  - 2026-06-19: ad hoc Playwright smoke passed for full-code display, explicit host start,
+    start/countdown overlay, result/rematch overlay, opponent rematch intent, rematch deadline UI,
+    and Match 2 with swapped opener. Worker dry-run passed and `pnpm deploy:multiplayer` deployed
+    version `b158cd16-5485-4179-8207-1a81891930f0`.
   - 2026-06-19: `pnpm smoke:production:multiplayer` is still blocked on this workstation by local
     resolution to `::1`/`65.52.200.44`, while authoritative Cloudflare nameservers and `@8.8.8.8`
     return Cloudflare proxy IPs.
@@ -162,6 +172,7 @@
 - [x] Add difficulty-aware visible thinking delay for Classic AI replies.
 - [ ] Add progress messages from long-running Classic AI search.
 - [x] Add difficulty presets.
+- [x] Alternate the starting player after each played/completed Local or AI match reset.
 - [x] Keep Classic AI rule-aware for configurable connect length and line-count win targets.
 - [x] Improve Classic AI heuristic/MCTS behavior for 2-3-line targets by valuing and blocking non-terminal line progress.
 - [x] Fix Classic AI multi-line scoring so a five-cell contiguous run is not valued as two

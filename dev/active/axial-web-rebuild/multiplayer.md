@@ -23,11 +23,13 @@ First MVP:
   - Connect length.
   - Lines to win.
 - Player ready flow before the match starts.
-- Server-assigned seats: Player 1 / Player 2, with random/swap option later.
+- Explicit host start after both players are ready.
+- Server-assigned seats: creator is Player 1 and joiner is Player 2 for v1, with rematches swapping
+  the opening player.
 - Server-authoritative moves and winner/draw detection.
 - Explicit connection states in UI.
 - Automatic reconnect after refresh, mobile sleep, network change, or transient server restart.
-- Rematch after game over.
+- Rematch after game over with a timed decision window.
 
 Do not include in v1 unless explicitly pulled in:
 
@@ -112,8 +114,9 @@ The first implementation landed as:
   as `XXXX-XXXX`. This is still voice/share friendly while giving roughly 40 bits of invite entropy.
 - QR payload: the canonical invite URL (`/?room=CODE`). The web sidebar renders a scannable QR image
   from that payload; the backend contract still only returns the payload/link.
-- Initial seat policy: creator is host and Player 1, joiner is Player 2. Random first player and
-  side swapping are deferred.
+- Initial seat policy: creator is host and Player 1, joiner is Player 2. The first match opens with
+  Player 1; each accepted rematch swaps the opening player while preserving seats. Random seats and
+  rule-tweak rematches remain deferred.
 - Spectators remain deferred. A third valid browser tab for the same player uses the duplicate-tab
   policy below rather than spectator mode.
 
@@ -124,7 +127,7 @@ Implementation status:
 - The main Svelte game route implements Local, AI, and Online modes in the existing sidebar and 3D
   board. `/room` and `/room/[code]` are legacy shims that redirect into the main route.
 - Production Worker deployment is live as `axial-multiplayer`, current verified version
-  `4a0f9b12-361c-4f1e-ae21-d4f2d7671514`, with routes `playaxial.dev/api/rooms*` and
+  `b158cd16-5485-4179-8207-1a81891930f0`, with routes `playaxial.dev/api/rooms*` and
   `playaxial.dev/health`.
 - 2026-06-18/19 production hardening: WebSocket remains the preferred live transport, but the room
   service also exposes HTTPS fallback endpoints `POST /api/rooms/:code/sync` and
@@ -135,6 +138,11 @@ Implementation status:
 - 2026-06-19 integrated UI pass: Online mode now renders the authoritative snapshot through the
   existing Threlte board, places lobby/invite/QR/ready controls inside the main sidebar, and preserves
   the local/AI controller for offline play.
+- 2026-06-19 start/result polish: ready state no longer auto-starts the game. The host must send
+  `room:start` after both players are ready, which locks settings and publishes `match.number`,
+  `match.startingPlayer`, `match.startedAt`, and `match.playableAt` in snapshots. Game-over
+  snapshots publish `rematch.deadlineAt`; the server rejects late `room:rematch-vote` commands with
+  `rematch-expired` and flips `startingPlayer` when both players rematch.
 - QR payload, invite URL, copy button, and scannable QR image are available in the Online sidebar.
 
 ## Server Authority
@@ -167,11 +175,14 @@ the room snapshot, the room snapshot wins.
 
 1. `created`: host has a room code and reconnect token.
 2. `waiting`: second player can join; host can configure allowed rules.
-3. `ready`: both players have names and have pressed ready.
-4. `playing`: moves are accepted only from the current player's active seat.
-5. `ended`: winner/draw is final; rematch votes can begin.
-6. `rematching`: players choose same rules or proposed tweaks later.
-7. `expired`: room no longer accepts reconnects or commands.
+3. `ready-to-start`: both players have names and have pressed ready; settings are locked and only
+   the host may start.
+4. `starting`: represented by `phase: "playing"` plus future `match.playableAt` metadata; the
+   frontend shows the countdown overlay and blocks normal input.
+5. `playing`: moves are accepted only from the current player's active seat.
+6. `ended`: winner/draw is final; rematch votes can begin.
+7. `rematching`: players choose same rules or proposed tweaks later.
+8. `expired`: room no longer accepts reconnects or commands.
 
 Room expiry policy:
 
@@ -221,6 +232,7 @@ Command families:
 - `room:set-name`
 - `room:set-rules`
 - `room:ready`
+- `room:start`
 - `game:play-move`
 - `room:resync`
 - `room:leave`
@@ -313,6 +325,7 @@ Server error categories:
 - `stale-revision`
 - `auth-failed`
 - `room-expired`
+- `rematch-expired`
 - `rate-limited`
 - `internal-error`
 
@@ -346,10 +359,13 @@ Core:
 - QR code join.
 - Display names.
 - Ready buttons.
+- Host start button once both players are ready.
+- VS/countdown overlay with the players, match settings, and opening player.
 - Clear seat labels and "waiting for friend".
 - Connection pill for reconnecting/resyncing.
 - Opponent disconnected state with calm copy.
-- Rematch button.
+- Result/rematch overlay with winner/draw, move count, 30-second choice timer, opponent rematch
+  intent, rematch, keep-board, and leave actions.
 
 Polish:
 
@@ -392,15 +408,20 @@ Web/e2e tests:
 - Two browser contexts create and join a room.
 - Names appear for both players.
 - Host sets rules before start.
-- Both ready and match starts.
+- Both ready, match does not auto-start, host starts, and countdown metadata is shown.
 - Player 1 move appears for Player 2.
 - Player 2 move appears for Player 1.
 - Refresh one player and reconnect to same seat.
 - Simulate network close and resync.
 - Complete a short forced game if using a tiny test board or seeded room helper.
+- Game-over rematch exposes a deadline, updates opponent rematch intent, rejects late votes, and
+  starts Match 2 with the opener swapped.
 - 2026-06-19 ad hoc local smoke covered the integrated 3D route: host creates a room from `/?online=1`,
   guest joins on a mobile viewport through `/?room=CODE`, both ready, host makes a server-validated
   move on the 3D canvas, and both clients receive the revision/move update.
+- 2026-06-19 ad hoc local smoke covered the explicit start/result flow: full room-code display,
+  host start after both ready, countdown overlay, result/rematch overlay, rematch timer, opponent
+  rematch intent, and Match 2 opening with Player 2.
 
 Manual smoke:
 

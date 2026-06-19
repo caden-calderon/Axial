@@ -75,8 +75,15 @@ export type RoomSnapshot = {
   rules: MultiplayerRules;
   players: RoomPlayer[];
   game: SerializableGameSnapshot;
+  match: {
+    number: number;
+    startingPlayer: Player;
+    startedAt: number | null;
+    playableAt: number | null;
+  };
   rematch: {
     readyPlayerIds: string[];
+    deadlineAt: number | null;
   };
 };
 
@@ -155,6 +162,7 @@ export type RoomErrorCode =
   | "not-your-turn"
   | "illegal-move"
   | "stale-revision"
+  | "rematch-expired"
   | "auth-failed"
   | "room-expired"
   | "rate-limited"
@@ -183,6 +191,10 @@ export type SetRulesCommand = ClientCommandBase<
   { rules: MultiplayerRules; expectedRevision?: number }
 >;
 export type ReadyCommand = ClientCommandBase<"room:ready", { ready: boolean }>;
+export type StartCommand = ClientCommandBase<
+  "room:start",
+  { expectedRevision?: number }
+>;
 export type PlayMoveCommand = ClientCommandBase<
   "game:play-move",
   { move: Move; expectedRevision?: number }
@@ -204,6 +216,7 @@ export type ClientCommand =
   | SetNameCommand
   | SetRulesCommand
   | ReadyCommand
+  | StartCommand
   | PlayMoveCommand
   | ResyncCommand
   | LeaveCommand

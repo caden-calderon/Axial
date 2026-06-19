@@ -213,6 +213,22 @@ describe('game controller appearance lock', () => {
 		}
 	});
 
+	it('alternates the starting player after each played match reset', () => {
+		const controller = createGameController();
+
+		expect(controller.currentPlayer).toBe(1);
+
+		playBottomRowWin(controller);
+		controller.resetGame();
+
+		expect(controller.currentPlayer).toBe(2);
+
+		controller.playMove({ row: 0, col: 0 });
+		controller.resetGame();
+
+		expect(controller.currentPlayer).toBe(1);
+	});
+
 	it('plays a tactical blocker combo without advancing until the regular piece lands', () => {
 		const controller = createGameController();
 

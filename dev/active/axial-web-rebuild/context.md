@@ -7,10 +7,11 @@ Axial is being rebuilt from the preserved Unity/Python project into a polished b
 Current multiplayer status: the first robust online multiplayer foundation is implemented and the
 room Worker is deployed on Cloudflare. It supports private Classic rooms inside the main 3D game
 route with short room codes, invite links, QR images, display names, host rules, ready flow,
-server-authoritative moves, reconnect tokens, revision snapshots, duplicate-tab takeover,
-opponent-disconnected state, and rematch. Production browser smoke from this machine has previously
-been blocked by the local CSU/HFS recursive DNS path returning stale/bad `*.playaxial.dev` records
-even though Cloudflare authoritative DNS and Google DNS returned the correct Cloudflare records.
+explicit host start, animated start/result overlays, server-authoritative moves, reconnect tokens,
+revision snapshots, duplicate-tab takeover, opponent-disconnected state, timed rematch, and starter
+swapping between rematches. Production browser smoke from this machine has previously been blocked
+by the local CSU/HFS recursive DNS path returning stale/bad `*.playaxial.dev` records even though
+Cloudflare authoritative DNS and Google DNS returned the correct Cloudflare records.
 
 Classic-mode AI remains an important future lane. Caden wants an AI opponent that can beat him as the benchmark. Tactical/special-piece AI remains deferred.
 
@@ -130,6 +131,13 @@ Multiplayer direction:
   state/ready/rematch controls in the sidebar, hydrates `@axial/core` snapshots from the room service,
   and renders play through the existing Threlte board. `/room` and `/room/[code]` now redirect to
   `/?online=1` and `/?room=CODE`.
+- 2026-06-19 Online polish status: the sidebar room-code row now preserves the full formatted code
+  on desktop and mobile. Online rooms require an explicit host `Start game` after both players are
+  ready, then show a short VS/countdown overlay with match settings and the opening player. Online
+  game over shows a result/rematch overlay with a 30-second decision window, visible opponent
+  rematch intent, keep-board/leave actions, and server-enforced rematch expiry. Rematches start a
+  fresh match with the opener swapped. Local/AI reset/rematch also alternates the starting player
+  after a played or completed match.
 
 Implemented gameplay/UX:
 
@@ -231,6 +239,14 @@ Implemented gameplay/UX:
 
 Latest checks passed from `axial-web/` unless noted:
 
+- 2026-06-19 Online start/result/rematch polish: `pnpm check`, `pnpm lint`, `pnpm test:unit`,
+  `pnpm build`, `git diff --check`, and `pnpm deploy:multiplayer:dry-run` passed. Local Worker dev
+  plus Vite smoke verified desktop host creation, full code display, mobile guest join, both players
+  readying, host `Start game`, start countdown overlay, forced server-authoritative game end, result
+  overlay/rematch timer, opponent rematch intent, Match 2 countdown, and swapped opener. Screenshots:
+  `/tmp/axial-online-smoke/start-overlay.png`, `/tmp/axial-online-smoke/result-overlay.png`, and
+  `/tmp/axial-online-smoke/rematch-start-overlay.png`. `pnpm deploy:multiplayer` deployed Worker
+  version `b158cd16-5485-4179-8207-1a81891930f0`.
 - 2026-06-19 integrated Online/3D pass: local Worker dev plus Vite smoke verified desktop host
   `/?online=1`, mobile guest `/?room=CODE`, real QR image rendering, both players readying, a
   server-validated move made on the 3D canvas, and both clients receiving the move/revision update.

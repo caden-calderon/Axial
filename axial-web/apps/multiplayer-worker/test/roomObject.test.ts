@@ -50,7 +50,7 @@ describe("Axial multiplayer room service", () => {
     expect(error.error.code).toBe("room-full");
   });
 
-  it("keeps rule edits host-only and starts when both players are ready", async () => {
+  it("keeps rule edits host-only and starts only when the host confirms both players are ready", async () => {
     const created = await createRoom("Host");
     const joined = await joinRoom(created.roomCode, "Friend");
     const stub = roomStub(created.roomCode);
@@ -102,13 +102,36 @@ describe("Axial multiplayer room service", () => {
       command("room:ready", { ready: true }),
       joined.inviteUrl,
     );
-    const started = unwrap(friendReady);
+    const ready = unwrap(friendReady);
+    expect(ready.events.at(-1)?.type).toBe("room:ready-updated");
+    expect(ready.snapshot.phase).toBe("waiting");
+
+    const nonHostStart = await stub.submitCommand(
+      joined.player,
+      command("room:start", { expectedRevision: ready.snapshot.revision }),
+      joined.inviteUrl,
+    );
+    expect(nonHostStart.ok).toBe(false);
+    if (!nonHostStart.ok) expect(nonHostStart.error.code).toBe("not-host");
+
+    const start = await stub.submitCommand(
+      created.player,
+      command("room:start", { expectedRevision: ready.snapshot.revision }),
+      created.inviteUrl,
+    );
+    const started = unwrap(start);
     expect(started.events.at(-1)?.type).toBe("game:started");
     expect(started.snapshot.phase).toBe("playing");
     expect(started.snapshot.game.status).toEqual({
       state: "playing",
       currentPlayer: 1,
     });
+    expect(started.snapshot.match.number).toBe(1);
+    expect(started.snapshot.match.startingPlayer).toBe(1);
+    expect(started.snapshot.match.startedAt).toEqual(expect.any(Number));
+    expect(started.snapshot.match.playableAt).toBeGreaterThan(
+      started.snapshot.match.startedAt ?? 0,
+    );
   });
 
   it("validates turn order, move legality, stale revisions, game over, and rematch", async () => {
@@ -229,6 +252,9 @@ describe("Axial multiplayer room service", () => {
     const rematched = unwrap(friendRematch).snapshot;
     expect(rematched.phase).toBe("playing");
     expect(rematched.game.moveHistory).toHaveLength(0);
+    expect(rematched.match.number).toBe(2);
+    expect(rematched.match.startingPlayer).toBe(2);
+    expect(rematched.game.currentPlayer).toBe(2);
   });
 
   it("authenticates sockets, sends private snapshots, and lets the latest tab win", async () => {
@@ -289,10 +315,19 @@ describe("Axial multiplayer room service", () => {
       command("room:ready", { ready: true }),
     );
 
-    expect(friendReady.snapshot.phase).toBe("playing");
-    expect(
-      friendReady.events.some((event) => event.type === "game:started"),
-    ).toBe(true);
+    expect(friendReady.snapshot.phase).toBe("waiting");
+
+    const started = await sendHttpCommand(
+      created.player,
+      command("room:start", {
+        expectedRevision: friendReady.snapshot.revision,
+      }),
+    );
+
+    expect(started.snapshot.phase).toBe("playing");
+    expect(started.events.some((event) => event.type === "game:started")).toBe(
+      true,
+    );
   });
 });
 
@@ -373,7 +408,13 @@ async function readyBoth(
     command("room:ready", { ready: true }),
     inviteUrl,
   );
-  return unwrap(friendReady).snapshot;
+  const ready = unwrap(friendReady).snapshot;
+  const started = await stub.submitCommand(
+    host,
+    command("room:start", { expectedRevision: ready.revision }),
+    inviteUrl,
+  );
+  return unwrap(started).snapshot;
 }
 
 async function play(

@@ -4,6 +4,7 @@ import {
   BOARD_HEIGHT,
   BOARD_ROWS,
   BLOCKER_CELL,
+  DEFAULT_BOARD_DIMENSIONS,
   DEFAULT_WIN_CONDITION,
   MATCH_CONFIGS,
   applyBlocker,
@@ -122,6 +123,25 @@ describe("Axial game core", () => {
       player: 2,
     });
     expect(getDropHeight(game.board, { row: 2, col: 3 })).toBe(2);
+  });
+
+  it("can start a match with player two", () => {
+    let game = createGame(DEFAULT_WIN_CONDITION, DEFAULT_BOARD_DIMENSIONS, 2);
+
+    expect(game.currentPlayer).toBe(2);
+    expect(game.status).toEqual({ state: "playing", currentPlayer: 2 });
+
+    game = applyMove(game, { row: 2, col: 3 });
+    const replayed = replayMoves(
+      [{ row: 2, col: 3 }],
+      DEFAULT_WIN_CONDITION,
+      DEFAULT_BOARD_DIMENSIONS,
+      2,
+    );
+
+    expect(game.moveHistory[0]).toMatchObject({ player: 2 });
+    expect(replayed.moveHistory[0]).toMatchObject({ player: 2 });
+    expect(replayed.currentPlayer).toBe(1);
   });
 
   it("places blockers as neutral occupied cells without advancing the turn", () => {

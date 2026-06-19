@@ -20,6 +20,7 @@ import {
   expireRoom,
   markConnected,
   markDisconnected,
+  normalizeStoredRoomState,
   playClassicMove,
   requirePlayer,
   ROOM_EVENT_HISTORY_LIMIT,
@@ -28,6 +29,7 @@ import {
   setRematchVote,
   setRoomRules,
   shouldExpire,
+  startMatch,
   toCredentials,
   toErrorEvent,
   toMoveRejectedEvent,
@@ -493,6 +495,14 @@ export class RoomObject extends DurableObject<Env> {
           now,
           command.id,
         );
+      case "room:start":
+        return startMatch(
+          state,
+          playerId,
+          command.payload.expectedRevision,
+          now,
+          command.id,
+        );
       case "game:play-move":
         return playClassicMove(
           state,
@@ -581,7 +591,7 @@ export class RoomObject extends DurableObject<Env> {
       }>("SELECT state_json FROM room_state WHERE id = ?", STATE_ROW_ID)
       .toArray()[0];
     this.cachedState = row
-      ? (JSON.parse(row.state_json) as StoredRoomState)
+      ? normalizeStoredRoomState(JSON.parse(row.state_json) as StoredRoomState)
       : null;
     return this.cachedState;
   }

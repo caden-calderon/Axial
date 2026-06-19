@@ -5,6 +5,7 @@
 		Copy,
 		DoorOpen,
 		LogOut,
+		Play,
 		QrCode,
 		RefreshCcw,
 		RotateCcw,
@@ -115,6 +116,12 @@
 		</label>
 
 		<div class="online-actions">
+			{#if online.canStart}
+				<button type="button" class="primary-action" onclick={online.startGame}>
+					<Play size={15} strokeWidth={2.1} />
+					<span>Start game</span>
+				</button>
+			{/if}
 			{#if online.canReady}
 				<button type="button" class="primary-action" onclick={online.toggleReady}>
 					<Check size={15} strokeWidth={2.1} />
