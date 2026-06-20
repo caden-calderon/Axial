@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { T } from '@threlte/core';
+	import { onDestroy, onMount } from 'svelte';
+	import { T, useThrelte } from '@threlte/core';
+	import { Color, Fog } from 'three';
 	import {
 		getDropHeight,
 		isLegalDoubleAdjacentMove,
@@ -76,6 +77,16 @@
 	const lastMoveIndex = $derived(game.moveHistory.length - 1);
 
 	const boardRotation = -0.34;
+	const { scene } = useThrelte();
+	const sceneBackground = new Color();
+	const sceneFog = new Fog('#000000', 10, 21);
+
+	$effect(() => {
+		sceneBackground.set(palette.background);
+		sceneFog.color.set(palette.fog);
+		scene.background = sceneBackground;
+		scene.fog = sceneFog;
+	});
 
 	onMount(() => {
 		const updateViewport = () => {
@@ -86,6 +97,11 @@
 		window.addEventListener('resize', updateViewport);
 
 		return () => window.removeEventListener('resize', updateViewport);
+	});
+
+	onDestroy(() => {
+		if (scene.background === sceneBackground) scene.background = null;
+		if (scene.fog === sceneFog) scene.fog = null;
 	});
 
 	function isCompactViewport(): boolean {
@@ -102,9 +118,6 @@
 		);
 	}
 </script>
-
-<T.Color attach="background" args={[palette.background]} />
-<T.Fog attach="fog" args={[palette.fog, 10, 21]} />
 
 <T.PerspectiveCamera makeDefault position={cameraPosition} fov={cameraFov}>
 	<OrbitCameraControls
@@ -123,7 +136,11 @@
 <ColumnPicker {game} {boardRotation} {boardScale} {onHover} {onPlay} {isMovePlayable} />
 
 <T.AmbientLight intensity={uiTheme === 'dark' ? 0.62 : 0.92} />
-<T.HemisphereLight args={[palette.grid, palette.background, uiTheme === 'dark' ? 1.55 : 1.2]} />
+<T.HemisphereLight
+	color={palette.grid}
+	groundColor={palette.background}
+	intensity={uiTheme === 'dark' ? 1.55 : 1.2}
+/>
 <T.DirectionalLight position={[4, 7, 5]} intensity={uiTheme === 'dark' ? 2.6 : 1.9} />
 <T.PointLight
 	position={[-3.5, 3.4, -4.5]}
