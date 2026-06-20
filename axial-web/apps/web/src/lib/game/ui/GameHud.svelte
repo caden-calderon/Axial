@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { BoardDimensions, Player } from '@axial/core';
+	import ShinyText from './ShinyText.svelte';
 
 	let {
 		currentLabel,
@@ -11,44 +12,34 @@
 		boardDimensions: BoardDimensions;
 	} = $props();
 
-	const HUD_GLOW_STEP_MS = 120;
-	const brandGlyphs = glowGlyphs('AXIAL');
 	const boardDimensionLabel = $derived(
 		`${boardDimensions.height} x ${boardDimensions.rows} x ${boardDimensions.columns}`
 	);
-	const boardDimensionGlyphs = $derived(glowGlyphs(boardDimensionLabel));
-	const currentLabelGlyphs = $derived(glowGlyphs(currentLabel));
-
-	type GlowGlyph = {
-		key: string;
-		value: string;
-		delayMs: number;
-	};
-
-	function glowGlyphs(value: string): GlowGlyph[] {
-		return Array.from(value).map((glyph, index) => ({
-			key: `${index}:${glyph}`,
-			value: glyph === ' ' ? '\u00a0' : glyph,
-			delayMs: index * HUD_GLOW_STEP_MS
-		}));
-	}
 </script>
 
 <header class="hud top-left">
 	<div class="brand-lockup">
 		<span class="brand-title" aria-label="AXIAL">
-			{#each brandGlyphs as glyph (glyph.key)}
-				<span class="glow-glyph" aria-hidden="true" style={`--glow-delay: ${glyph.delayMs}ms`}>
-					{glyph.value}
-				</span>
-			{/each}
+			<ShinyText
+				text="AXIAL"
+				color="var(--brand)"
+				shineColor="var(--accent)"
+				speed={4.8}
+				delay={1.2}
+				spread={108}
+				ariaHidden
+			/>
 		</span>
 		<span class="board-dimensions" aria-label={boardDimensionLabel}>
-			{#each boardDimensionGlyphs as glyph (glyph.key)}
-				<span class="glow-glyph" aria-hidden="true" style={`--glow-delay: ${glyph.delayMs}ms`}>
-					{glyph.value}
-				</span>
-			{/each}
+			<ShinyText
+				text={boardDimensionLabel}
+				color="var(--brand-muted)"
+				shineColor="var(--accent)"
+				speed={5.2}
+				delay={1.4}
+				spread={110}
+				ariaHidden
+			/>
 		</span>
 	</div>
 </header>
@@ -60,11 +51,16 @@
 	aria-live="polite"
 >
 	<span class="turn-chip-label" aria-hidden="true">
-		{#each currentLabelGlyphs as glyph (glyph.key)}
-			<span class="glow-glyph" style={`--glow-delay: ${glyph.delayMs}ms`}>
-				{glyph.value}
-			</span>
-		{/each}
+		<ShinyText
+			text={currentLabel}
+			color="var(--text)"
+			shineColor="var(--accent)"
+			speed={4.2}
+			delay={0.9}
+			spread={108}
+			direction="right"
+			ariaHidden
+		/>
 	</span>
 </div>
 
@@ -101,7 +97,6 @@
 	}
 
 	.brand-title {
-		--hud-glow-base: var(--brand);
 		display: inline-block;
 		font-size: clamp(1.7rem, 2.35vw, 2.35rem);
 		font-weight: 300;
@@ -111,36 +106,12 @@
 	}
 
 	.board-dimensions {
-		--hud-glow-base: var(--brand-muted);
 		display: inline-block;
 		color: var(--brand-muted);
 		font-size: clamp(0.88rem, 1.15vw, 1.1rem);
 		font-weight: 350;
 		letter-spacing: 0.2em;
 		white-space: pre;
-	}
-
-	.glow-glyph {
-		display: inline-block;
-		color: var(--hud-glow-base);
-		animation: hud-glyph-cycle 5.6s ease-in-out infinite;
-		animation-delay: var(--glow-delay);
-	}
-
-	@keyframes hud-glyph-cycle {
-		0%,
-		72%,
-		100% {
-			color: var(--hud-glow-base);
-			text-shadow: 0 0 0 transparent;
-		}
-
-		12% {
-			color: color-mix(in oklab, var(--accent) 38%, var(--hud-glow-base));
-			text-shadow:
-				0 0 10px color-mix(in oklab, var(--accent) 34%, transparent),
-				0 0 24px color-mix(in oklab, var(--accent) 18%, transparent);
-		}
 	}
 
 	.turn-chip {
@@ -169,9 +140,9 @@
 	}
 
 	.turn-chip-label {
-		--hud-glow-base: var(--text);
 		display: inline-block;
 		min-width: 0;
+		max-width: 100%;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: pre;
@@ -202,12 +173,6 @@
 
 		.turn-chip {
 			display: none;
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.glow-glyph {
-			animation: none;
 		}
 	}
 </style>
