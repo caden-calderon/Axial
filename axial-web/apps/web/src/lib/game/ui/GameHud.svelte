@@ -15,6 +15,8 @@
 	const boardDimensionLabel = $derived(
 		`${boardDimensions.height} x ${boardDimensions.rows} x ${boardDimensions.columns}`
 	);
+	const shineSpeed = 6.8;
+	const shineDelay = 0.25;
 </script>
 
 <header class="hud top-left">
@@ -24,8 +26,8 @@
 				text="AXIAL"
 				color="var(--brand)"
 				shineColor="var(--accent)"
-				speed={4.8}
-				delay={1.2}
+				speed={shineSpeed}
+				delay={shineDelay}
 				spread={108}
 				ariaHidden
 			/>
@@ -35,9 +37,9 @@
 				text={boardDimensionLabel}
 				color="var(--brand-muted)"
 				shineColor="var(--accent)"
-				speed={5.2}
-				delay={1.4}
-				spread={110}
+				speed={shineSpeed}
+				delay={shineDelay}
+				spread={108}
 				ariaHidden
 			/>
 		</span>
@@ -55,10 +57,9 @@
 			text={currentLabel}
 			color="var(--text)"
 			shineColor="var(--accent)"
-			speed={4.2}
-			delay={0.9}
+			speed={shineSpeed}
+			delay={shineDelay}
 			spread={108}
-			direction="right"
 			ariaHidden
 		/>
 	</span>

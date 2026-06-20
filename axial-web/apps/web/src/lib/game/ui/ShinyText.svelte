@@ -4,8 +4,8 @@
 	let {
 		text,
 		disabled = false,
-		speed = 4.6,
-		delay = 1.1,
+		speed = 6.8,
+		delay = 0.25,
 		color = 'currentColor',
 		shineColor = '#ffffff',
 		spread = 112,
@@ -66,15 +66,17 @@
 		background-image: linear-gradient(
 			var(--shiny-spread),
 			var(--shiny-base) 0%,
-			var(--shiny-base) 34%,
-			color-mix(in oklab, var(--shiny-shine) 78%, var(--shiny-base)) 48%,
+			var(--shiny-base) 18%,
+			color-mix(in oklab, var(--shiny-shine) 58%, var(--shiny-base)) 32%,
+			color-mix(in oklab, var(--shiny-shine) 88%, var(--shiny-base)) 42%,
 			var(--shiny-shine) 50%,
-			color-mix(in oklab, var(--shiny-shine) 68%, var(--shiny-base)) 53%,
-			var(--shiny-base) 66%,
+			color-mix(in oklab, var(--shiny-shine) 88%, var(--shiny-base)) 58%,
+			color-mix(in oklab, var(--shiny-shine) 58%, var(--shiny-base)) 68%,
+			var(--shiny-base) 82%,
 			var(--shiny-base) 100%
 		);
-		background-position: 155% center;
-		background-size: 220% auto;
+		background-position: 132% center;
+		background-size: 235% auto;
 		-webkit-background-clip: text;
 		background-clip: text;
 		color: var(--shiny-base);
@@ -98,17 +100,21 @@
 
 	@keyframes shiny-text-sweep {
 		0% {
-			background-position: 155% center;
+			background-position: 132% center;
 			filter: drop-shadow(0 0 0 transparent);
 		}
 
-		42% {
+		44% {
 			filter: drop-shadow(0 0 9px color-mix(in oklab, var(--shiny-shine) 24%, transparent));
 		}
 
-		72%,
+		86% {
+			background-position: -42% center;
+			filter: drop-shadow(0 0 0 transparent);
+		}
+
 		100% {
-			background-position: -65% center;
+			background-position: -42% center;
 			filter: drop-shadow(0 0 0 transparent);
 		}
 	}
