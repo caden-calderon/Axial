@@ -15,8 +15,8 @@
 	const boardDimensionLabel = $derived(
 		`${boardDimensions.height} x ${boardDimensions.rows} x ${boardDimensions.columns}`
 	);
-	const shineSpeed = 6.8;
-	const shineDelay = 0.25;
+	const shineSpeed = 7.2;
+	const shineDelay = 0.18;
 </script>
 
 <header class="hud top-left">

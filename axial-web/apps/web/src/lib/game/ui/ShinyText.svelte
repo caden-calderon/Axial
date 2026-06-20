@@ -4,8 +4,8 @@
 	let {
 		text,
 		disabled = false,
-		speed = 6.8,
-		delay = 0.25,
+		speed = 7.2,
+		delay = 0.18,
 		color = 'currentColor',
 		shineColor = '#ffffff',
 		spread = 112,
@@ -66,24 +66,22 @@
 		background-image: linear-gradient(
 			var(--shiny-spread),
 			var(--shiny-base) 0%,
-			var(--shiny-base) 18%,
-			color-mix(in oklab, var(--shiny-shine) 58%, var(--shiny-base)) 32%,
-			color-mix(in oklab, var(--shiny-shine) 88%, var(--shiny-base)) 42%,
+			var(--shiny-base) 33%,
 			var(--shiny-shine) 50%,
-			color-mix(in oklab, var(--shiny-shine) 88%, var(--shiny-base)) 58%,
-			color-mix(in oklab, var(--shiny-shine) 58%, var(--shiny-base)) 68%,
-			var(--shiny-base) 82%,
+			var(--shiny-base) 67%,
 			var(--shiny-base) 100%
 		);
-		background-position: 132% center;
-		background-size: 235% auto;
+		background-position: 150% center;
+		background-size: 200% auto;
 		-webkit-background-clip: text;
 		background-clip: text;
-		color: var(--shiny-base);
+		color: transparent;
 		text-overflow: ellipsis;
+		text-shadow: none;
 		-webkit-text-fill-color: transparent;
 		white-space: inherit;
-		animation: shiny-text-sweep var(--shiny-cycle) cubic-bezier(0.42, 0, 0.24, 1) infinite;
+		will-change: background-position;
+		animation: shiny-text-sweep var(--shiny-cycle) linear infinite;
 		animation-direction: var(--shiny-direction);
 	}
 
@@ -100,22 +98,15 @@
 
 	@keyframes shiny-text-sweep {
 		0% {
-			background-position: 132% center;
-			filter: drop-shadow(0 0 0 transparent);
+			background-position: 150% center;
 		}
 
-		44% {
-			filter: drop-shadow(0 0 9px color-mix(in oklab, var(--shiny-shine) 24%, transparent));
-		}
-
-		86% {
-			background-position: -42% center;
-			filter: drop-shadow(0 0 0 transparent);
+		97.5% {
+			background-position: -50% center;
 		}
 
 		100% {
-			background-position: -42% center;
-			filter: drop-shadow(0 0 0 transparent);
+			background-position: -50% center;
 		}
 	}
 
