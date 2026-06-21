@@ -11,13 +11,15 @@
 		palette,
 		uiTheme,
 		boardRotation,
-		dimensions
+		dimensions,
+		compact = false
 	}: {
 		visible?: boolean;
 		palette: ScenePalette;
 		uiTheme: UiThemeName;
 		boardRotation: number;
 		dimensions: BoardDimensions;
+		compact?: boolean;
 	} = $props();
 
 	type PerimeterRailId = 'west-y' | 'south-x' | 'east-y' | 'north-x';
@@ -55,8 +57,8 @@
 	const initialDimensions = untrack(() => dimensions);
 	const labelOffset = CELL_SPACING * 0.68;
 	const lowerOffset = CELL_SPACING * 0.5;
-	const axisOffset = CELL_SPACING * 0.98;
 	const axisLetterOffset = CELL_SPACING * 1.7;
+	const zAxisLetterOffset = axisLetterOffset * 0.9;
 	const size = boardSize(initialDimensions);
 	const xHalf = size[0] / 2;
 	const yHalf = size[1] / 2;
@@ -104,11 +106,25 @@
 
 	let cameraLocalX = $state(initialCameraDirection[0]);
 	let cameraLocalZ = $state(initialCameraDirection[1]);
-	const labelColor = $derived(uiTheme === 'dark' ? '#dcecff' : palette.grid);
-	const numberFillOpacity = $derived(uiTheme === 'dark' ? 0.28 : 0.34);
-	const numberOutlineOpacity = $derived(uiTheme === 'dark' ? 0.16 : 0.1);
-	const axisFillOpacity = $derived(uiTheme === 'dark' ? 0.36 : 0.42);
-	const axisOutlineOpacity = $derived(uiTheme === 'dark' ? 0.21 : 0.14);
+	const labelColor = $derived(
+		uiTheme === 'dark' ? '#dcecff' : mixHexColor(palette.grid, '#3f3656', compact ? 0.44 : 0.28)
+	);
+	const numberFontSize = $derived(compact ? 0.255 : 0.2);
+	const axisFontSize = $derived(compact ? 0.33 : 0.3);
+	const numberFillOpacity = $derived(
+		uiTheme === 'dark' ? (compact ? 0.48 : 0.28) : compact ? 0.74 : 0.56
+	);
+	const numberOutlineOpacity = $derived(
+		uiTheme === 'dark' ? (compact ? 0.07 : 0.16) : compact ? 0.04 : 0.055
+	);
+	const numberOutlineWidth = $derived(compact ? 0.052 : uiTheme === 'dark' ? 0.1 : 0.066);
+	const numberOutlineGlow = $derived(compact ? 0.032 : uiTheme === 'dark' ? 0.09 : 0.042);
+	const numberFillGlow = $derived(compact ? 0.004 : uiTheme === 'dark' ? 0.02 : 0.006);
+	const axisFillOpacity = $derived(uiTheme === 'dark' ? 0.36 : compact ? 0.42 : 0.52);
+	const axisOutlineOpacity = $derived(uiTheme === 'dark' ? 0.21 : compact ? 0.14 : 0.08);
+	const axisOutlineWidth = $derived(uiTheme === 'dark' ? 0.1 : 0.07);
+	const axisOutlineGlow = $derived(uiTheme === 'dark' ? 0.09 : 0.042);
+	const axisFillGlow = $derived(uiTheme === 'dark' ? 0.02 : 0.006);
 	useTask((delta) => {
 		const [nextLocalX, nextLocalZ] = cameraDirectionInBoardSpace();
 		const blend = Math.min(1, delta * 8);
@@ -215,14 +231,16 @@
 	}
 
 	function railVisibility(score: number): number {
-		return smoothstep(0.05, 0.42, score);
+		return smoothstep(0, 0.34, score);
 	}
 
 	function zRailVisibility(candidate: ZRailCandidate): number {
 		const xVisibility = zSideVisibility(cameraLocalX, candidate.sideX);
 		const zVisibility = zSideVisibility(cameraLocalZ, candidate.sideZ);
+		const xWeight = zSideCrossfade(cameraLocalX, candidate.sideX);
+		const zWeight = zSideCrossfade(cameraLocalZ, candidate.sideZ);
 
-		return xVisibility * zVisibility;
+		return Math.max(xVisibility, zVisibility) * xWeight * zWeight;
 	}
 
 	function zNumberPosition(candidate: ZRailCandidate, index: number): Vec3 {
@@ -235,18 +253,24 @@
 
 	function zAxisPosition(candidate: ZRailCandidate): Vec3 {
 		return [
-			candidate.sideX * (xHalf + axisOffset * 0.72),
-			yHalf + axisOffset * 0.86,
-			candidate.sideZ * (zHalf + axisOffset * 0.72)
+			candidate.sideX * (xHalf + zAxisLetterOffset),
+			0,
+			candidate.sideZ * (zHalf + zAxisLetterOffset)
 		];
 	}
 
 	function axisSideVisibility(value: number, side: Side): number {
-		return smoothstep(-0.28, 0.46, side * value);
+		return smoothstep(-0.2, 0.36, side * value);
 	}
 
 	function zSideVisibility(value: number, side: Side): number {
-		return smoothstep(-0.14, 0.58, side * value);
+		return smoothstep(-0.08, 0.44, side * value);
+	}
+
+	function zSideCrossfade(value: number, side: Side): number {
+		const positiveSideWeight = smoothstep(-0.17, 0.17, value + 0.018);
+
+		return side === 1 ? positiveSideWeight : 1 - positiveSideWeight;
 	}
 
 	function smoothstep(edge0: number, edge1: number, value: number): number {
@@ -257,6 +281,28 @@
 	function clamp(value: number, min: number, max: number): number {
 		return Math.max(min, Math.min(max, value));
 	}
+
+	function mixHexColor(color: string, target: string, amount: number): string {
+		const sourceRgb = parseHexColor(color);
+		const targetRgb = parseHexColor(target);
+
+		return `#${sourceRgb
+			.map((component, index) => {
+				const mixed = Math.round(component + (targetRgb[index] - component) * amount);
+				return mixed.toString(16).padStart(2, '0');
+			})
+			.join('')}`;
+	}
+
+	function parseHexColor(color: string): [number, number, number] {
+		const normalized = color.replace('#', '');
+
+		return [
+			Number.parseInt(normalized.slice(0, 2), 16),
+			Number.parseInt(normalized.slice(2, 4), 16),
+			Number.parseInt(normalized.slice(4, 6), 16)
+		];
+	}
 </script>
 
 <T.Group {visible}>
@@ -266,11 +312,14 @@
 			<BillboardLabel
 				text={label.text}
 				position={label.position}
-				fontSize={0.2}
+				fontSize={numberFontSize}
 				color={labelColor}
 				outlineColor={palette.gridEmissive}
 				fillOpacity={numberFillOpacity}
 				outlineOpacity={numberOutlineOpacity}
+				outlineWidth={numberOutlineWidth}
+				outlineGlow={numberOutlineGlow}
+				fillGlow={numberFillGlow}
 				opacity={visibility}
 			/>
 		{/if}
@@ -282,11 +331,14 @@
 			<BillboardLabel
 				text={label.text}
 				position={label.position}
-				fontSize={0.3}
+				fontSize={axisFontSize}
 				color={labelColor}
 				outlineColor={palette.gridEmissive}
 				fillOpacity={axisFillOpacity}
 				outlineOpacity={axisOutlineOpacity}
+				outlineWidth={axisOutlineWidth}
+				outlineGlow={axisOutlineGlow}
+				fillGlow={axisFillGlow}
 				opacity={visibility}
 			/>
 		{/if}
@@ -299,11 +351,14 @@
 				<BillboardLabel
 					text={number}
 					position={zNumberPosition(candidate, index)}
-					fontSize={0.2}
+					fontSize={numberFontSize}
 					color={labelColor}
 					outlineColor={palette.gridEmissive}
-					fillOpacity={numberFillOpacity * 0.9}
-					outlineOpacity={numberOutlineOpacity * 0.85}
+					fillOpacity={numberFillOpacity}
+					outlineOpacity={numberOutlineOpacity}
+					outlineWidth={numberOutlineWidth}
+					outlineGlow={numberOutlineGlow}
+					fillGlow={numberFillGlow}
 					opacity={visibility}
 				/>
 			{/each}
@@ -311,11 +366,14 @@
 			<BillboardLabel
 				text="Z"
 				position={zAxisPosition(candidate)}
-				fontSize={0.3}
+				fontSize={axisFontSize}
 				color={labelColor}
 				outlineColor={palette.gridEmissive}
 				fillOpacity={axisFillOpacity}
 				outlineOpacity={axisOutlineOpacity}
+				outlineWidth={axisOutlineWidth}
+				outlineGlow={axisOutlineGlow}
+				fillGlow={axisFillGlow}
 				opacity={visibility}
 			/>
 		{/if}

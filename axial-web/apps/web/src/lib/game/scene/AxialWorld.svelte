@@ -159,7 +159,14 @@
 	{/key}
 
 	{#key dimensionKey}
-		<BoardLabels visible={labelsVisible} {palette} {uiTheme} {boardRotation} {dimensions} />
+		<BoardLabels
+			visible={labelsVisible}
+			{palette}
+			{uiTheme}
+			{boardRotation}
+			{dimensions}
+			compact={isCompact}
+		/>
 	{/key}
 
 	{#if hoveredMove && previewHeight >= 0 && game.status.state === 'playing'}

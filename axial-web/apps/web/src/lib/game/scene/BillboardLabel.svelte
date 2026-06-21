@@ -13,6 +13,9 @@
 		fillOpacity,
 		outlineOpacity,
 		opacity,
+		outlineWidth = 0.1,
+		outlineGlow = 0.09,
+		fillGlow = 0.02,
 		renderOrder = 9
 	}: {
 		text: string;
@@ -23,6 +26,9 @@
 		fillOpacity: number;
 		outlineOpacity: number;
 		opacity: number;
+		outlineWidth?: number;
+		outlineGlow?: number;
+		fillGlow?: number;
 		renderOrder?: number;
 	} = $props();
 
@@ -42,7 +48,10 @@
 			color,
 			outlineColor,
 			fillOpacity,
-			outlineOpacity
+			outlineOpacity,
+			outlineWidth,
+			outlineGlow,
+			fillGlow
 		});
 		const previousTexture = texture;
 		texture = nextTexture;
@@ -66,13 +75,19 @@
 		color,
 		outlineColor,
 		fillOpacity,
-		outlineOpacity
+		outlineOpacity,
+		outlineWidth,
+		outlineGlow,
+		fillGlow
 	}: {
 		text: string;
 		color: string;
 		outlineColor: string;
 		fillOpacity: number;
 		outlineOpacity: number;
+		outlineWidth: number;
+		outlineGlow: number;
+		fillGlow: number;
 	}): CanvasTexture {
 		const canvas = document.createElement('canvas');
 		canvas.width = 256;
@@ -96,14 +111,14 @@
 
 		context.globalAlpha = outlineOpacity;
 		context.strokeStyle = outlineColor;
-		context.lineWidth = fontPixels * 0.1;
+		context.lineWidth = fontPixels * outlineWidth;
 		context.shadowColor = outlineColor;
-		context.shadowBlur = fontPixels * 0.09;
+		context.shadowBlur = fontPixels * outlineGlow;
 		context.strokeText(text, centerX, centerY);
 
 		context.globalAlpha = fillOpacity;
 		context.fillStyle = color;
-		context.shadowBlur = fontPixels * 0.02;
+		context.shadowBlur = fontPixels * fillGlow;
 		context.fillText(text, centerX, centerY);
 
 		const nextTexture = new CanvasTexture(canvas);
