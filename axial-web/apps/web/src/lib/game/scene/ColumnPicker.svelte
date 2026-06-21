@@ -2,8 +2,9 @@
 	import { onMount } from 'svelte';
 	import { useThrelte } from '@threlte/core';
 	import { getDropHeight, type GameSnapshot, type Move } from '@axial/core';
-	import { Vector3 } from 'three';
-	import { cellPosition, type Vec3 } from './geometry';
+	import { Plane, Raycaster, Vector2, Vector3 } from 'three';
+	import { CELL_SPACING } from './geometry';
+	import { moveFromBoardLocalPoint, type BoardLocalPoint } from './picking';
 
 	let {
 		game,
@@ -22,12 +23,11 @@
 	} = $props();
 
 	const { camera, canvas, dom } = useThrelte();
-	const columns = $derived(
-		Array.from({ length: game.dimensions.columns * game.dimensions.rows }, (_, index) => ({
-			row: index % game.dimensions.rows,
-			col: Math.floor(index / game.dimensions.rows)
-		}))
-	);
+	const raycaster = new Raycaster();
+	const pointerNdc = new Vector2();
+	const hitPlane = new Plane();
+	const hitPoint = new Vector3();
+	const hitPlaneNormal = new Vector3(0, 1, 0);
 
 	let pointerDown: { x: number; y: number; time: number } | null = null;
 	let hoverKey = '';
@@ -72,60 +72,42 @@
 	function pickMove(event: PointerEvent): Move | null {
 		if (game.status.state !== 'playing') return null;
 
+		const localPoint = boardLocalPointFromPointer(event);
+		if (localPoint === null) return null;
+
+		const move = moveFromBoardLocalPoint(localPoint, game.dimensions);
+		if (move === null) return null;
+		if (isMovePlayable && !isMovePlayable(move)) return null;
+
+		return getDropHeight(game.board, move, game.dimensions) >= 0 ? move : null;
+	}
+
+	function boardLocalPointFromPointer(event: PointerEvent): BoardLocalPoint | null {
 		const rect = canvas.getBoundingClientRect();
-		const pointer = {
-			x: event.clientX - rect.left,
-			y: event.clientY - rect.top
-		};
-		const threshold = Math.max(34, Math.min(74, rect.width * 0.04));
-		let bestMove: Move | null = null;
-		let bestScore = Number.POSITIVE_INFINITY;
+		if (rect.width <= 0 || rect.height <= 0) return null;
 
-		for (const column of columns) {
-			if (isMovePlayable && !isMovePlayable(column)) continue;
+		pointerNdc.set(
+			((event.clientX - rect.left) / rect.width) * 2 - 1,
+			-(((event.clientY - rect.top) / rect.height) * 2 - 1)
+		);
 
-			const dropHeight = getDropHeight(game.board, column, game.dimensions);
-			if (dropHeight < 0) continue;
+		camera.current.updateMatrixWorld();
+		raycaster.setFromCamera(pointerNdc, camera.current);
 
-			const bottom = project(cellPosition(0, column.row, column.col, game.dimensions), rect);
-			const top = project(
-				cellPosition(game.dimensions.height - 1, column.row, column.col, game.dimensions),
-				rect
-			);
-			const target = project(
-				cellPosition(dropHeight, column.row, column.col, game.dimensions),
-				rect
-			);
-			const segmentScore = distanceToSegment(pointer, bottom, top);
-			const targetScore = distance(pointer, target) * 0.82;
-			const score = Math.min(segmentScore, targetScore);
+		const floorY = -game.dimensions.height * CELL_SPACING * 0.5 * boardScale;
+		hitPlane.set(hitPlaneNormal, -floorY);
 
-			if (score < bestScore) {
-				bestScore = score;
-				bestMove = column;
-			}
-		}
+		if (raycaster.ray.intersectPlane(hitPlane, hitPoint) === null) return null;
 
-		return bestScore <= threshold ? bestMove : null;
-	}
-
-	function project(localPosition: Vec3, rect: DOMRect): ScreenPoint {
-		const projected = toWorld(localPosition).project(camera.current);
-		return {
-			x: (projected.x * 0.5 + 0.5) * rect.width,
-			y: (-projected.y * 0.5 + 0.5) * rect.height
-		};
-	}
-
-	function toWorld(localPosition: Vec3): Vector3 {
-		const [x, y, z] = localPosition;
-		const scaledX = x * boardScale;
-		const scaledY = y * boardScale;
-		const scaledZ = z * boardScale;
+		const scaledX = hitPoint.x / boardScale;
+		const scaledZ = hitPoint.z / boardScale;
 		const cos = Math.cos(boardRotation);
 		const sin = Math.sin(boardRotation);
 
-		return new Vector3(cos * scaledX + sin * scaledZ, scaledY, -sin * scaledX + cos * scaledZ);
+		return {
+			x: cos * scaledX - sin * scaledZ,
+			z: sin * scaledX + cos * scaledZ
+		};
 	}
 
 	function setHover(move: Move | null): void {
@@ -139,32 +121,5 @@
 	function clearHover(): void {
 		pointerDown = null;
 		setHover(null);
-	}
-
-	type ScreenPoint = {
-		x: number;
-		y: number;
-	};
-
-	function distance(a: ScreenPoint, b: ScreenPoint): number {
-		return Math.hypot(a.x - b.x, a.y - b.y);
-	}
-
-	function distanceToSegment(point: ScreenPoint, start: ScreenPoint, end: ScreenPoint): number {
-		const dx = end.x - start.x;
-		const dy = end.y - start.y;
-		const lengthSquared = dx * dx + dy * dy;
-
-		if (lengthSquared === 0) return distance(point, start);
-
-		const t = clamp(((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared, 0, 1);
-		return distance(point, {
-			x: start.x + dx * t,
-			y: start.y + dy * t
-		});
-	}
-
-	function clamp(value: number, min: number, max: number): number {
-		return Math.max(min, Math.min(max, value));
 	}
 </script>
