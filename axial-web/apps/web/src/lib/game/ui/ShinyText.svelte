@@ -7,7 +7,7 @@
 		speed = 7.2,
 		delay = 0.18,
 		color = 'currentColor',
-		shineColor = '#ffffff',
+		shineColor = 'var(--accent)',
 		spread = 112,
 		yoyo = false,
 		pauseOnHover = false,
@@ -55,31 +55,53 @@
 	aria-hidden={ariaHidden ? 'true' : undefined}
 	{style}
 >
-	{text}
+	<span class="shiny-base">{text}</span>
+	<span class="shiny-overlay" aria-hidden="true">{text}</span>
 </span>
 
 <style>
 	.shiny-text {
-		display: inline-block;
+		display: inline-grid;
 		max-width: 100%;
 		overflow: hidden;
+		color: var(--shiny-base);
+		text-overflow: ellipsis;
+		text-shadow: none;
+		white-space: inherit;
+	}
+
+	.shiny-base,
+	.shiny-overlay {
+		grid-area: 1 / 1;
+		min-width: 0;
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: inherit;
+	}
+
+	.shiny-base {
+		color: var(--shiny-base);
+	}
+
+	.shiny-overlay {
 		background-image: linear-gradient(
 			var(--shiny-spread),
-			var(--shiny-base) 0%,
-			var(--shiny-base) 33%,
+			transparent 0%,
+			transparent 42%,
+			color-mix(in oklab, var(--shiny-shine) 72%, transparent) 47%,
 			var(--shiny-shine) 50%,
-			var(--shiny-base) 67%,
-			var(--shiny-base) 100%
+			color-mix(in oklab, var(--shiny-shine) 72%, transparent) 53%,
+			transparent 58%,
+			transparent 100%
 		);
 		background-position: 150% center;
-		background-size: 200% auto;
+		background-size: 220% auto;
 		-webkit-background-clip: text;
 		background-clip: text;
 		color: transparent;
-		text-overflow: ellipsis;
-		text-shadow: none;
+		pointer-events: none;
 		-webkit-text-fill-color: transparent;
-		white-space: inherit;
 		will-change: background-position;
 		animation: shiny-text-sweep var(--shiny-cycle) linear infinite;
 		animation-direction: var(--shiny-direction);
@@ -89,11 +111,16 @@
 		animation-play-state: paused;
 	}
 
+	.shiny-text[data-pause-on-hover='true']:hover .shiny-overlay {
+		animation-play-state: paused;
+	}
+
 	.shiny-text[data-disabled='true'] {
-		background-image: none;
 		color: var(--shiny-base);
-		-webkit-text-fill-color: currentColor;
-		animation: none;
+	}
+
+	.shiny-text[data-disabled='true'] .shiny-overlay {
+		display: none;
 	}
 
 	@keyframes shiny-text-sweep {
@@ -101,7 +128,7 @@
 			background-position: 150% center;
 		}
 
-		97.5% {
+		88% {
 			background-position: -50% center;
 		}
 
@@ -111,11 +138,8 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.shiny-text {
-			background-image: none;
-			color: var(--shiny-base);
-			-webkit-text-fill-color: currentColor;
-			animation: none;
+		.shiny-overlay {
+			display: none;
 		}
 	}
 </style>

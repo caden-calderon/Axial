@@ -138,6 +138,17 @@ Multiplayer direction:
   rematch intent, keep-board/leave actions, and server-enforced rematch expiry. Rematches start a
   fresh match with the opener swapped. Local/AI reset/rematch also alternates the starting player
   after a played or completed match.
+- First-time standalone visitors now see a native welcome/tutorial walkthrough. It introduces Axial
+  as 3D Connect 4, explains the board/drop preview, forces the controls panel open, spotlights the
+  Local/AI/Online mode switch, points at pre-match rules and appearance controls, and persists
+  completion in `localStorage` under `axial-welcome-tour-v1`. `?tour=1` forces the tour, `?tour=0`
+  suppresses it, and `?tour=reset` clears the seen flag for QA.
+- The welcome card is intentionally larger than the control panel and uses a Svelte-native
+  React-Bits-style typed reveal. All tour card headings now type in before the body copy fades in,
+  and the `Axial` word gets only an in-text accent shine driven by the current board color. The
+  reveal uses a requestAnimationFrame timeline so it lands reliably while the 3D scene is warming
+  up. Tour cards also adapt React Bits' BorderGlow idea as a perimeter ring glow: the highlight is
+  constrained to the nearest card edge instead of being projected from the card center.
 
 Implemented gameplay/UX:
 
@@ -146,6 +157,9 @@ Implemented gameplay/UX:
 - Exact board-grid color picker, dark/light mode, toggleable axis labels, and toggleable grid
   layers. Full 3D grid remains the default; floor-only mode preserves the board footprint while
   hiding the upper/layer lattice.
+- First-run onboarding is built as an Axial-native Svelte overlay rather than a third-party tour
+  library, so it can match the acrylic control style, respect the current game route, and control
+  the collapsible sidebar without adding tour-library licensing or styling baggage.
 - Click-to-confirm drop is a persisted desktop/mobile input option. The first click arms a column,
   clicking another column re-arms there, and clicking the armed column commits the drop.
 - Undo, redo, rematch, and replay-from-start via canonical move history.
@@ -203,7 +217,8 @@ Implemented gameplay/UX:
 
 - Corner logo is a clean AXIAL wordmark with current board dimensions underneath. The wordmark,
   dimensions, and centered desktop turn pill share a synchronized sequential glyph glow tied to the
-  active board accent, with reduced-motion users getting static text.
+  active board accent, with reduced-motion users getting static text. The shimmer keeps a real
+  readable base text layer underneath a separate shine overlay so the label never loses contrast.
 - Turn labels use neutral language: `Your turn` and `Opponent's turn`.
 - Desktop turn pill is top-centered, uses the same acrylic surface treatment as the controls, and is fixed-width so it does not resize between turn labels. The pill is intentionally shorter than the earlier version and uses larger status text.
 - Mobile hides the turn pill and keeps the control pill tucked into the top-right corner.

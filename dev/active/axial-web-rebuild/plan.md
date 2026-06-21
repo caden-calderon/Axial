@@ -62,6 +62,9 @@ Important boundaries:
   deadline, records each player's vote, rejects late votes, and starts the next match only when both
   players vote rematch. The result overlay shows the winner/draw, move count, deadline countdown,
   opponent rematch intent, rematch/cancel, keep-board, and leave actions.
+- First-run onboarding is a native Svelte coach-mark flow in the main game route. It should remain
+  standalone-only by default, skip embed/bridge and online invite entry, persist via
+  `localStorage`, and expose query controls for QA: `?tour=1`, `?tour=0`, and `?tour=reset`.
 - `axial-web/apps/multiplayer-worker` owns canonical multiplayer state. It uses a Cloudflare Worker
   entrypoint plus one SQLite-backed Durable Object per 8-character room code, validates Classic
   moves through `@axial/core`, stores reconnect-token hashes, uses hibernatable WebSockets, and
@@ -167,6 +170,14 @@ Important boundaries:
 - The AXIAL wordmark, board-dimension HUD text, and centered desktop turn pill use a synchronized
   subtle sequential glyph glow tied to the active board accent.
 - Mobile keeps controls smaller, tucked top-right, and hides the turn pill.
+- The welcome/tutorial overlay should feel like part of the control system: acrylic card, dimmed
+  scene, animated spotlight, reduced-motion fallback, and forced sidebar expansion only while the
+  tour is active.
+- The first welcome slide should be more expressive than the later coach marks: use a larger card,
+  bigger readable type, Svelte-native typed headings, body-copy fade-in after typing completes, and
+  a board-accent `Axial` shine that stays inside the text. Tour cards can use a Svelte/CSS adaptation
+  of React Bits BorderGlow, but constrain the glow to a perimeter ring and keep readable base text
+  underneath any shimmer rather than tinting the whole glyph.
 - Variant mode design is tracked in `dev/active/axial-web-rebuild/variant-modes.md`; classic rules remain the default.
 
 ## Portfolio Bridge V1 Architecture

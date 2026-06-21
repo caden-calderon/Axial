@@ -3,6 +3,13 @@
 	import type { MatchMode, Move } from '@axial/core';
 	import { createAxialBridgeController } from '$lib/game/bridge/bridgeController';
 	import AxialScene from '$lib/game/scene/AxialScene.svelte';
+	import WelcomeTourOverlay from '$lib/game/onboarding/WelcomeTourOverlay.svelte';
+	import {
+		clearWelcomeTourSeen,
+		hasSeenWelcomeTour,
+		markWelcomeTourSeen,
+		shouldStartWelcomeTour
+	} from '$lib/game/onboarding/welcomeTour';
 	import { createGameController, type PlayMode } from '$lib/game/state/gameController.svelte';
 	import GameOverModal from '$lib/game/ui/GameOverModal.svelte';
 	import GameHud from '$lib/game/ui/GameHud.svelte';
@@ -21,6 +28,9 @@
 	let bridgeEnabled = $state(false);
 	let fullscreenAvailable = $state(false);
 	let fullscreenActive = $state(false);
+	let welcomeTourActive = $state(false);
+	let welcomeTourPanelExpanded = $state<boolean | null>(null);
+	let welcomeTourPanelResetTimeout: number | null = null;
 	let sceneEpoch = $state(0);
 	let recoveryMessage = $state('');
 	let sceneBoundaryRecoveries = 0;
@@ -56,14 +66,31 @@
 
 	onMount(() => {
 		controller.hydrateFromStorage();
-		embedMode = new URL(window.location.href).searchParams.get('embed') === '1';
-		if (online.hydrateFromBrowser(new URL(window.location.href).searchParams)) {
+		const url = new URL(window.location.href);
+		const searchParams = url.searchParams;
+		embedMode = searchParams.get('embed') === '1';
+		if (online.hydrateFromBrowser(searchParams)) {
 			online.useRules({
 				mode: 'classic',
 				board: controller.boardDimensions,
 				winCondition: controller.winCondition
 			});
 			playMode = 'online';
+		}
+		if (searchParams.get('tour')?.toLowerCase() === 'reset') {
+			clearWelcomeTourSeen(localStorage);
+		}
+		if (
+			shouldStartWelcomeTour({
+				searchParams,
+				embedMode,
+				hasActiveMatch: controller.game.moveHistory.length > 0,
+				hasOnlineIntent: searchParams.has('room') || searchParams.get('online') === '1',
+				hasSeenTour: hasSeenWelcomeTour(localStorage)
+			})
+		) {
+			welcomeTourActive = true;
+			welcomeTourPanelExpanded = false;
 		}
 		bridgeEnabled = bridge.start();
 
@@ -86,6 +113,7 @@
 			online.destroy();
 			bridge.stop();
 			if (recoveryMessageTimeout) clearTimeout(recoveryMessageTimeout);
+			if (welcomeTourPanelResetTimeout) clearTimeout(welcomeTourPanelResetTimeout);
 		};
 	});
 
@@ -260,6 +288,33 @@
 		controller.setLinesToWin(linesToWin);
 	}
 
+	function setWelcomeTourPanelExpanded(expanded: boolean | null): void {
+		if (welcomeTourPanelResetTimeout) {
+			clearTimeout(welcomeTourPanelResetTimeout);
+			welcomeTourPanelResetTimeout = null;
+		}
+		welcomeTourPanelExpanded = expanded;
+	}
+
+	function completeWelcomeTour(): void {
+		markWelcomeTourSeen(localStorage);
+		closeWelcomeTour();
+	}
+
+	function skipWelcomeTour(): void {
+		markWelcomeTourSeen(localStorage);
+		closeWelcomeTour();
+	}
+
+	function closeWelcomeTour(): void {
+		welcomeTourActive = false;
+		welcomeTourPanelExpanded = false;
+		welcomeTourPanelResetTimeout = window.setTimeout(() => {
+			welcomeTourPanelExpanded = null;
+			welcomeTourPanelResetTimeout = null;
+		}, 320);
+	}
+
 	type WebkitFullscreenDocument = Document & {
 		webkitExitFullscreen?: () => Promise<void> | void;
 		webkitFullscreenElement?: Element | null;
@@ -361,6 +416,7 @@
 		canRedo={playMode === 'online' ? false : controller.canRedo}
 		{fullscreenAvailable}
 		{fullscreenActive}
+		forcedExpanded={welcomeTourPanelExpanded}
 		onReset={playMode === 'online' ? online.resync : controller.resetGame}
 		onUndo={controller.undoMove}
 		onRedo={controller.redoMove}
@@ -400,6 +456,14 @@
 
 	{#if recoveryMessage}
 		<div class="recovery-toast" role="status" aria-live="polite">{recoveryMessage}</div>
+	{/if}
+
+	{#if welcomeTourActive}
+		<WelcomeTourOverlay
+			onComplete={completeWelcomeTour}
+			onSkip={skipWelcomeTour}
+			onPanelExpandedChange={setWelcomeTourPanelExpanded}
+		/>
 	{/if}
 </main>
 

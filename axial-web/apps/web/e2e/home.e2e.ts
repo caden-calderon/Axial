@@ -15,7 +15,7 @@ test('Axial shell loads and renders the game canvas', async ({ page }) => {
 		failedRequests.push(`${request.method()} ${url} ${request.failure()?.errorText ?? ''}`.trim());
 	});
 
-	await page.goto('/');
+	await page.goto('/?tour=0');
 
 	await expect(page).toHaveTitle(/Axial/);
 	await expect(page.locator('.brand-title')).toHaveText('AXIAL');
@@ -44,7 +44,7 @@ test('Axial shell loads and renders the game canvas', async ({ page }) => {
 });
 
 test('PWA install metadata is available', async ({ page, request }) => {
-	await page.goto('/');
+	await page.goto('/?tour=0');
 
 	const manifestHref = await page.locator('link[rel="manifest"]').getAttribute('href');
 	const appleTouchIconHref = await page

@@ -68,6 +68,7 @@
 		canRedo,
 		fullscreenAvailable,
 		fullscreenActive,
+		forcedExpanded = null,
 		onReset,
 		onUndo,
 		onRedo,
@@ -124,6 +125,7 @@
 		canRedo: boolean;
 		fullscreenAvailable: boolean;
 		fullscreenActive: boolean;
+		forcedExpanded?: boolean | null;
 		onReset: () => void;
 		onUndo: () => void;
 		onRedo: () => void;
@@ -148,6 +150,7 @@
 
 	let expanded = $state(true);
 	let piecesMode = $state(false);
+	const panelExpanded = $derived(forcedExpanded ?? expanded);
 	const moveLabel = $derived(`${moveCount} ${moveCount === 1 ? 'move' : 'moves'}`);
 	const specialStatus = $derived(
 		matchMode === 'tactical'
@@ -163,6 +166,15 @@
 		if (playMode === 'online') expanded = true;
 	});
 
+	$effect(() => {
+		if (forcedExpanded !== null) expanded = forcedExpanded;
+	});
+
+	function toggleExpanded(): void {
+		if (forcedExpanded !== null) return;
+		expanded = !expanded;
+	}
+
 	function togglePiecesMode(): void {
 		if (matchMode !== 'tactical') return;
 		piecesMode = !piecesMode;
@@ -175,7 +187,7 @@
 	}
 </script>
 
-<section class="control-panel" class:collapsed={!expanded}>
+<section class="control-panel" class:collapsed={!panelExpanded} data-tour-target="control-panel">
 	<div
 		class="panel-toolbar"
 		class:pieces-mode={piecesMode && matchMode === 'tactical'}
@@ -292,20 +304,21 @@
 		<button
 			class="icon-button collapse-button"
 			type="button"
-			aria-label={expanded
+			data-tour-target="panel-toggle"
+			aria-label={panelExpanded
 				? 'Collapse settings'
 				: piecesMode
 					? 'Expand piece details'
 					: 'Expand settings'}
-			aria-expanded={expanded}
-			title={expanded ? 'Collapse' : piecesMode ? 'Piece details' : 'Expand'}
-			onclick={() => (expanded = !expanded)}
+			aria-expanded={panelExpanded}
+			title={panelExpanded ? 'Collapse' : piecesMode ? 'Piece details' : 'Expand'}
+			onclick={toggleExpanded}
 		>
 			<ChevronUp size={18} strokeWidth={1.9} />
 		</button>
 	</div>
 
-	<div class="panel-body-shell" aria-hidden={!expanded} inert={!expanded}>
+	<div class="panel-body-shell" aria-hidden={!panelExpanded} inert={!panelExpanded}>
 		<div class="panel-body-clip">
 			<div class="panel-body">
 				{#if piecesMode && matchMode === 'tactical'}

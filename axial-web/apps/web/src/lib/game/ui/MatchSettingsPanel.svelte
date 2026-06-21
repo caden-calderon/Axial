@@ -75,13 +75,18 @@
 	}
 </script>
 
-<section class="panel-section">
+<section class="panel-section" data-tour-target="match-section">
 	<div class="section-heading">
 		<Users size={15} strokeWidth={2} />
 		<span>Match</span>
 	</div>
 
-	<div class="mode-switch play-mode-switch" role="group" aria-label="Opponent mode">
+	<div
+		class="mode-switch play-mode-switch"
+		role="group"
+		aria-label="Opponent mode"
+		data-tour-target="play-mode"
+	>
 		<button
 			type="button"
 			class:selected={playMode === 'local'}
@@ -110,6 +115,7 @@
 			class:selected={playMode === 'online'}
 			aria-pressed={playMode === 'online'}
 			disabled={playModeLocked}
+			data-tour-target="online-mode"
 			title={playModeLocked ? 'Start a new match to change opponent mode' : 'Online room'}
 			onclick={() => choosePlayMode('online')}
 		>
@@ -147,69 +153,71 @@
 		</button>
 	</div>
 
-	<div class="board-size-editor" class:locked={setupLocked}>
-		<div class="board-size-label">
-			<Boxes size={14} strokeWidth={2} />
-			<span>Board</span>
-		</div>
-		<div class="dimension-buttons" role="group" aria-label="Board dimensions">
-			{#each dimensionControls as dimension (dimension.key)}
-				<button
-					type="button"
-					disabled={setupLocked}
-					aria-label={`Increase board ${dimension.label} dimension`}
-					title={setupLocked ? 'Start a new match to change board size' : 'Click to increase'}
-					onclick={() => incrementDimension(dimension.key)}
-				>
-					<strong>{dimension.value}</strong>
-					<small>{dimension.label}</small>
-				</button>
-				{#if dimension.key !== 'columns'}
-					<span class="dimension-separator">x</span>
-				{/if}
-			{/each}
-		</div>
-	</div>
-
-	<div class="rule-customizer" class:locked={setupLocked}>
-		<div class="rule-control">
-			<span>
-				<CircleDot size={13} strokeWidth={2} />
-				Connect
-			</span>
-			<div class="mode-switch connect-switch" role="group" aria-label="Connect length">
-				{#each WIN_LINE_LENGTH_OPTIONS as option (option.value)}
+	<div class="setup-rules-cluster" data-tour-target="rules">
+		<div class="board-size-editor" class:locked={setupLocked} data-tour-target="board-size">
+			<div class="board-size-label">
+				<Boxes size={14} strokeWidth={2} />
+				<span>Board</span>
+			</div>
+			<div class="dimension-buttons" role="group" aria-label="Board dimensions">
+				{#each dimensionControls as dimension (dimension.key)}
 					<button
 						type="button"
-						class:selected={winCondition.lineLength === option.value}
-						aria-pressed={winCondition.lineLength === option.value}
 						disabled={setupLocked}
-						title={setupLocked ? 'Start a new match to change win rules' : option.label}
-						onclick={() => onWinLineLengthChange(option.value)}
+						aria-label={`Increase board ${dimension.label} dimension`}
+						title={setupLocked ? 'Start a new match to change board size' : 'Click to increase'}
+						onclick={() => incrementDimension(dimension.key)}
 					>
-						<span>{option.shortLabel}</span>
+						<strong>{dimension.value}</strong>
+						<small>{dimension.label}</small>
 					</button>
+					{#if dimension.key !== 'columns'}
+						<span class="dimension-separator">x</span>
+					{/if}
 				{/each}
 			</div>
 		</div>
-		<div class="rule-control">
-			<span>
-				<Trophy size={13} strokeWidth={2} />
-				Lines
-			</span>
-			<div class="mode-switch line-count-switch" role="group" aria-label="Lines to win">
-				{#each LINES_TO_WIN_OPTIONS as option (option.value)}
-					<button
-						type="button"
-						class:selected={winCondition.linesToWin === option.value}
-						aria-pressed={winCondition.linesToWin === option.value}
-						disabled={setupLocked}
-						title={setupLocked ? 'Start a new match to change win rules' : option.label}
-						onclick={() => onLinesToWinChange(option.value)}
-					>
-						<span>{option.shortLabel}</span>
-					</button>
-				{/each}
+
+		<div class="rule-customizer" class:locked={setupLocked}>
+			<div class="rule-control">
+				<span>
+					<CircleDot size={13} strokeWidth={2} />
+					Connect
+				</span>
+				<div class="mode-switch connect-switch" role="group" aria-label="Connect length">
+					{#each WIN_LINE_LENGTH_OPTIONS as option (option.value)}
+						<button
+							type="button"
+							class:selected={winCondition.lineLength === option.value}
+							aria-pressed={winCondition.lineLength === option.value}
+							disabled={setupLocked}
+							title={setupLocked ? 'Start a new match to change win rules' : option.label}
+							onclick={() => onWinLineLengthChange(option.value)}
+						>
+							<span>{option.shortLabel}</span>
+						</button>
+					{/each}
+				</div>
+			</div>
+			<div class="rule-control">
+				<span>
+					<Trophy size={13} strokeWidth={2} />
+					Lines
+				</span>
+				<div class="mode-switch line-count-switch" role="group" aria-label="Lines to win">
+					{#each LINES_TO_WIN_OPTIONS as option (option.value)}
+						<button
+							type="button"
+							class:selected={winCondition.linesToWin === option.value}
+							aria-pressed={winCondition.linesToWin === option.value}
+							disabled={setupLocked}
+							title={setupLocked ? 'Start a new match to change win rules' : option.label}
+							onclick={() => onLinesToWinChange(option.value)}
+						>
+							<span>{option.shortLabel}</span>
+						</button>
+					{/each}
+				</div>
 			</div>
 		</div>
 	</div>

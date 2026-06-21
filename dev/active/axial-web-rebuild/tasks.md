@@ -74,6 +74,12 @@
 - [x] Integrate Online mode into the existing main 3D game route/sidebar with Local, AI, and Online
   mode selection.
 - [x] Preserve full formatted room-code visibility in the integrated sidebar on desktop and mobile.
+- [x] Add a first-time welcome/tutorial walkthrough that introduces the board, menu expansion,
+  Local/AI/Online modes, rules, and appearance controls.
+- [x] Enlarge the welcome/tutorial cards and add a React-Bits-style typed first-slide headline with
+  an accent-shiny `Axial` word.
+- [x] Extend typed tour headings to every onboarding card, fade in body copy after typing, and add a
+  subtle React-Bits-style BorderGlow card edge.
 - [x] Replace the temporary authoritative 2D online board with the existing Threlte 3D board fed by
   server snapshots.
 - [x] Keep `/room` and `/room/[code]` as compatibility redirects into `/?online=1` and `/?room=CODE`.
@@ -238,6 +244,8 @@
 - [x] Differentiate the Double Adjacent icon from the general Pieces/loadout icon.
 - [x] Restore desktop top-right control pill height while preserving the compact mobile toolbar.
 - [x] Replace preset grid themes with exact board-color picker and grouped Appearance controls.
+- [x] Add native first-run onboarding with spotlight animation, skip/finish persistence, mobile
+  positioning coverage, and QA query controls.
 - [x] Add synchronized sequential glow to the AXIAL/dimensions HUD and center turn pill, and restore
   separate gradient P1/P2 color pills.
 - [x] Add a persisted click-to-confirm drop option with an armed-column preview animation.

@@ -45,7 +45,7 @@
 	}
 </script>
 
-<section class="panel-section">
+<section class="panel-section" data-tour-target="appearance-section">
 	<div class="section-heading">
 		<Palette size={15} strokeWidth={2} />
 		<span>Appearance</span>

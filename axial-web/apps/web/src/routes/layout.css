@@ -423,6 +423,11 @@ button {
 	border-radius: 0.95rem;
 }
 
+.setup-rules-cluster {
+	display: grid;
+	gap: 0.48rem;
+}
+
 .board-size-editor {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
