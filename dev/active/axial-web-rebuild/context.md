@@ -13,6 +13,11 @@ swapping between rematches. Production browser smoke from this machine has previ
 by the local CSU/HFS recursive DNS path returning stale/bad `*.playaxial.dev` records even though
 Cloudflare authoritative DNS and Google DNS returned the correct Cloudflare records.
 
+2026-07-09 hardening closes the main post-MVP correctness gaps: countdown timing is enforced by the
+Worker, WebSocket and HTTPS fallback presence coexist safely, HTTP-only presence expires, client
+snapshots cannot regress, room URLs survive reload, explicit Leave expires the private room, and the
+two-browser multiplayer path is now a committed Playwright test.
+
 Classic-mode AI remains an important future lane. Caden wants an AI opponent that can beat him as the benchmark. Tactical/special-piece AI remains deferred.
 
 Research and architecture notes for the Classic AI direction now live in `dev/active/axial-web-rebuild/classic-ai-research.md`.
@@ -163,11 +168,15 @@ Implemented gameplay/UX:
 - Click-to-confirm drop is a persisted desktop/mobile input option. The first click arms a column,
   clicking another column re-arms there, and clicking the armed column commits the drop.
 - Undo, redo, rematch, and replay-from-start via canonical move history.
+- In AI mode, undo/redo now works at human decision points: a completed human move plus AI reply is
+  rewound/restored as one unit, while a still-pending human move remains a single unit.
 - Game-over modal with winner, move count, rematch, replay, and review actions.
 - Collapsible top-right control panel with smooth downward expansion.
 - Expanded match console with Match, Appearance, and Session sections.
 - Session record tracks Player 1 wins, Player 2 wins, and draws once per completed match.
 - AI opponent mode is unlocked. Classic mode now uses a bounded TypeScript MCTS/search opponent in a Web Worker on default and expanded board sizes; Tactical mode still uses random normal moves because special-piece AI is deferred.
+- Classic AI failure handling stays off the browser main thread: failed Worker search falls back to
+  a cheap legal move, and route teardown terminates pending AI work.
 - Classic AI has pre-match difficulty presets: Easy, Medium, Hard, and Max. Hard preserves a strong
   midrange worker budget; Max uses a larger worker-only budget that scales with board area/height.
   AI replies also have difficulty-aware minimum visible thinking time so stronger settings feel more
@@ -254,6 +263,14 @@ Implemented gameplay/UX:
 
 Latest checks passed from `axial-web/` unless noted:
 
+- 2026-07-09 gameplay/multiplayer hardening: `pnpm check`, `pnpm lint`, `pnpm test:unit` (125
+  tests), `pnpm --dir apps/web exec playwright test --reporter=list` (8 tests), `pnpm build`,
+  `pnpm --filter @axial/multiplayer-worker exec wrangler types --check`, `pnpm
+  deploy:multiplayer:dry-run`, and `git diff --check` passed. The committed two-context browser test
+  covers create/join, room URL persistence, server countdown rejection, socket/fallback coexistence,
+  accepted move propagation, reload/reconnect, and leave-driven expiration. Worker dry-run upload is
+  73.88 KiB / 15.30 KiB gzip. The game route retains the known size warning at 934.11 kB minified /
+  248.54 kB gzip. No deployment was performed.
 - 2026-06-19 Online start/result/rematch polish: `pnpm check`, `pnpm lint`, `pnpm test:unit`,
   `pnpm build`, `git diff --check`, and `pnpm deploy:multiplayer:dry-run` passed. Local Worker dev
   plus Vite smoke verified desktop host creation, full code display, mobile guest join, both players
@@ -332,9 +349,9 @@ Bundle cleanup decision from the 2026-06-07 pass:
   Three `RoundedBoxGeometry`.
 - Removed the now-unused `@threlte/extras` package dependency and lockfile entries after source
   imports were fully eliminated.
-- Removed the normal-path runtime `@axial/ai` import from the page controller. Classic MCTS stays
-  worker-backed, and the rare main-thread MCTS fallback now loads dynamically only if the worker
-  path fails.
+- Removed all page-controller runtime `@axial/ai` imports. Classic MCTS stays worker-backed; if the
+  Worker path fails, the controller chooses a cheap legal move instead of running MCTS on the main
+  thread.
 - Sourcemap inspection after cleanup shows the remaining route bulk is dominated by Three core,
   Three module glue, Three OrbitControls, Threlte core, and Axial's actual page/scene/UI code.
   Manual chunking or lazy-loading the scene would mostly move the same first-play WebGL payload
@@ -344,6 +361,7 @@ Bundle cleanup decision from the 2026-06-07 pass:
 ## Key Files For Next Work
 
 For multiplayer, start with `dev/active/axial-web-rebuild/multiplayer.md`,
+`dev/active/axial-web-rebuild/hardening.md`,
 `axial-web/apps/multiplayer-worker`, `axial-web/apps/web/src/lib/multiplayer`, and the main
 Svelte route/sidebar integration in `axial-web/apps/web/src/routes/+page.svelte` and
 `axial-web/apps/web/src/lib/game/ui`.

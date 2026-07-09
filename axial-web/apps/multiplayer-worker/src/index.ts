@@ -1,4 +1,5 @@
-import { RoomObject, type RoomObjectRpc } from "./roomObject";
+import { RoomObject } from "./roomObject";
+import type { RoomErrorPayload } from "@axial/multiplayer-protocol";
 import {
   formatRoomCode,
   generateReconnectToken,
@@ -196,8 +197,8 @@ async function handleRoomSocket(
   return stub.fetch(new Request(targetUrl.toString(), request));
 }
 
-function roomStub(env: Env, roomCode: string): RoomObjectRpc {
-  return env.AXIAL_ROOM.getByName(roomCode) as unknown as RoomObjectRpc;
+function roomStub(env: Env, roomCode: string) {
+  return env.AXIAL_ROOM.getByName(roomCode);
 }
 
 function parseRoomRoute(pathname: string): {
@@ -293,10 +294,7 @@ function appendVary(current: string | null, value: string): string {
   return Array.from(parts).join(", ");
 }
 
-function errorResponse(
-  error: { code: string; message: string; details?: Record<string, unknown> },
-  status: number,
-): Response {
+function errorResponse(error: RoomErrorPayload, status: number): Response {
   return Response.json({ error }, { status });
 }
 

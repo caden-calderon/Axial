@@ -13,7 +13,6 @@
 		WIN_LINE_LENGTH_OPTIONS,
 		type AiDifficulty,
 		type BoardDimensionKey,
-		type OpponentMode,
 		type PlayMode
 	} from '../state/gameController.svelte';
 
@@ -27,7 +26,6 @@
 		setupLocked,
 		playModeLocked,
 		onlineRulesLocked,
-		onOpponentModeChange,
 		onPlayModeChange,
 		onAiDifficultyChange,
 		onMatchModeChange,
@@ -44,7 +42,6 @@
 		setupLocked: boolean;
 		playModeLocked: boolean;
 		onlineRulesLocked: boolean;
-		onOpponentModeChange: (mode: OpponentMode) => void;
 		onPlayModeChange: (mode: PlayMode) => void;
 		onAiDifficultyChange: (difficulty: AiDifficulty) => void;
 		onMatchModeChange: (mode: MatchMode) => void;
@@ -71,8 +68,13 @@
 
 	function choosePlayMode(mode: PlayMode): void {
 		onPlayModeChange(mode);
-		if (mode === 'local' || mode === 'ai') onOpponentModeChange(mode);
 	}
+
+	const playModeLockTitle = $derived(
+		playMode === 'online'
+			? 'Leave the room to change play mode'
+			: 'Start a new match to change opponent mode'
+	);
 </script>
 
 <section class="panel-section" data-tour-target="match-section">
@@ -92,7 +94,7 @@
 			class:selected={playMode === 'local'}
 			aria-pressed={playMode === 'local'}
 			disabled={playModeLocked}
-			title={playModeLocked ? 'Start a new match to change opponent mode' : 'Local mode'}
+			title={playModeLocked ? playModeLockTitle : 'Local mode'}
 			onclick={() => choosePlayMode('local')}
 		>
 			<Users size={14} strokeWidth={2} />
@@ -104,7 +106,7 @@
 			class:thinking={aiThinking}
 			aria-pressed={playMode === 'ai'}
 			disabled={playModeLocked}
-			title={playModeLocked ? 'Start a new match to change opponent mode' : 'AI mode'}
+			title={playModeLocked ? playModeLockTitle : 'AI mode'}
 			onclick={() => choosePlayMode('ai')}
 		>
 			<Bot size={14} strokeWidth={2} />
@@ -116,7 +118,7 @@
 			aria-pressed={playMode === 'online'}
 			disabled={playModeLocked}
 			data-tour-target="online-mode"
-			title={playModeLocked ? 'Start a new match to change opponent mode' : 'Online room'}
+			title={playModeLocked ? playModeLockTitle : 'Online room'}
 			onclick={() => choosePlayMode('online')}
 		>
 			<Wifi size={14} strokeWidth={2} />

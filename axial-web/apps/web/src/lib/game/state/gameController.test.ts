@@ -3,9 +3,11 @@ import { BLOCKER_CELL, cellCount, createGame, indexOf } from '@axial/core';
 import { GAME_OVER_MODAL_DELAY_MS } from '../animation';
 import {
 	classicAiSearchOptionsForGame,
+	chooseAiMove,
 	createGameController,
 	remainingAiThinkingDelayMs
 } from './gameController.svelte';
+import type { ClassicAiClient } from './classicAiClient';
 
 describe('game controller AI timing', () => {
 	it('keeps visible thinking time meaningfully longer on stronger difficulties', () => {
@@ -33,6 +35,67 @@ describe('game controller AI timing', () => {
 		expect(largeBoard.simulations).toBeGreaterThan(defaultBoard.simulations!);
 		expect(largeBoard.earlyExitVisits).toBeGreaterThan(defaultBoard.earlyExitVisits!);
 		expect(largeBoard.earlyExitRatio).toBeGreaterThanOrEqual(defaultBoard.earlyExitRatio!);
+	});
+
+	it('falls back to a cheap legal move when the AI worker fails', async () => {
+		const requestMove = vi.fn().mockRejectedValue(new Error('Worker unavailable'));
+		const client = {
+			requestMove,
+			cancelPending() {},
+			terminate() {}
+		} satisfies ClassicAiClient;
+		const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+
+		try {
+			const move = await chooseAiMove(createGame(), 'classic', 1, 'hard', () => client);
+
+			expect(requestMove).toHaveBeenCalledOnce();
+			expect(move).toEqual({ row: 0, col: 0 });
+		} finally {
+			random.mockRestore();
+		}
+	});
+});
+
+describe('game controller AI decision history', () => {
+	it('undoes and redoes a completed human and AI exchange as one decision', () => {
+		const controller = createGameController();
+		controller.setOpponentMode('ai');
+		controller.playMove({ row: 0, col: 0 });
+		controller.playMove({ row: 1, col: 0 }, 'ai');
+
+		expect(controller.game.moveHistory).toHaveLength(2);
+		expect(controller.currentPlayer).toBe(1);
+
+		controller.undoMove();
+
+		expect(controller.game.moveHistory).toHaveLength(0);
+		expect(controller.currentPlayer).toBe(1);
+		expect(controller.canRedo).toBe(true);
+
+		controller.redoMove();
+
+		expect(controller.game.moveHistory).toHaveLength(2);
+		expect(controller.game.moveHistory.map((move) => move.player)).toEqual([1, 2]);
+		expect(controller.currentPlayer).toBe(1);
+	});
+
+	it('undoes only the human move while its AI reply is pending', () => {
+		const controller = createGameController();
+		controller.setOpponentMode('ai');
+		controller.playMove({ row: 0, col: 0 });
+
+		expect(controller.currentPlayer).toBe(2);
+
+		controller.undoMove();
+
+		expect(controller.game.moveHistory).toHaveLength(0);
+		expect(controller.currentPlayer).toBe(1);
+
+		controller.redoMove();
+
+		expect(controller.game.moveHistory).toHaveLength(1);
+		expect(controller.currentPlayer).toBe(2);
 	});
 });
 

@@ -39,6 +39,7 @@ import {
 	syncRoom,
 	type MultiplayerCredentials
 } from './client';
+import { shouldAcceptRoomSnapshot } from './snapshotOrder';
 
 const STORAGE_KEYS = {
 	displayName: 'axial-online-display-name'
@@ -79,6 +80,8 @@ export function createOnlineController() {
 		: null;
 	let manualClose = false;
 	let lastHealthyAt = 0;
+	let sessionEpoch = 0;
+	let fallbackSyncToken: symbol | null = null;
 
 	const self = $derived(
 		snapshot?.players.find((player) => player.playerId === snapshot?.you.playerId) ?? null
@@ -172,16 +175,20 @@ export function createOnlineController() {
 		const name = normalizedDisplayName();
 		if (!name) return;
 
+		const requestEpoch = beginRoomRequest();
 		error = '';
 		connectionState = 'creating';
 		try {
 			const room = await createRoom(name, rulesDraft);
+			if (requestEpoch !== sessionEpoch) return;
 			credentials = room.player;
 			joinCodeDraft = formatRoomCode(room.roomCode);
 			saveCredentials(room.player);
-			applySnapshot(room.snapshot, { networkHealthy: true });
+			if (!applySnapshot(room.snapshot, { networkHealthy: true })) return;
+			writeRoomUrl(room.roomCode);
 			connect('connecting');
 		} catch (reason) {
+			if (requestEpoch !== sessionEpoch) return;
 			failRequest(reason, 'Could not create a room.');
 		}
 	}
@@ -191,36 +198,49 @@ export function createOnlineController() {
 		const name = normalizedDisplayName();
 		if (!roomCode || !name) return;
 
+		const requestEpoch = beginRoomRequest();
 		error = '';
 		connectionState = 'joining';
 		try {
 			const joined = await joinRoom(roomCode, name);
+			if (requestEpoch !== sessionEpoch) return;
 			credentials = joined.player;
 			joinCodeDraft = formatRoomCode(joined.roomCode);
 			saveCredentials(joined.player);
-			applySnapshot(joined.snapshot, { networkHealthy: true });
+			if (!applySnapshot(joined.snapshot, { networkHealthy: true })) return;
+			writeRoomUrl(joined.roomCode);
 			connect('connecting');
 		} catch (reason) {
+			if (requestEpoch !== sessionEpoch) return;
 			failRequest(reason, 'Could not join this room.');
 		}
 	}
 
 	function connect(nextState: ConnectionState): void {
-		if (!credentials) return;
+		const activeCredentials = credentials;
+		if (!activeCredentials) return;
+		const connectionEpoch = advanceSessionEpoch();
 		if (reconnectTimer) clearTimeout(reconnectTimer);
 		setTransportState(nextState);
 		manualClose = false;
-		socket?.close();
-		socket = openRoomSocket({
-			credentials,
+		const previousSocket = socket;
+		socket = null;
+		previousSocket?.close();
+		const nextSocket = openRoomSocket({
+			credentials: activeCredentials,
 			lastSeenRevision: snapshot?.revision ?? 0,
 			onOpen: () => {
+				if (!isCurrentConnection(connectionEpoch, activeCredentials, nextSocket)) return;
 				markHealthy();
 				stopHttpFallback();
 				connectionState = snapshot ? derivedConnectionState(snapshot, opponent) : 'connected';
 			},
-			onEvent: handleEvent,
+			onEvent: (event) => {
+				if (!isCurrentConnection(connectionEpoch, activeCredentials, nextSocket)) return;
+				handleEvent(event);
+			},
 			onClose: () => {
+				if (!isCurrentConnection(connectionEpoch, activeCredentials, nextSocket)) return;
 				socket = null;
 				if (manualClose || connectionState === 'fatal-error' || connectionState === 'expired')
 					return;
@@ -229,11 +249,13 @@ export function createOnlineController() {
 				scheduleReconnect(SOCKET_RETRY_WITH_FALLBACK_MS);
 			},
 			onError: () => {
+				if (!isCurrentConnection(connectionEpoch, activeCredentials, nextSocket)) return;
 				if (connectionState === 'fatal-error') return;
 				startHttpFallback();
 				surfaceTransportIssue();
 			}
 		});
+		socket = nextSocket;
 	}
 
 	function startHttpFallback(): void {
@@ -251,25 +273,39 @@ export function createOnlineController() {
 	}
 
 	async function syncFallback(): Promise<void> {
-		if (!credentials || manualClose) return;
+		const activeCredentials = credentials;
+		if (!activeCredentials || manualClose || fallbackSyncToken) return;
+		const requestEpoch = sessionEpoch;
+		const requestToken = Symbol('fallback-sync');
+		fallbackSyncToken = requestToken;
 		try {
-			const result = await syncRoom(credentials, snapshot?.revision);
-			applySnapshot(result.snapshot, { networkHealthy: true });
+			const result = await syncRoom(activeCredentials, snapshot?.revision);
+			if (!isCurrentSession(requestEpoch, activeCredentials)) return;
+			const accepted = applySnapshot(result.snapshot, { networkHealthy: true });
+			if (!accepted) return;
 			error = '';
-			connectionState = derivedConnectionState(result.snapshot, opponent);
+			connectionState = derivedConnectionState(accepted, opponentForSnapshot(accepted));
 		} catch (reason) {
+			if (!isCurrentSession(requestEpoch, activeCredentials)) return;
 			failRequest(reason, 'Room sync failed.', { transportOnly: true });
+		} finally {
+			if (fallbackSyncToken === requestToken) fallbackSyncToken = null;
 		}
 	}
 
 	async function submitFallback(commandToSend: ClientCommand): Promise<void> {
-		if (!credentials) return;
+		const activeCredentials = credentials;
+		if (!activeCredentials) return;
+		const requestEpoch = sessionEpoch;
 		try {
-			const result = await submitRoomCommand(credentials, commandToSend);
-			applySnapshot(result.snapshot, { networkHealthy: true });
+			const result = await submitRoomCommand(activeCredentials, commandToSend);
+			if (!isCurrentSession(requestEpoch, activeCredentials)) return;
+			const accepted = applySnapshot(result.snapshot, { networkHealthy: true });
+			if (!accepted) return;
 			error = '';
-			connectionState = derivedConnectionState(result.snapshot, opponent);
+			connectionState = derivedConnectionState(accepted, opponentForSnapshot(accepted));
 		} catch (reason) {
+			if (!isCurrentSession(requestEpoch, activeCredentials)) return;
 			failRequest(reason, 'Room command failed.', { transportOnly: true });
 			startHttpFallback();
 		}
@@ -301,14 +337,17 @@ export function createOnlineController() {
 	function applySnapshot(
 		incoming: RoomSnapshot | PrivateRoomSnapshot,
 		options: { networkHealthy: boolean }
-	): void {
+	): PrivateRoomSnapshot | null {
 		const previous = snapshot;
 		const normalizedIncoming = normalizeSnapshot(incoming);
+		if (!shouldAcceptRoomSnapshot(previous, normalizedIncoming, credentials?.roomCode)) {
+			return null;
+		}
 		const retainedIdentity =
 			'you' in normalizedIncoming
 				? normalizedIncoming.you
 				: (previous?.you ?? credentialsToIdentity(credentials));
-		if (!retainedIdentity) return;
+		if (!retainedIdentity) return null;
 
 		const inviteUrl =
 			'inviteUrl' in normalizedIncoming
@@ -331,6 +370,7 @@ export function createOnlineController() {
 		joinCodeDraft = formatRoomCode(snapshot.roomCode);
 		rulesDraft = cloneRules(snapshot.rules);
 		if (options.networkHealthy) markHealthy();
+		return snapshot;
 	}
 
 	function updateDisplayName(): void {
@@ -492,10 +532,14 @@ export function createOnlineController() {
 
 	function leaveRoom(): void {
 		manualClose = true;
-		if (credentials) {
-			void submitRoomCommand(credentials, command('room:leave', {})).catch(() => undefined);
-			clearCredentials(credentials.roomCode);
-			clearRoomSnapshot(credentials.roomCode);
+		const departingCredentials = credentials;
+		advanceSessionEpoch();
+		if (departingCredentials) {
+			void submitRoomCommand(departingCredentials, command('room:leave', {})).catch(
+				() => undefined
+			);
+			clearCredentials(departingCredentials.roomCode);
+			clearRoomSnapshot(departingCredentials.roomCode);
 		}
 		if (reconnectTimer) clearTimeout(reconnectTimer);
 		stopHttpFallback();
@@ -510,6 +554,7 @@ export function createOnlineController() {
 		resultOverlayDismissed = false;
 		lockedMove = null;
 		hoveredMove = null;
+		clearRoomUrl();
 	}
 
 	async function copyInvite(): Promise<void> {
@@ -528,6 +573,7 @@ export function createOnlineController() {
 
 	function destroy(): void {
 		manualClose = true;
+		advanceSessionEpoch();
 		if (reconnectTimer) clearTimeout(reconnectTimer);
 		stopHttpFallback();
 		if (ticker) clearInterval(ticker);
@@ -611,6 +657,43 @@ export function createOnlineController() {
 
 	function hasRecentHealth(): boolean {
 		return Date.now() - lastHealthyAt < TRANSPORT_HEALTH_GRACE_MS;
+	}
+
+	function beginRoomRequest(): number {
+		const requestEpoch = advanceSessionEpoch();
+		if (reconnectTimer) clearTimeout(reconnectTimer);
+		reconnectTimer = null;
+		stopHttpFallback();
+		const previousSocket = socket;
+		socket = null;
+		previousSocket?.close();
+		manualClose = false;
+		return requestEpoch;
+	}
+
+	function advanceSessionEpoch(): number {
+		sessionEpoch += 1;
+		fallbackSyncToken = null;
+		return sessionEpoch;
+	}
+
+	function isCurrentSession(
+		expectedEpoch: number,
+		expectedCredentials: MultiplayerCredentials
+	): boolean {
+		return (
+			expectedEpoch === sessionEpoch &&
+			credentials?.roomCode === expectedCredentials.roomCode &&
+			credentials.playerId === expectedCredentials.playerId
+		);
+	}
+
+	function isCurrentConnection(
+		expectedEpoch: number,
+		expectedCredentials: MultiplayerCredentials,
+		expectedSocket: WebSocket
+	): boolean {
+		return socket === expectedSocket && isCurrentSession(expectedEpoch, expectedCredentials);
 	}
 
 	function command<T extends ClientCommand['type']>(
@@ -872,6 +955,14 @@ function derivedConnectionState(
 	return 'connected';
 }
 
+function opponentForSnapshot(
+	nextSnapshot: PrivateRoomSnapshot
+): PrivateRoomSnapshot['players'][number] | null {
+	return (
+		nextSnapshot.players.find((player) => player.playerId !== nextSnapshot.you.playerId) ?? null
+	);
+}
+
 function roomStatusLabel(
 	nextSnapshot: PrivateRoomSnapshot | null,
 	state: ConnectionState,
@@ -934,6 +1025,24 @@ function connectionLabel(state: ConnectionState): string {
 function roomInviteUrl(roomCode: string): string {
 	if (!browser) return `/?room=${roomCode}`;
 	return `${window.location.origin}/?room=${roomCode}`;
+}
+
+function writeRoomUrl(roomCode: string): void {
+	if (!browser) return;
+	const url = new URL(window.location.href);
+	url.searchParams.set('room', normalizeRoomCode(roomCode));
+	url.searchParams.delete('code');
+	url.searchParams.delete('online');
+	window.history.replaceState(window.history.state, '', url);
+}
+
+function clearRoomUrl(): void {
+	if (!browser) return;
+	const url = new URL(window.location.href);
+	url.searchParams.delete('room');
+	url.searchParams.delete('code');
+	url.searchParams.delete('online');
+	window.history.replaceState(window.history.state, '', url);
 }
 
 function normalizeRoomCode(roomCode: string): string {

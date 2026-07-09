@@ -74,7 +74,6 @@
 		onRedo,
 		onToggleFullscreen,
 		onPlayModeChange,
-		onOpponentModeChange,
 		onAiDifficultyChange,
 		onMatchModeChange,
 		onBoardDimensionChange,
@@ -131,7 +130,6 @@
 		onRedo: () => void;
 		onToggleFullscreen: () => void;
 		onPlayModeChange: (mode: PlayMode) => void;
-		onOpponentModeChange: (mode: OpponentMode) => void;
 		onAiDifficultyChange: (difficulty: AiDifficulty) => void;
 		onMatchModeChange: (mode: MatchMode) => void;
 		onBoardDimensionChange: (key: BoardDimensionKey, value: number) => void;
@@ -347,7 +345,6 @@
 						{setupLocked}
 						{playModeLocked}
 						{onlineRulesLocked}
-						{onOpponentModeChange}
 						{onPlayModeChange}
 						{onAiDifficultyChange}
 						{onMatchModeChange}

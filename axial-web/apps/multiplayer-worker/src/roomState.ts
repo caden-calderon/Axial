@@ -36,6 +36,7 @@ export const PLAYING_ACTIVE_TTL_MS = 24 * 60 * 60 * 1000;
 export const ENDED_TTL_MS = 45 * 60 * 1000;
 export const START_COUNTDOWN_MS = 3500;
 export const REMATCH_DECISION_MS = 30_000;
+export const HTTP_FALLBACK_LEASE_MS = 10_000;
 
 export type StoredPlayer = {
   playerId: string;
@@ -49,6 +50,7 @@ export type StoredPlayer = {
   disconnectedAt: number | null;
   reconnectTokenHash: string;
   activeConnectionId: string | null;
+  httpFallbackLeaseUntil: number | null;
   rematchReady: boolean;
 };
 
@@ -120,6 +122,7 @@ export function createInitialRoomState(input: {
         disconnectedAt: null,
         reconnectTokenHash: input.hostTokenHash,
         activeConnectionId: null,
+        httpFallbackLeaseUntil: null,
         rematchReady: false,
       },
     ],
@@ -173,6 +176,7 @@ export function addSecondPlayer(
     disconnectedAt: null,
     reconnectTokenHash: input.tokenHash,
     activeConnectionId: null,
+    httpFallbackLeaseUntil: null,
     rematchReady: false,
   });
   touch(next, input.now);
@@ -218,8 +222,20 @@ export function markDisconnected(
     return { state: refreshExpiry(next, now), events: [] };
   }
 
-  player.connected = false;
   player.activeConnectionId = null;
+  if (
+    player.httpFallbackLeaseUntil !== null &&
+    player.httpFallbackLeaseUntil > now
+  ) {
+    player.connected = true;
+    player.disconnectedAt = null;
+    player.lastSeenAt = now;
+    touchWithoutRevision(next, now);
+    return { state: next, events: [] };
+  }
+
+  player.connected = false;
+  player.httpFallbackLeaseUntil = null;
   player.disconnectedAt = now;
   player.lastSeenAt = now;
   touch(next, now);
@@ -227,6 +243,69 @@ export function markDisconnected(
   return withPublicEvent(next, "room:player-disconnected", commandId, {
     playerId,
   });
+}
+
+export function markHttpFallbackSeen(
+  state: StoredRoomState,
+  playerId: string,
+  now: number,
+  commandId?: string,
+): RoomCommandOutcome {
+  const next = cloneState(state);
+  const player = requirePlayer(next, playerId);
+  const wasDisconnected = !player.connected;
+
+  player.connected = true;
+  player.httpFallbackLeaseUntil = now + HTTP_FALLBACK_LEASE_MS;
+  player.disconnectedAt = null;
+  player.lastSeenAt = now;
+  touchWithoutRevision(next, now);
+
+  if (!wasDisconnected) return { state: next, events: [] };
+
+  touch(next, now);
+  return withPublicEvent(next, "room:player-reconnected", commandId, {
+    playerId,
+  });
+}
+
+export function expireStalePresence(
+  state: StoredRoomState,
+  now: number,
+): RoomCommandOutcome {
+  const next = cloneState(state);
+  const disconnectedPlayerIds: string[] = [];
+
+  for (const player of next.players) {
+    if (
+      !player.connected ||
+      player.activeConnectionId !== null ||
+      player.httpFallbackLeaseUntil === null ||
+      player.httpFallbackLeaseUntil > now
+    ) {
+      continue;
+    }
+
+    player.connected = false;
+    player.httpFallbackLeaseUntil = null;
+    player.disconnectedAt = now;
+    player.lastSeenAt = now;
+    disconnectedPlayerIds.push(player.playerId);
+  }
+
+  if (disconnectedPlayerIds.length === 0) {
+    return { state, events: [] };
+  }
+
+  touch(next, now);
+  return {
+    state: next,
+    events: disconnectedPlayerIds.flatMap((playerId) =>
+      createPublicEvents(next, "room:player-disconnected", undefined, {
+        playerId,
+      }),
+    ),
+  };
 }
 
 export function setPlayerName(
@@ -374,6 +453,14 @@ export function playClassicMove(
       409,
     );
   }
+  if (state.matchPlayableAt !== null && now < state.matchPlayableAt) {
+    throw new RoomServiceError(
+      "match-not-playable",
+      "The match countdown is still running.",
+      409,
+      { playableAt: state.matchPlayableAt },
+    );
+  }
 
   const player = requirePlayer(state, playerId);
   const game = currentGame(state);
@@ -497,6 +584,7 @@ export function expireRoom(
   for (const player of next.players) {
     player.connected = false;
     player.activeConnectionId = null;
+    player.httpFallbackLeaseUntil = null;
     player.disconnectedAt = player.disconnectedAt ?? now;
     player.lastSeenAt = now;
   }
@@ -507,6 +595,21 @@ export function expireRoom(
 
 export function shouldExpire(state: StoredRoomState, now: number): boolean {
   return state.phase !== "expired" && state.expiresAt <= now;
+}
+
+export function nextRoomAlarmAt(state: StoredRoomState): number | null {
+  if (state.phase === "expired") return null;
+
+  const httpLeaseDeadlines = state.players
+    .filter(
+      (player) =>
+        player.connected &&
+        player.activeConnectionId === null &&
+        player.httpFallbackLeaseUntil !== null,
+    )
+    .map((player) => player.httpFallbackLeaseUntil as number);
+
+  return Math.min(state.expiresAt, ...httpLeaseDeadlines);
 }
 
 export function currentGame(state: StoredRoomState): GameSnapshot {
@@ -595,6 +698,7 @@ export function normalizeStoredRoomState(
     rematchDeadlineAt: state.rematchDeadlineAt ?? null,
     players: state.players.map((player) => ({
       ...player,
+      httpFallbackLeaseUntil: player.httpFallbackLeaseUntil ?? null,
       rematchReady: player.rematchReady ?? false,
     })),
   };

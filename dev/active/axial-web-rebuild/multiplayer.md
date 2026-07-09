@@ -143,6 +143,15 @@ Implementation status:
   `match.startingPlayer`, `match.startedAt`, and `match.playableAt` in snapshots. Game-over
   snapshots publish `rematch.deadlineAt`; the server rejects late `room:rematch-vote` commands with
   `rematch-expired` and flips `startingPlayer` when both players rematch.
+- 2026-07-09 correctness hardening: the Worker now rejects moves before `match.playableAt` with
+  `match-not-playable`; HTTPS fallback refreshes a short presence lease without replacing the active
+  WebSocket connection ID; and the single room alarm targets the earliest presence-lease or room
+  expiry deadline. The client rejects regressive revisions, ignores abandoned request/socket work,
+  prevents overlapping fallback sync, and writes the room code into the canonical URL after
+  create/join so reload can reconnect.
+- Explicit `room:leave` expires the private v1 room and notifies both players. Seat replacement and
+  spectators remain deferred, so Local/AI mode switching is locked until the seated player uses
+  Leave.
 - QR payload, invite URL, copy button, and scannable QR image are available in the Online sidebar.
 
 ## Server Authority
@@ -178,7 +187,7 @@ the room snapshot, the room snapshot wins.
 3. `ready-to-start`: both players have names and have pressed ready; settings are locked and only
    the host may start.
 4. `starting`: represented by `phase: "playing"` plus future `match.playableAt` metadata; the
-   frontend shows the countdown overlay and blocks normal input.
+   frontend shows the countdown overlay, and the server rejects commands until the timestamp.
 5. `playing`: moves are accepted only from the current player's active seat.
 6. `ended`: winner/draw is final; rematch votes can begin.
 7. `rematching`: players choose same rules or proposed tweaks later.
@@ -195,7 +204,8 @@ Room expiry policy:
   canonical replay/game snapshot, rematch votes, room event history, revision, and expiry metadata
   in SQLite-backed storage. In-memory state is a cache only.
 - The Durable Object uses a single alarm per room to enforce expiry and reschedule the next expiry
-  point after relevant mutations.
+  point after relevant mutations. HTTP-only presence uses a short persisted lease; the same alarm
+  targets whichever comes first, the next lease deadline or room expiration.
 
 ## Protocol Principles
 
@@ -402,6 +412,9 @@ Worker/unit tests:
 - Duplicate-tab behavior.
 - Revision/resync behavior.
 - Room expiration.
+- Start-countdown rejection without revision or move-history mutation.
+- WebSocket plus HTTPS fallback coexistence and HTTP-only presence lease expiration.
+- Explicit leave expiration for both seats.
 
 Web/e2e tests:
 
@@ -422,6 +435,10 @@ Web/e2e tests:
 - 2026-06-19 ad hoc local smoke covered the explicit start/result flow: full room-code display,
   host start after both ready, countdown overlay, result/rematch overlay, rematch timer, opponent
   rematch intent, and Match 2 opening with Player 2.
+- 2026-07-09 committed Playwright coverage runs the built app plus local Worker with two browser
+  contexts. It covers create/join, canonical room URLs, seated mode locks, ready/host start, server
+  countdown enforcement, a post-countdown accepted move, guest reload/reconnect, and leave-driven
+  room expiration.
 
 Manual smoke:
 

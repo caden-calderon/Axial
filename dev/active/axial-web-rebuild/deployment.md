@@ -136,7 +136,7 @@ Manual smoke:
 
 If a deployment is bad, use the Pages project's Deployments tab to roll back to the last known-good deployment while fixing `main`.
 
-## Current DNS Caveat
+## Current DNS And Reputation Caveats
 
 As of 2026-06-18/19, Cloudflare authoritative nameservers and Google DNS return the expected
 Cloudflare proxy records for `playaxial.dev`, and Cloudflare Pages shows `playaxial.dev` attached
@@ -149,10 +149,26 @@ A     65.52.200.44
 AAAA  ::1
 ```
 
-That causes shell fetches and Chromium on this machine to fail with connection resets before the
-request reaches Cloudflare. Use phone cellular, another network, or a DNS override such as
-Cloudflare `1.1.1.1` or Google `8.8.8.8` before treating a `playaxial.dev` load failure as an Axial
-deployment failure.
+On 2026-06-25, the same CSU/HFS network path still returned those sinkhole records and the HTTP
+block page identified the policy category as `newly-registered-domain`. For HTTPS, the connection
+resets during TLS setup, even when forcing a correct Cloudflare IP, so DNS override alone may not
+bypass this particular network policy. This is consistent with `playaxial.dev` being registered on
+2026-06-06 and still being inside common newly registered domain windows.
+
+Do not treat a local `playaxial.dev` connection reset as proof that the Axial deployment is down.
+Compare against:
+
+- `https://playaxial.pages.dev/`, which should return the frontend from Cloudflare Pages.
+- Public DNS, which should return Cloudflare proxy IPs for `playaxial.dev`.
+- A clean external header check for `https://playaxial.dev/`, which returned `200 OK` on 2026-06-25.
+
+Separately, `https://www.playaxial.dev/` returned Cloudflare `525` from an external header check on
+2026-06-25. Add or repair the `www` redirect in Cloudflare before sharing the domain broadly:
+
+1. Keep `https://playaxial.dev` as the canonical URL.
+2. Add a proxied `www` DNS record if one is missing or malformed.
+3. Add a Cloudflare Bulk Redirect from `www.playaxial.dev` to `https://playaxial.dev`, preserving
+   path and query string.
 
 ## Iframe Embedding And Headers
 

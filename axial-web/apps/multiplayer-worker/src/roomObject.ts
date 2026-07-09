@@ -18,8 +18,11 @@ import {
   addSecondPlayer,
   createInitialRoomState,
   expireRoom,
+  expireStalePresence,
   markConnected,
   markDisconnected,
+  markHttpFallbackSeen,
+  nextRoomAlarmAt,
   normalizeStoredRoomState,
   playClassicMove,
   requirePlayer,
@@ -231,7 +234,7 @@ export class RoomObject extends DurableObject<Env> {
         credentials.playerId,
         credentials.reconnectToken,
       );
-      await this.markHttpFallbackConnected(state, credentials.playerId);
+      await this.markHttpFallbackSeen(state, credentials.playerId);
 
       if (command.type === "room:resync") {
         return ok({
@@ -251,6 +254,7 @@ export class RoomObject extends DurableObject<Env> {
       );
       await this.commit(outcome);
       this.broadcast(outcome.events);
+      if (outcome.state.phase === "expired") this.closeRoomSockets();
       return ok({
         events: outcome.events.map((entry) => entry.event),
         snapshot: toPrivateSnapshot(
@@ -273,7 +277,7 @@ export class RoomObject extends DurableObject<Env> {
         credentials.playerId,
         credentials.reconnectToken,
       );
-      await this.markHttpFallbackConnected(state, credentials.playerId);
+      await this.markHttpFallbackSeen(state, credentials.playerId);
       return ok({
         snapshot: toPrivateSnapshot(
           this.requireState(),
@@ -396,6 +400,7 @@ export class RoomObject extends DurableObject<Env> {
         return;
       }
       this.broadcast(outcome.events);
+      if (outcome.state.phase === "expired") this.closeRoomSockets();
     } catch (error) {
       const payload =
         error instanceof RoomServiceError
@@ -447,9 +452,16 @@ export class RoomObject extends DurableObject<Env> {
   }
 
   async alarm(): Promise<void> {
-    const state = this.loadState();
+    let state = this.loadState();
     if (!state) return;
     const now = Date.now();
+    const presenceOutcome = expireStalePresence(state, now);
+    if (presenceOutcome.events.length > 0) {
+      await this.commit(presenceOutcome);
+      this.broadcast(presenceOutcome.events);
+      state = presenceOutcome.state;
+    }
+
     if (!shouldExpire(state, now)) {
       await this.scheduleExpiry(state);
       return;
@@ -518,13 +530,7 @@ export class RoomObject extends DurableObject<Env> {
           events: [],
         };
       case "room:leave":
-        return markDisconnected(
-          state,
-          playerId,
-          requirePlayer(state, playerId).activeConnectionId ?? "",
-          now,
-          command.id,
-        );
+        return expireRoom(state, now, command.id);
       case "room:rematch-vote":
         return setRematchVote(
           state,
@@ -568,16 +574,11 @@ export class RoomObject extends DurableObject<Env> {
     await this.scheduleExpiry(outcome.state);
   }
 
-  private async markHttpFallbackConnected(
+  private async markHttpFallbackSeen(
     state: StoredRoomState,
     playerId: string,
   ): Promise<void> {
-    const outcome = markConnected(
-      state,
-      playerId,
-      `http-fallback:${playerId}`,
-      Date.now(),
-    );
+    const outcome = markHttpFallbackSeen(state, playerId, Date.now());
     await this.commit(outcome);
     this.broadcast(outcome.events);
   }
@@ -639,11 +640,12 @@ export class RoomObject extends DurableObject<Env> {
   }
 
   private async scheduleExpiry(state: StoredRoomState): Promise<void> {
-    if (state.phase === "expired") {
+    const alarmAt = nextRoomAlarmAt(state);
+    if (alarmAt === null) {
       await this.ctx.storage.deleteAlarm();
       return;
     }
-    await this.ctx.storage.setAlarm(state.expiresAt);
+    await this.ctx.storage.setAlarm(alarmAt);
   }
 
   private restoreSessions(): void {
@@ -733,6 +735,12 @@ export class RoomObject extends DurableObject<Env> {
   private send(ws: WebSocket, event: ServerEvent): void {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(event));
+    }
+  }
+
+  private closeRoomSockets(): void {
+    for (const ws of this.ctx.getWebSockets()) {
+      ws.close(CLOSE_EXPIRED, "Room expired");
     }
   }
 

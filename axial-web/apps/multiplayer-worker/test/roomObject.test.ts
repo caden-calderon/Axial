@@ -145,6 +145,22 @@ describe("Axial multiplayer room service", () => {
       created.inviteUrl,
     );
 
+    const earlyMove = await stub.submitCommand(
+      created.player,
+      command("game:play-move", {
+        move: { row: 0, col: 0 },
+        expectedRevision: snapshot.revision,
+      }),
+      created.inviteUrl,
+    );
+    expect(earlyMove.ok).toBe(false);
+    if (!earlyMove.ok) {
+      expect(earlyMove.error.code).toBe("match-not-playable");
+      expect(earlyMove.error.details?.playableAt).toBe(
+        snapshot.match.playableAt,
+      );
+    }
+
     const stale = await stub.submitCommand(
       created.player,
       command("game:play-move", {
@@ -155,6 +171,8 @@ describe("Axial multiplayer room service", () => {
     );
     expect(stale.ok).toBe(false);
     if (!stale.ok) expect(stale.error.code).toBe("stale-revision");
+
+    await waitUntilPlayable(snapshot);
 
     const outOfTurn = await stub.submitCommand(
       joined.player,
@@ -291,6 +309,35 @@ describe("Axial multiplayer room service", () => {
     second.socket.close();
   });
 
+  it("keeps a healthy socket authoritative during HTTPS fallback sync", async () => {
+    const created = await createRoom("Host");
+    const connection = await openSocket(created.player);
+    await connection.firstEvent;
+
+    await syncRoom(created.player);
+
+    const updateEvent = nextEvent(connection.socket);
+    connection.socket.send(
+      JSON.stringify(
+        command("room:set-name", {
+          displayName: "Socket Host",
+        }),
+      ),
+    );
+    const event = await updateEvent;
+
+    expect(event.type).toBe("room:player-updated");
+    if (event.type === "room:player-updated") {
+      expect(
+        event.payload.snapshot.players.find(
+          (player) => player.playerId === created.player.playerId,
+        )?.displayName,
+      ).toBe("Socket Host");
+    }
+
+    connection.socket.close();
+  });
+
   it("supports HTTPS sync and command fallback when sockets are unavailable", async () => {
     const created = await createRoom("Host");
     const synced = await syncRoom(created.player);
@@ -328,6 +375,25 @@ describe("Axial multiplayer room service", () => {
     expect(started.events.some((event) => event.type === "game:started")).toBe(
       true,
     );
+  });
+
+  it("expires the private room for both players on explicit leave", async () => {
+    const created = await createRoom("Host");
+    const joined = await joinRoom(created.roomCode, "Friend");
+    const stub = roomStub(created.roomCode);
+
+    const left = await stub.submitCommand(
+      created.player,
+      command("room:leave", {}),
+      created.inviteUrl,
+    );
+
+    expect(unwrap(left).snapshot.phase).toBe("expired");
+    expect(unwrap(left).events.at(-1)?.type).toBe("room:expired");
+
+    const opponentSync = await stub.syncPlayer(joined.player, joined.inviteUrl);
+    expect(opponentSync.ok).toBe(false);
+    if (!opponentSync.ok) expect(opponentSync.error.code).toBe("room-expired");
   });
 });
 
@@ -438,6 +504,16 @@ async function play(
     value.events.some((event) => event.type === "game:move-accepted"),
   ).toBe(true);
   return value.snapshot;
+}
+
+async function waitUntilPlayable(snapshot: PrivateRoomSnapshot): Promise<void> {
+  const waitMs = Math.max(
+    0,
+    (snapshot.match.playableAt ?? 0) - Date.now() + 25,
+  );
+  if (waitMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
 }
 
 function roomStub(roomCode: string): RoomObjectRpc {

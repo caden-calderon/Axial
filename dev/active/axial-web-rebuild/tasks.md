@@ -86,15 +86,28 @@
 - [x] Render a real scannable QR image from the invite URL in the Online sidebar.
 - [x] Reduce false reconnect noise by treating successful HTTPS sync/command fallback as a healthy
   transport when WebSocket is flaky.
+- [x] Enforce `match.playableAt` on the authoritative Worker instead of relying on the client
+  countdown overlay to block early moves.
+- [x] Separate WebSocket ownership from HTTPS fallback presence, add expiring fallback leases, and
+  schedule the earliest lease/room deadline through the Durable Object's single alarm.
+- [x] Reject stale room snapshots and async responses from abandoned sessions, make fallback sync
+  single-flight, and guard socket callbacks by connection identity.
+- [x] Persist canonical `?room=CODE` URLs after create/join so reload reconnects, lock mode switching
+  while seated, and define explicit v1 Leave as room expiration for both players.
 - [x] Add focused unit/integration tests for room lifecycle, command validation, move validation,
   reconnect/resync, duplicate tabs, stale revisions, and error codes.
 - [x] Add Worker production deploy helpers and a production multiplayer smoke runner.
 - [ ] Run the production desktop/phone manual multiplayer smoke from a clean DNS path.
   - 2026-06-18/19: Worker deploy succeeded and Pages production deployed the multiplayer UI, but
     this workstation's CSU/HFS resolver returns stale/bad `*.playaxial.dev` records
-    (`65.52.200.44` and `::1`). Test on phone cellular or DNS `1.1.1.1`/`8.8.8.8` before treating
-    the failure as an app bug.
-- [ ] Add local end-to-end smoke with two browser contexts playing a full room match.
+    (`65.52.200.44` and `::1`). The 2026-06-25 block page categorized it as a newly registered
+    domain, so DNS override alone may not bypass the network policy. Test on phone cellular or a
+    clean external network before treating the failure as an app bug.
+- [x] Add local end-to-end smoke with two browser contexts playing a full room match.
+  - 2026-07-09: committed Playwright coverage now creates/joins through the real UI, locks seated
+    mode switching, verifies authoritative countdown rejection without a revision change, accepts a
+    post-countdown HTTPS-fallback move while sockets remain healthy, reloads/reconnects the guest,
+    and verifies explicit Leave expires the room for the host.
   - 2026-06-18: ad hoc Playwright fallback smoke passed for two browser contexts and one
     server-validated move.
   - 2026-06-19: ad hoc Playwright smoke passed for the integrated main-route 3D Online flow with
@@ -175,6 +188,10 @@
 - [x] Wire Classic AI opponent mode to bounded MCTS search while keeping Tactical AI random/deferred.
 - [x] Move Classic MCTS into a Web Worker.
 - [x] Add cancellation path for stale Classic AI worker requests.
+- [x] Make AI undo/redo operate on complete human decision points and requeue AI whenever history
+  navigation lands on a live AI turn.
+- [x] Remove the browser-main-thread MCTS failure path; Worker failure now chooses only a cheap
+  legal fallback move, and page teardown terminates the AI client.
 - [x] Add difficulty-aware visible thinking delay for Classic AI replies.
 - [ ] Add progress messages from long-running Classic AI search.
 - [x] Add difficulty presets.

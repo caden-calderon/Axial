@@ -16,6 +16,7 @@ import {
   cellCount,
   createGame,
   findCompletedLines,
+  findWinningLine,
   getPendingDoubleAdjacentOrigin,
   getDropHeight,
   indexOf,
@@ -102,6 +103,30 @@ describe("Axial game core", () => {
       row: 7,
       col: 8,
     });
+  });
+
+  it("finds winning lines at expanded-board edges", () => {
+    const dimensions = normalizeBoardDimensions({
+      height: 7,
+      rows: 8,
+      columns: 9,
+    });
+    const board = new Uint8Array(cellCount(dimensions));
+
+    for (let col = 5; col <= 8; col += 1) {
+      board[indexOf(0, 7, col, dimensions)] = 1;
+    }
+
+    const line = findWinningLine(
+      board,
+      { height: 0, row: 7, col: 8, player: 1, kind: "piece" },
+      DEFAULT_WIN_CONDITION,
+      dimensions,
+    );
+
+    expect(line).toEqual(
+      [5, 6, 7, 8].map((col) => indexOf(0, 7, col, dimensions)),
+    );
   });
 
   it("uses gravity when stacking pieces", () => {

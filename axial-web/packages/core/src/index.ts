@@ -697,7 +697,7 @@ function collectRay(
   let col = move.col + dc;
 
   while (
-    isInBounds(height, row, col) &&
+    isInBounds(height, row, col, dimensions) &&
     getCell(board, height, row, col, dimensions) === move.player
   ) {
     cells.push(indexOf(height, row, col, dimensions));

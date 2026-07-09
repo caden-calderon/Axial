@@ -161,6 +161,7 @@ export type RoomErrorCode =
   | "not-host"
   | "not-your-turn"
   | "illegal-move"
+  | "match-not-playable"
   | "stale-revision"
   | "rematch-expired"
   | "auth-failed"
@@ -168,10 +169,12 @@ export type RoomErrorCode =
   | "rate-limited"
   | "internal-error";
 
+export type RoomErrorDetailValue = string | number | boolean | null;
+
 export type RoomErrorPayload = {
   code: RoomErrorCode;
   message: string;
-  details?: Record<string, unknown>;
+  details?: Record<string, RoomErrorDetailValue>;
 };
 
 type ClientCommandBase<Type extends string, Payload = undefined> = {

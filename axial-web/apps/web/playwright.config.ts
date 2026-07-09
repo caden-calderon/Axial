@@ -12,10 +12,18 @@ export default defineConfig({
 	...(productionBaseUrl
 		? {}
 		: {
-				webServer: {
-					command: 'pnpm run build && pnpm run preview --host 127.0.0.1',
-					url: localBaseUrl,
-					reuseExistingServer: !process.env.CI
-				}
+				webServer: [
+					{
+						command: 'pnpm run build && pnpm run preview --host 127.0.0.1',
+						url: localBaseUrl,
+						reuseExistingServer: !process.env.CI
+					},
+					{
+						command:
+							'pnpm --dir ../multiplayer-worker exec wrangler dev --ip 127.0.0.1 --port 8787',
+						url: 'http://127.0.0.1:8787/health',
+						reuseExistingServer: !process.env.CI
+					}
+				]
 			})
 });

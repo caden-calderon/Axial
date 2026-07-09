@@ -599,8 +599,11 @@ export function createGameController() {
 
 		clearQueuedAiMove();
 		clearGameOverModalDelay();
-		const previousMoves = game.moveHistory.slice(0, -1).map(toMove);
-		redoMoves = [toMove(lastMove), ...redoMoves];
+		const moveCount = undoDecisionMoveCount(game, opponentMode);
+		const splitIndex = game.moveHistory.length - moveCount;
+		const previousMoves = game.moveHistory.slice(0, splitIndex).map(toMove);
+		const undoneMoves = game.moveHistory.slice(splitIndex).map(toMove);
+		redoMoves = [...undoneMoves, ...redoMoves];
 		game = replayMoves(previousMoves, winCondition, boardDimensions, startingPlayer);
 		hoveredMove = null;
 		lockedMove = null;
@@ -609,24 +612,33 @@ export function createGameController() {
 		gameOverDismissed = true;
 		gameOverModalReady = false;
 		saveActiveMatch();
+		queueAiMove();
 	}
 
 	function redoMove(): void {
-		const [nextMove, ...remainingMoves] = redoMoves;
-		if (!nextMove) return;
+		if (redoMoves.length === 0) return;
 
 		clearQueuedAiMove();
 		clearGameOverModalDelay();
 		moveError = '';
 
 		try {
-			game = replayMoves(
-				[...game.moveHistory.map(toMove), nextMove],
+			const moveCount = redoDecisionMoveCount(
+				game,
+				redoMoves,
+				opponentMode,
 				winCondition,
 				boardDimensions,
 				startingPlayer
 			);
-			redoMoves = remainingMoves;
+			const movesToRedo = redoMoves.slice(0, moveCount);
+			game = replayMoves(
+				[...game.moveHistory.map(toMove), ...movesToRedo],
+				winCondition,
+				boardDimensions,
+				startingPlayer
+			);
+			redoMoves = redoMoves.slice(moveCount);
 			hoveredMove = null;
 			lockedMove = null;
 			selectedSpecial = null;
@@ -634,6 +646,7 @@ export function createGameController() {
 			recordMatchOutcome();
 			queueGameOverModal();
 			saveActiveMatch();
+			queueAiMove();
 		} catch (error) {
 			moveError = error instanceof Error ? error.message : 'Move rejected';
 		}
@@ -653,6 +666,7 @@ export function createGameController() {
 		gameOverDismissed = true;
 		gameOverModalReady = false;
 		saveActiveMatch();
+		queueAiMove();
 	}
 
 	function dismissGameOver(): void {
@@ -1007,6 +1021,14 @@ export function createGameController() {
 		gameOverModalTimeout = null;
 	}
 
+	function destroy(): void {
+		aiSearchRequestId += 1;
+		aiThinking = false;
+		clearGameOverModalDelay();
+		classicAiClient?.terminate();
+		classicAiClient = null;
+	}
+
 	function getClassicAiClient(): ClassicAiClient {
 		classicAiClient ??= createClassicAiClient();
 		return classicAiClient;
@@ -1146,6 +1168,7 @@ export function createGameController() {
 			return winnerLabel;
 		},
 		dismissGameOver,
+		destroy,
 		hydrateFromStorage,
 		playMove,
 		selectOrPlayMove,
@@ -1364,7 +1387,70 @@ function parseBoardDimensions(
 	}
 }
 
-async function chooseAiMove(
+function undoDecisionMoveCount(game: GameSnapshot, opponentMode: OpponentMode): number {
+	const history = game.moveHistory;
+	const lastMove = history.at(-1);
+	if (!lastMove || opponentMode !== 'ai') return lastMove ? 1 : 0;
+
+	if (lastMove.player === 2) {
+		let count = trailingMovesForPlayer(history, history.length - 1, 2);
+		const precedingIndex = history.length - count - 1;
+		if (precedingIndex >= 0 && history[precedingIndex]?.player === 1) {
+			count += trailingMovesForPlayer(history, precedingIndex, 1);
+		}
+		return count;
+	}
+
+	if (game.status.state !== 'playing' || game.currentPlayer === 2) {
+		return trailingMovesForPlayer(history, history.length - 1, 1);
+	}
+
+	return 1;
+}
+
+function trailingMovesForPlayer(
+	history: readonly PlacedMove[],
+	startIndex: number,
+	player: Player
+): number {
+	let count = 0;
+	for (let index = startIndex; index >= 0 && history[index]?.player === player; index -= 1) {
+		count += 1;
+	}
+	return count;
+}
+
+function redoDecisionMoveCount(
+	game: GameSnapshot,
+	redoMoves: readonly ReplayMove[],
+	opponentMode: OpponentMode,
+	winCondition: WinCondition,
+	boardDimensions: BoardDimensions,
+	startingPlayer: Player
+): number {
+	if (opponentMode !== 'ai') return 1;
+
+	const existingMoves = game.moveHistory.map(toMove);
+	const startedOnAiTurn = game.status.state === 'playing' && game.currentPlayer === 2;
+
+	for (let count = 1; count <= redoMoves.length; count += 1) {
+		const replayed = replayMoves(
+			[...existingMoves, ...redoMoves.slice(0, count)],
+			winCondition,
+			boardDimensions,
+			startingPlayer
+		);
+		const replayedDecision = replayed.moveHistory.slice(existingMoves.length);
+		const includesAiMove = replayedDecision.some((move) => move.player === 2);
+
+		if (replayed.status.state !== 'playing') return count;
+		if ((startedOnAiTurn || includesAiMove) && replayed.currentPlayer === 1) return count;
+	}
+
+	return redoMoves.length;
+}
+
+export async function chooseAiMove(
 	game: GameSnapshot,
 	matchMode: MatchMode,
 	matchId: number,
@@ -1384,16 +1470,8 @@ async function chooseAiMove(
 		return (await getClassicAiClient().requestMove(game, options))?.move ?? chooseRandomMove(game);
 	} catch (error) {
 		if (isAbortError(error)) throw error;
-		return (await chooseMctsFallbackMove(game, options)) ?? chooseRandomMove(game);
+		return chooseRandomMove(game);
 	}
-}
-
-async function chooseMctsFallbackMove(
-	game: GameSnapshot,
-	options: ClassicAiSearchOptions
-): Promise<Move | null> {
-	const { chooseMctsMove } = await import('@axial/ai');
-	return chooseMctsMove(game, options);
 }
 
 export function classicAiSearchOptionsForGame(

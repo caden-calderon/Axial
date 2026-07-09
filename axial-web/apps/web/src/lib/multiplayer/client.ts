@@ -28,7 +28,7 @@ export function multiplayerHttpBase(): string {
 	if (configured) return configured;
 	if (!browser) return '';
 	if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-		return 'http://localhost:8787';
+		return `${window.location.protocol}//${window.location.hostname}:8787`;
 	}
 	return window.location.origin;
 }

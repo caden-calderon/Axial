@@ -76,6 +76,8 @@
 				winCondition: controller.winCondition
 			});
 			playMode = 'online';
+		} else {
+			playMode = controller.opponentMode;
 		}
 		if (searchParams.get('tour')?.toLowerCase() === 'reset') {
 			clearWelcomeTourSeen(localStorage);
@@ -110,6 +112,7 @@
 			document.removeEventListener('webkitfullscreenchange', updateFullscreenState);
 			window.removeEventListener('error', handleGlobalError);
 			window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+			controller.destroy();
 			online.destroy();
 			bridge.stop();
 			if (recoveryMessageTimeout) clearTimeout(recoveryMessageTimeout);
@@ -219,6 +222,7 @@
 
 	function setPlayMode(nextMode: PlayMode): void {
 		if (nextMode === playMode) return;
+		if (playMode === 'online' && online.hasRoom) return;
 
 		if (playMode !== 'online' && controller.setupLocked) {
 			controller.setOpponentMode(nextMode === 'online' ? controller.opponentMode : nextMode);
@@ -235,7 +239,6 @@
 			return;
 		}
 
-		if (playMode === 'online' && online.hasRoom) online.leaveRoom();
 		playMode = nextMode;
 		controller.setOpponentMode(nextMode);
 	}
@@ -399,7 +402,8 @@
 		pieceShape={controller.pieceShape}
 		pieceColors={controller.pieceColors}
 		setupLocked={activeSetupLocked}
-		playModeLocked={playMode !== 'online' && controller.setupLocked}
+		playModeLocked={(playMode !== 'online' && controller.setupLocked) ||
+			(playMode === 'online' && online.hasRoom)}
 		onlineRulesLocked={playMode === 'online'}
 		appearanceLocked={controller.appearanceLocked}
 		activeSpecialCharges={controller.activeSpecialCharges}
@@ -422,7 +426,6 @@
 		onRedo={controller.redoMove}
 		onToggleFullscreen={toggleFullscreen}
 		onPlayModeChange={setPlayMode}
-		onOpponentModeChange={controller.setOpponentMode}
 		onAiDifficultyChange={controller.setAiDifficulty}
 		onMatchModeChange={setActiveMatchMode}
 		onBoardDimensionChange={setActiveBoardDimension}

@@ -6,13 +6,13 @@ import type {
 export class RoomServiceError extends Error {
   readonly code: RoomErrorCode;
   readonly status: number;
-  readonly details?: Record<string, unknown>;
+  readonly details?: NonNullable<RoomErrorPayload["details"]>;
 
   constructor(
     code: RoomErrorCode,
     message: string,
     status = 400,
-    details?: Record<string, unknown>,
+    details?: NonNullable<RoomErrorPayload["details"]>,
   ) {
     super(message);
     this.name = "RoomServiceError";

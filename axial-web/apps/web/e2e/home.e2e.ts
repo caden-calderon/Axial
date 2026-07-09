@@ -18,8 +18,8 @@ test('Axial shell loads and renders the game canvas', async ({ page }) => {
 	await page.goto('/?tour=0');
 
 	await expect(page).toHaveTitle(/Axial/);
-	await expect(page.locator('.brand-title')).toHaveText('AXIAL');
-	await expect(page.locator('.board-dimensions')).toHaveText('6 x 6 x 7');
+	await expect(page.locator('.brand-title')).toHaveAccessibleName('AXIAL');
+	await expect(page.locator('.board-dimensions')).toHaveAccessibleName('6 x 6 x 7');
 	await expect(page.getByRole('group', { name: 'Opponent mode' })).toBeVisible();
 	await expect(
 		page.getByRole('button', { name: /enter fullscreen|exit fullscreen/i })
@@ -77,4 +77,29 @@ test('PWA install metadata is available', async ({ page, request }) => {
 			expect.objectContaining({ src: '/icons/axial-icon-512.png', sizes: '512x512' })
 		])
 	);
+});
+
+test('saved AI mode stays visually and behaviorally selected after reload', async ({ page }) => {
+	await page.goto('/?tour=0');
+
+	const modeGroup = page.getByRole('group', { name: 'Opponent mode' });
+	await modeGroup.getByRole('button', { name: 'AI', exact: true }).click();
+	await expect(modeGroup.getByRole('button', { name: 'AI', exact: true })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+	await expect(page.getByRole('group', { name: 'AI strength' })).toBeVisible();
+
+	await page.reload();
+
+	await expect(modeGroup.getByRole('button', { name: 'AI', exact: true })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+	await expect(modeGroup.getByRole('button', { name: 'Local', exact: true })).toHaveAttribute(
+		'aria-pressed',
+		'false'
+	);
+	await expect(page.getByRole('group', { name: 'AI strength' })).toBeVisible();
+	await expect(page.getByText('Your turn', { exact: true }).first()).toBeVisible();
 });
