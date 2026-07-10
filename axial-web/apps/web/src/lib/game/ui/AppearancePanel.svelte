@@ -39,9 +39,29 @@
 	} = $props();
 
 	const boardColorLabel = $derived(boardColor.toUpperCase());
+	const pieceShapeLabel = $derived(
+		PIECE_SHAPE_OPTIONS.find((option) => option.value === pieceShape)?.label ?? 'Piece'
+	);
+	const pieceColorsAreClose = $derived(
+		colorDistance(pieceColors.playerOne, pieceColors.playerTwo) < 72
+	);
 
 	function colorValue(event: Event): string {
 		return (event.currentTarget as HTMLInputElement).value;
+	}
+
+	function colorDistance(first: string, second: string): number {
+		const a = rgb(first);
+		const b = rgb(second);
+		return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+	}
+
+	function rgb(color: string): [number, number, number] {
+		return [
+			Number.parseInt(color.slice(1, 3), 16),
+			Number.parseInt(color.slice(3, 5), 16),
+			Number.parseInt(color.slice(5, 7), 16)
+		];
 	}
 </script>
 
@@ -72,71 +92,98 @@
 		/>
 	</label>
 
-	<div class="appearance-control piece-customizer" class:locked={appearanceLocked}>
-		<div class="control-label">
-			<Box size={13} strokeWidth={2} />
-			<span>Piece look</span>
+	{#if appearanceLocked}
+		<div class="locked-piece-summary">
+			<div class="locked-piece-title">
+				<Box size={15} strokeWidth={2} />
+				<span>
+					<strong>{pieceShapeLabel} pieces</strong>
+					<small>Style locked for this match</small>
+				</span>
+			</div>
+			<div class="locked-piece-bands" aria-label="Player piece markings">
+				<span style={`--piece-color: ${pieceColors.playerOne}`}>
+					<i></i>
+					P1 · 1 band
+				</span>
+				<span style={`--piece-color: ${pieceColors.playerTwo}`}>
+					<i></i>
+					P2 · 2 bands
+				</span>
+			</div>
 		</div>
+	{:else}
+		<div class="appearance-control piece-customizer">
+			<div class="control-label">
+				<Box size={13} strokeWidth={2} />
+				<span>Piece look</span>
+			</div>
 
-		<div class="mode-switch shape-switch" role="group" aria-label="Piece shape">
-			{#each PIECE_SHAPE_OPTIONS as option (option.value)}
-				<button
-					type="button"
-					class:selected={pieceShape === option.value}
-					aria-pressed={pieceShape === option.value}
-					disabled={appearanceLocked}
-					title={appearanceLocked ? 'Start a new match to edit pieces' : `${option.label} pieces`}
-					onclick={() => onPieceShapeChange(option.value)}
+			<div class="mode-switch shape-switch" role="group" aria-label="Piece shape">
+				{#each PIECE_SHAPE_OPTIONS as option (option.value)}
+					<button
+						type="button"
+						class:selected={pieceShape === option.value}
+						aria-pressed={pieceShape === option.value}
+						disabled={appearanceLocked}
+						title={appearanceLocked ? 'Start a new match to edit pieces' : `${option.label} pieces`}
+						onclick={() => onPieceShapeChange(option.value)}
+					>
+						{#if option.value === 'cube'}
+							<Box size={14} strokeWidth={2} />
+						{:else if option.value === 'orb'}
+							<Circle size={14} strokeWidth={2} />
+						{:else}
+							<Gem size={14} strokeWidth={2} />
+						{/if}
+						<span>{option.label}</span>
+					</button>
+				{/each}
+			</div>
+
+			<div class="piece-color-switch" role="group" aria-label="Piece colors">
+				<label
+					class="piece-color"
+					class:locked={appearanceLocked}
+					style={`--piece-color: ${pieceColors.playerOne}`}
+					title={appearanceLocked ? 'Start a new match to edit pieces' : 'Player 1 piece color'}
 				>
-					{#if option.value === 'cube'}
-						<Box size={14} strokeWidth={2} />
-					{:else if option.value === 'orb'}
-						<Circle size={14} strokeWidth={2} />
-					{:else}
-						<Gem size={14} strokeWidth={2} />
-					{/if}
-					<span>{option.label}</span>
-				</button>
-			{/each}
+					<span class="color-dot"></span>
+					<span>P1</span>
+					<Pipette size={12} strokeWidth={2.1} />
+					<input
+						type="color"
+						value={pieceColors.playerOne}
+						aria-label="Player 1 piece color"
+						disabled={appearanceLocked}
+						oninput={(event) => onPieceColorChange(1, colorValue(event))}
+					/>
+				</label>
+				<label
+					class="piece-color"
+					class:locked={appearanceLocked}
+					style={`--piece-color: ${pieceColors.playerTwo}`}
+					title={appearanceLocked ? 'Start a new match to edit pieces' : 'Player 2 piece color'}
+				>
+					<span class="color-dot"></span>
+					<span>P2</span>
+					<Pipette size={12} strokeWidth={2.1} />
+					<input
+						type="color"
+						value={pieceColors.playerTwo}
+						aria-label="Player 2 piece color"
+						disabled={appearanceLocked}
+						oninput={(event) => onPieceColorChange(2, colorValue(event))}
+					/>
+				</label>
+			</div>
+			{#if pieceColorsAreClose}
+				<p class="color-warning" role="status">
+					These colors are close. P1 uses one band; P2 uses two.
+				</p>
+			{/if}
 		</div>
-
-		<div class="piece-color-switch" role="group" aria-label="Piece colors">
-			<label
-				class="piece-color"
-				class:locked={appearanceLocked}
-				style={`--piece-color: ${pieceColors.playerOne}`}
-				title={appearanceLocked ? 'Start a new match to edit pieces' : 'Player 1 piece color'}
-			>
-				<span class="color-dot"></span>
-				<span>P1</span>
-				<Pipette size={12} strokeWidth={2.1} />
-				<input
-					type="color"
-					value={pieceColors.playerOne}
-					aria-label="Player 1 piece color"
-					disabled={appearanceLocked}
-					oninput={(event) => onPieceColorChange(1, colorValue(event))}
-				/>
-			</label>
-			<label
-				class="piece-color"
-				class:locked={appearanceLocked}
-				style={`--piece-color: ${pieceColors.playerTwo}`}
-				title={appearanceLocked ? 'Start a new match to edit pieces' : 'Player 2 piece color'}
-			>
-				<span class="color-dot"></span>
-				<span>P2</span>
-				<Pipette size={12} strokeWidth={2.1} />
-				<input
-					type="color"
-					value={pieceColors.playerTwo}
-					aria-label="Player 2 piece color"
-					disabled={appearanceLocked}
-					oninput={(event) => onPieceColorChange(2, colorValue(event))}
-				/>
-			</label>
-		</div>
-	</div>
+	{/if}
 
 	<div class="appearance-control">
 		<div class="control-label">

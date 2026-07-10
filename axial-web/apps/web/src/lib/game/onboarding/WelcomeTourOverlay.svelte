@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { ArrowLeft, ArrowRight, Check, X } from '@lucide/svelte';
 	import {
 		WELCOME_TOUR_STEP_COUNT,
@@ -8,15 +8,20 @@
 		type WelcomeTourPlacement
 	} from './welcomeTourSteps';
 	import TypedTourHeading from './TypedTourHeading.svelte';
+	import DialogShell from '../ui/DialogShell.svelte';
 
 	let {
 		onComplete,
 		onSkip,
-		onPanelExpandedChange
+		onPanelExpandedChange,
+		onPractice,
+		initialStepIndex = 0
 	}: {
 		onComplete: () => void;
 		onSkip: () => void;
 		onPanelExpandedChange: (expanded: boolean | null) => void;
+		onPractice: (resumeStepIndex: number) => void;
+		initialStepIndex?: number;
 	} = $props();
 
 	type Rect = {
@@ -39,7 +44,7 @@
 	const initialViewportWidth = typeof window === 'undefined' ? 0 : window.innerWidth;
 	const initialViewportHeight = typeof window === 'undefined' ? 0 : window.innerHeight;
 
-	let stepIndex = $state(0);
+	let stepIndex = $state(untrack(() => initialStepIndex));
 	let targetRect = $state<Rect | null>(null);
 	let viewportWidth = $state(initialViewportWidth);
 	let viewportHeight = $state(initialViewportHeight);
@@ -52,7 +57,6 @@
 	let glowCurrent = { x: 50, y: 0, edge: 0 };
 	let glowTarget = { x: 50, y: 0, edge: 0 };
 	let headingRevealToken = 0;
-	let tourDialog: HTMLElement | null = null;
 	let tourCard: HTMLElement | null = null;
 
 	const currentStep = $derived(WELCOME_TOUR_STEPS[stepIndex] as WelcomeTourStep);
@@ -69,7 +73,6 @@
 	);
 
 	onMount(() => {
-		tourDialog?.focus();
 		viewportWidth = window.innerWidth;
 		viewportHeight = window.innerHeight;
 		startTargetTracking();
@@ -151,6 +154,15 @@
 		stepIndex += 1;
 	}
 
+	function advanceOrPractice(): void {
+		if (currentStep.practice) {
+			prepareStepTransition();
+			onPractice(Math.min(stepIndex + 1, WELCOME_TOUR_STEP_COUNT - 1));
+			return;
+		}
+		nextStep();
+	}
+
 	function skipTour(): void {
 		onSkip();
 	}
@@ -190,7 +202,7 @@
 
 		if (event.key === 'ArrowRight') {
 			event.preventDefault();
-			nextStep();
+			advanceOrPractice();
 			return;
 		}
 
@@ -518,94 +530,95 @@
 	}
 </script>
 
-<div
-	class="tour-overlay"
-	class:has-spotlight={hasSpotlight}
-	role="dialog"
-	aria-modal="true"
-	aria-labelledby="welcome-tour-title"
-	aria-describedby="welcome-tour-body"
-	tabindex="-1"
-	bind:this={tourDialog}
-	onkeydown={handleKeydown}
+<DialogShell
+	labelledby="welcome-tour-title"
+	describedby="welcome-tour-body"
+	initialFocusSelector=".tour-next"
+	onEscape={skipTour}
+	onKeydown={handleKeydown}
 >
-	{#if hasSpotlight}
-		<div class="tour-spotlight" style={spotlightStyle} aria-hidden="true"></div>
-	{:else}
-		<div class="tour-scrim" aria-hidden="true"></div>
-	{/if}
+	<div class="tour-overlay" class:has-spotlight={hasSpotlight}>
+		{#if hasSpotlight}
+			<div class="tour-spotlight" style={spotlightStyle} aria-hidden="true"></div>
+		{:else}
+			<div class="tour-scrim" aria-hidden="true"></div>
+		{/if}
 
-	<section
-		class="tour-card"
-		role="group"
-		aria-label={`${currentStep.title} tour step`}
-		style={cardStyle}
-		data-tour-step={currentStep.id}
-		bind:this={tourCard}
-		onpointermove={handleCardPointerMove}
-		onpointerleave={handleCardPointerLeave}
-	>
-		<span class="tour-edge-light" aria-hidden="true"></span>
-		<div class="tour-card-inner">
-			<div class="tour-topline">
-				<span>{currentStep.kicker}</span>
-				<small>{progressLabel}</small>
-			</div>
+		<section
+			class="tour-card"
+			role="group"
+			aria-label={`${currentStep.title} tour step`}
+			style={cardStyle}
+			data-tour-step={currentStep.id}
+			bind:this={tourCard}
+			onpointermove={handleCardPointerMove}
+			onpointerleave={handleCardPointerLeave}
+		>
+			<span class="tour-edge-light" aria-hidden="true"></span>
+			<div class="tour-card-inner">
+				<div class="tour-topline">
+					<span>{currentStep.kicker}</span>
+					<small>{progressLabel}</small>
+				</div>
 
-			<div class="tour-copy">
-				<h2
-					id="welcome-tour-title"
-					class:tour-welcome-title={currentStep.id === 'welcome'}
-					aria-label={currentStep.title}
-				>
-					{#key currentStep.id}
-						<TypedTourHeading
-							text={currentStep.title}
-							shineText={currentStep.id === 'welcome' ? 'Axial' : ''}
-							onComplete={() => handleHeadingComplete(currentStep.id, headingRevealToken)}
-						/>
-					{/key}
-				</h2>
-				{#key currentStep.id}
-					<p id="welcome-tour-body" class:visible={headingSettled}>{currentStep.body}</p>
-				{/key}
-			</div>
-
-			<div class="tour-progress" aria-hidden="true">
-				{#each WELCOME_TOUR_STEPS as step, index (step.id)}
-					<span class:active={index <= stepIndex}></span>
-				{/each}
-			</div>
-
-			<div class="tour-actions">
-				<button type="button" class="tour-skip" onclick={skipTour}>
-					<X size={14} strokeWidth={2.2} />
-					<span>Skip</span>
-				</button>
-
-				<div>
-					<button
-						type="button"
-						disabled={isFirstStep}
-						onclick={previousStep}
-						aria-label="Previous step"
+				<div class="tour-copy">
+					<h2
+						id="welcome-tour-title"
+						class:tour-welcome-title={currentStep.id === 'welcome'}
+						aria-label={currentStep.title}
 					>
-						<ArrowLeft size={15} strokeWidth={2.2} />
+						{#key currentStep.id}
+							<TypedTourHeading
+								text={currentStep.title}
+								shineText={currentStep.id === 'welcome' ? 'Axial' : ''}
+								onComplete={() => handleHeadingComplete(currentStep.id, headingRevealToken)}
+							/>
+						{/key}
+					</h2>
+					{#key currentStep.id}
+						<p id="welcome-tour-body" class:visible={headingSettled}>{currentStep.body}</p>
+					{/key}
+				</div>
+
+				<div class="tour-progress" aria-hidden="true">
+					{#each WELCOME_TOUR_STEPS as step, index (step.id)}
+						<span class:active={index <= stepIndex}></span>
+					{/each}
+				</div>
+
+				<div class="tour-actions">
+					<button type="button" class="tour-skip" onclick={skipTour}>
+						<X size={14} strokeWidth={2.2} />
+						<span>Skip</span>
 					</button>
-					<button type="button" class="tour-next" onclick={nextStep}>
-						{#if isLastStep}
-							<Check size={15} strokeWidth={2.2} />
-							<span>Finish</span>
-						{:else}
-							<span>Next</span>
-							<ArrowRight size={15} strokeWidth={2.2} />
-						{/if}
-					</button>
+
+					<div>
+						<button
+							type="button"
+							disabled={isFirstStep}
+							onclick={previousStep}
+							aria-label="Previous step"
+						>
+							<ArrowLeft size={15} strokeWidth={2.2} />
+						</button>
+						<button type="button" class="tour-next" onclick={advanceOrPractice}>
+							{#if isLastStep}
+								<Check size={15} strokeWidth={2.2} />
+								<span>Finish</span>
+							{:else if currentStep.practice}
+								<span>Try it</span>
+								<ArrowRight size={15} strokeWidth={2.2} />
+							{:else}
+								<span>Next</span>
+								<ArrowRight size={15} strokeWidth={2.2} />
+							{/if}
+						</button>
+					</div>
 				</div>
 			</div>
-		</div>
-	</section>
-</div>
+		</section>
+	</div>
+</DialogShell>
 
 <style>
 	.tour-overlay {

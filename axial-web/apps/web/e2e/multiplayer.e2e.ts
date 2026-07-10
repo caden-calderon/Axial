@@ -7,6 +7,7 @@ test('two players can start, enforce countdown, reconnect, and leave cleanly', a
 	page: hostPage
 }) => {
 	test.skip(Boolean(process.env.PLAYWRIGHT_BASE_URL), 'Local Worker integration test');
+	test.setTimeout(90_000);
 
 	const guestContext = await browser.newContext({ baseURL: LOCAL_BASE_URL });
 	const guestPage = await guestContext.newPage();

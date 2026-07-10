@@ -1,5 +1,4 @@
 <script lang="ts">
-	import QRCode from 'qrcode';
 	import {
 		Check,
 		Copy,
@@ -25,16 +24,20 @@
 		}
 
 		let active = true;
-		void QRCode.toDataURL(payload, {
-			margin: 1,
-			width: 164,
-			color: {
-				dark: '#10231b',
-				light: '#eef8f1'
-			}
-		}).then((dataUrl) => {
-			if (active) qrDataUrl = dataUrl;
-		});
+		void import('qrcode')
+			.then(({ default: QRCode }) =>
+				QRCode.toDataURL(payload, {
+					margin: 1,
+					width: 164,
+					color: {
+						dark: '#10231b',
+						light: '#eef8f1'
+					}
+				})
+			)
+			.then((dataUrl) => {
+				if (active) qrDataUrl = dataUrl;
+			});
 
 		return () => {
 			active = false;

@@ -32,29 +32,52 @@ const BASE_SCENE_PALETTES: Record<UiThemeName, ScenePalette> = {
 		preview: DEFAULT_BOARD_COLOR
 	},
 	light: {
-		background: '#ebe8e4',
-		fog: '#d5d0d6',
+		background: '#d9d6d0',
+		fog: '#aaa7ad',
 		grid: DEFAULT_BOARD_COLOR,
 		gridEmissive: DEFAULT_BOARD_COLOR,
 		hover: DEFAULT_BOARD_COLOR,
-		playerOne: '#aa5e6d',
-		playerOneGlow: '#cc7587',
-		playerTwo: '#347c72',
-		playerTwoGlow: '#5aa79b',
+		playerOne: '#9d4359',
+		playerOneGlow: '#c95c74',
+		playerTwo: '#17685e',
+		playerTwoGlow: '#318f82',
 		preview: DEFAULT_BOARD_COLOR
 	}
 };
 
 export function resolveScenePalette(uiTheme: UiThemeName, boardColor: string): ScenePalette {
 	const gridColor = normalizeBoardColor(boardColor);
+	const renderedGridColor =
+		uiTheme === 'light' ? mixHexColor(gridColor, '#28233a', 0.42) : gridColor;
+	const renderedEmissiveColor =
+		uiTheme === 'light' ? mixHexColor(gridColor, '#473a6f', 0.28) : gridColor;
 
 	return {
 		...BASE_SCENE_PALETTES[uiTheme],
-		grid: gridColor,
-		gridEmissive: gridColor,
+		grid: renderedGridColor,
+		gridEmissive: renderedEmissiveColor,
 		hover: gridColor,
 		preview: gridColor
 	};
+}
+
+function mixHexColor(first: string, second: string, secondWeight: number): string {
+	const weight = Math.max(0, Math.min(1, secondWeight));
+	const firstChannels = channels(first);
+	const secondChannels = channels(second);
+	const mixed = firstChannels.map((channel, index) =>
+		Math.round(channel * (1 - weight) + secondChannels[index] * weight)
+	);
+
+	return `#${mixed.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function channels(color: string): [number, number, number] {
+	return [
+		Number.parseInt(color.slice(1, 3), 16),
+		Number.parseInt(color.slice(3, 5), 16),
+		Number.parseInt(color.slice(5, 7), 16)
+	];
 }
 
 export function normalizeBoardColor(

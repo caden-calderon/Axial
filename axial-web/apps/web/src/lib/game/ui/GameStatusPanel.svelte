@@ -3,7 +3,11 @@
 	import {
 		Boxes,
 		ChevronUp,
+		ChevronsDownUp,
+		ChevronsUpDown,
 		CopyPlus,
+		Focus,
+		HelpCircle,
 		Maximize2,
 		Minimize2,
 		Moon,
@@ -87,7 +91,10 @@
 		onToggleConfirmDrop,
 		onToggleGridLayers,
 		onToggleLabels,
-		onToggleTheme
+		onToggleTheme,
+		onExpandedChange,
+		onResetView,
+		onShowHelp
 	}: {
 		statusTitle: string;
 		moveCount: number;
@@ -144,10 +151,14 @@
 		onToggleGridLayers: () => void;
 		onToggleLabels: () => void;
 		onToggleTheme: () => void;
+		onExpandedChange?: (expanded: boolean) => void;
+		onResetView: () => void;
+		onShowHelp: () => void;
 	} = $props();
 
 	let expanded = $state(true);
 	let piecesMode = $state(false);
+	let sheetFull = $state(false);
 	const panelExpanded = $derived(forcedExpanded ?? expanded);
 	const moveLabel = $derived(`${moveCount} ${moveCount === 1 ? 'move' : 'moves'}`);
 	const specialStatus = $derived(
@@ -168,9 +179,18 @@
 		if (forcedExpanded !== null) expanded = forcedExpanded;
 	});
 
+	$effect(() => {
+		onExpandedChange?.(panelExpanded);
+	});
+
 	function toggleExpanded(): void {
 		if (forcedExpanded !== null) return;
 		expanded = !expanded;
+		if (!expanded) sheetFull = false;
+	}
+
+	function toggleSheetSize(): void {
+		sheetFull = !sheetFull;
 	}
 
 	function togglePiecesMode(): void {
@@ -185,7 +205,12 @@
 	}
 </script>
 
-<section class="control-panel" class:collapsed={!panelExpanded} data-tour-target="control-panel">
+<section
+	class="control-panel"
+	class:collapsed={!panelExpanded}
+	class:sheet-full={sheetFull}
+	data-tour-target="control-panel"
+>
 	<div
 		class="panel-toolbar"
 		class:pieces-mode={piecesMode && matchMode === 'tactical'}
@@ -335,6 +360,35 @@
 				{:else}
 					<PanelLiveStrip label="Now" title={statusTitle} meta={moveLabel} />
 
+					<div class="panel-quick-actions" aria-label="Board help">
+						<button type="button" onclick={onShowHelp}>
+							<HelpCircle size={15} strokeWidth={2} />
+							<span>How to play</span>
+						</button>
+						<button type="button" onclick={onResetView}>
+							<Focus size={15} strokeWidth={2} />
+							<span>Reset view</span>
+						</button>
+						<button
+							class="sheet-size-button"
+							type="button"
+							aria-pressed={sheetFull}
+							onclick={toggleSheetSize}
+						>
+							{#if sheetFull}
+								<ChevronsDownUp size={15} strokeWidth={2} />
+								<span>Half sheet</span>
+							{:else}
+								<ChevronsUpDown size={15} strokeWidth={2} />
+								<span>Full sheet</span>
+							{/if}
+						</button>
+					</div>
+
+					{#if playMode === 'online'}
+						<OnlineRoomPanel {online} />
+					{/if}
+
 					<MatchSettingsPanel
 						{playMode}
 						{aiDifficulty}
@@ -352,10 +406,6 @@
 						{onWinLineLengthChange}
 						{onLinesToWinChange}
 					/>
-
-					{#if playMode === 'online'}
-						<OnlineRoomPanel {online} />
-					{/if}
 
 					<AppearancePanel
 						{boardColor}

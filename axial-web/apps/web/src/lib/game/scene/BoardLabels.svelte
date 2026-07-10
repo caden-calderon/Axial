@@ -112,7 +112,7 @@
 	const numberFontSize = $derived(compact ? 0.255 : 0.2);
 	const axisFontSize = $derived(compact ? 0.33 : 0.3);
 	const numberFillOpacity = $derived(
-		uiTheme === 'dark' ? (compact ? 0.48 : 0.28) : compact ? 0.74 : 0.56
+		uiTheme === 'dark' ? (compact ? 0.48 : 0.28) : compact ? 0.82 : 0.68
 	);
 	const numberOutlineOpacity = $derived(
 		uiTheme === 'dark' ? (compact ? 0.07 : 0.16) : compact ? 0.04 : 0.055
@@ -120,7 +120,7 @@
 	const numberOutlineWidth = $derived(compact ? 0.052 : uiTheme === 'dark' ? 0.1 : 0.066);
 	const numberOutlineGlow = $derived(compact ? 0.032 : uiTheme === 'dark' ? 0.09 : 0.042);
 	const numberFillGlow = $derived(compact ? 0.004 : uiTheme === 'dark' ? 0.02 : 0.006);
-	const axisFillOpacity = $derived(uiTheme === 'dark' ? 0.36 : compact ? 0.42 : 0.52);
+	const axisFillOpacity = $derived(uiTheme === 'dark' ? 0.36 : compact ? 0.58 : 0.64);
 	const axisOutlineOpacity = $derived(uiTheme === 'dark' ? 0.21 : compact ? 0.14 : 0.08);
 	const axisOutlineWidth = $derived(uiTheme === 'dark' ? 0.1 : 0.07);
 	const axisOutlineGlow = $derived(uiTheme === 'dark' ? 0.09 : 0.042);

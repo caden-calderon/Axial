@@ -19,7 +19,7 @@ test('Axial shell loads and renders the game canvas', async ({ page }) => {
 
 	await expect(page).toHaveTitle(/Axial/);
 	await expect(page.locator('.brand-title')).toHaveAccessibleName('AXIAL');
-	await expect(page.locator('.board-dimensions')).toHaveAccessibleName('6 x 6 x 7');
+	await expect(page.locator('.board-dimensions .sr-only')).toHaveText('6 x 6 x 7');
 	await expect(page.getByRole('group', { name: 'Opponent mode' })).toBeVisible();
 	await expect(
 		page.getByRole('button', { name: /enter fullscreen|exit fullscreen/i })

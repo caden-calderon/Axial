@@ -13,6 +13,10 @@ swapping between rematches. Production browser smoke from this machine has previ
 by the local CSU/HFS recursive DNS path returning stale/bad `*.playaxial.dev` records even though
 Cloudflare authoritative DNS and Google DNS returned the correct Cloudflare records.
 
+2026-07-09 UI pass: the full desktop/mobile implementation and local QA are complete; details,
+checks, and remaining physical-PWA smoke live in `dev/active/axial-ui-pass/`. Collapsed mobile
+intentionally keeps turn/status hidden.
+
 2026-07-09 hardening closes the main post-MVP correctness gaps: countdown timing is enforced by the
 Worker, WebSocket and HTTPS fallback presence coexist safely, HTTP-only presence expires, client
 snapshots cannot regress, room URLs survive reload, explicit Leave expires the private room, and the

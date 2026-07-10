@@ -513,6 +513,19 @@ export function createOnlineController() {
 		);
 	}
 
+	function confirmSelectedMove(): void {
+		if (!lockedMove) return;
+		const moveToPlay = lockedMove;
+		lockedMove = null;
+		playMove(moveToPlay);
+	}
+
+	function cancelSelectedMove(): void {
+		lockedMove = null;
+		hoveredMove = null;
+		error = '';
+	}
+
 	function setHover(move: Move | null): void {
 		hoveredMove = move;
 	}
@@ -837,6 +850,8 @@ export function createOnlineController() {
 			return yourTurn;
 		},
 		copyInvite,
+		confirmSelectedMove,
+		cancelSelectedMove,
 		createPrivateRoom,
 		dismissResultOverlay,
 		destroy,

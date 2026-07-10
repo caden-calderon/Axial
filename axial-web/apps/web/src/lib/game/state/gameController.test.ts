@@ -185,6 +185,23 @@ describe('game controller appearance lock', () => {
 		expect(controller.game.moveHistory[0]).toMatchObject({ row: 0, col: 1 });
 	});
 
+	it('confirms or cancels an armed move through explicit controls', () => {
+		const controller = createGameController();
+
+		controller.toggleConfirmDrop();
+		controller.selectOrPlayMove({ row: 2, col: 3 });
+		controller.cancelSelectedMove();
+
+		expect(controller.lockedMove).toBeNull();
+		expect(controller.game.moveHistory).toHaveLength(0);
+
+		controller.selectOrPlayMove({ row: 2, col: 3 });
+		controller.confirmSelectedMove();
+
+		expect(controller.lockedMove).toBeNull();
+		expect(controller.game.moveHistory[0]).toMatchObject({ row: 2, col: 3 });
+	});
+
 	it('toggles grid layers independently from axis labels', () => {
 		const controller = createGameController();
 

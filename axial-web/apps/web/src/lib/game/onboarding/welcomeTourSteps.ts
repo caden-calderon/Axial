@@ -9,6 +9,7 @@ export type WelcomeTourStep = {
 	targetPadding?: number;
 	panelExpanded: boolean | null;
 	placement?: WelcomeTourPlacement;
+	practice?: boolean;
 };
 
 export const WELCOME_TOUR_STEPS = [
@@ -22,11 +23,12 @@ export const WELCOME_TOUR_STEPS = [
 	},
 	{
 		id: 'board',
-		kicker: 'Board',
-		title: 'Read the grid in 3D',
-		body: 'Hover or tap a square to preview the gravity drop. The piece lands in the lowest open cell for that row and column.',
+		kicker: 'Your turn',
+		title: 'Try the board safely',
+		body: 'Drag to orbit. Pinch or scroll to zoom. Then tap a column—or use the arrow keys and Enter—to stage a practice drop. It will not change your match.',
 		panelExpanded: false,
-		placement: 'center'
+		placement: 'center',
+		practice: true
 	},
 	{
 		id: 'menu-toggle',

@@ -105,6 +105,8 @@
 		will-change: background-position;
 		animation: shiny-text-sweep var(--shiny-cycle) linear infinite;
 		animation-direction: var(--shiny-direction);
+		animation-fill-mode: both;
+		animation-iteration-count: 1;
 	}
 
 	.shiny-text[data-pause-on-hover='true']:hover {

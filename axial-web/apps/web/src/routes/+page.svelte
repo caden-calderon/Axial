@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import type { MatchMode, Move } from '@axial/core';
+	import { onMount, tick } from 'svelte';
+	import { getDropHeight, type MatchMode, type Move } from '@axial/core';
 	import { createAxialBridgeController } from '$lib/game/bridge/bridgeController';
 	import AxialScene from '$lib/game/scene/AxialScene.svelte';
 	import WelcomeTourOverlay from '$lib/game/onboarding/WelcomeTourOverlay.svelte';
+	import TourPracticeBanner from '$lib/game/onboarding/TourPracticeBanner.svelte';
 	import {
 		clearWelcomeTourSeen,
 		hasSeenWelcomeTour,
@@ -15,6 +16,7 @@
 	import GameHud from '$lib/game/ui/GameHud.svelte';
 	import OnlineMatchOverlay from '$lib/game/ui/OnlineMatchOverlay.svelte';
 	import GameStatusPanel from '$lib/game/ui/GameStatusPanel.svelte';
+	import MoveConfirmBar from '$lib/game/ui/MoveConfirmBar.svelte';
 	import {
 		createOnlineController,
 		type BoardDimensionKey
@@ -29,7 +31,14 @@
 	let fullscreenAvailable = $state(false);
 	let fullscreenActive = $state(false);
 	let welcomeTourActive = $state(false);
+	let welcomeTourStartStep = $state(0);
+	let welcomePracticeActive = $state(false);
+	let welcomePracticeMove = $state<Move | null>(null);
+	let welcomePracticeHover = $state<Move | null>(null);
 	let welcomeTourPanelExpanded = $state<boolean | null>(null);
+	let welcomeTourRestorePanelExpanded = $state(false);
+	let controlsExpanded = $state(true);
+	let viewResetKey = $state(0);
 	let welcomeTourPanelResetTimeout: number | null = null;
 	let sceneEpoch = $state(0);
 	let recoveryMessage = $state('');
@@ -58,10 +67,22 @@
 	);
 	const activeMoveError = $derived(playMode === 'online' ? online.moveError : controller.moveError);
 	const activePreviewMove = $derived(
-		playMode === 'online' ? online.previewMove : controller.previewMove
+		welcomePracticeActive
+			? (welcomePracticeMove ?? welcomePracticeHover)
+			: playMode === 'online'
+				? online.previewMove
+				: controller.previewMove
 	);
 	const activeLockedMove = $derived(
 		playMode === 'online' ? online.lockedMove : controller.lockedMove
+	);
+	const activeLandingHeight = $derived(
+		activeLockedMove ? getDropHeight(activeGame.board, activeLockedMove, activeBoardDimensions) : -1
+	);
+	const welcomePracticeLandingHeight = $derived(
+		welcomePracticeMove
+			? getDropHeight(activeGame.board, welcomePracticeMove, activeBoardDimensions)
+			: -1
 	);
 
 	onMount(() => {
@@ -91,6 +112,7 @@
 				hasSeenTour: hasSeenWelcomeTour(localStorage)
 			})
 		) {
+			welcomeTourRestorePanelExpanded = false;
 			welcomeTourActive = true;
 			welcomeTourPanelExpanded = false;
 		}
@@ -244,6 +266,10 @@
 	}
 
 	function setSceneHover(move: Move | null): void {
+		if (welcomePracticeActive) {
+			welcomePracticeHover = move;
+			return;
+		}
 		if (playMode === 'online') {
 			online.setHover(move);
 			return;
@@ -252,11 +278,37 @@
 	}
 
 	function playSceneMove(move: Move): void {
+		if (welcomePracticeActive) {
+			welcomePracticeMove = { ...move };
+			welcomePracticeHover = { ...move };
+			return;
+		}
 		if (playMode === 'online') {
 			online.selectOrPlayMove(move, controller.confirmDropEnabled);
 			return;
 		}
 		controller.selectOrPlayMove(move);
+	}
+
+	function confirmSceneMove(): void {
+		if (playMode === 'online') {
+			online.confirmSelectedMove();
+			return;
+		}
+		controller.confirmSelectedMove();
+	}
+
+	function cancelSceneMove(): void {
+		if (welcomePracticeActive) {
+			welcomePracticeMove = null;
+			welcomePracticeHover = null;
+			return;
+		}
+		if (playMode === 'online') {
+			online.cancelSelectedMove();
+			return;
+		}
+		controller.cancelSelectedMove();
 	}
 
 	function setActiveMatchMode(mode: MatchMode): void {
@@ -299,6 +351,45 @@
 		welcomeTourPanelExpanded = expanded;
 	}
 
+	function startWelcomeTour(): void {
+		welcomeTourRestorePanelExpanded = controlsExpanded;
+		welcomeTourStartStep = 0;
+		welcomeTourActive = true;
+		welcomePracticeActive = false;
+		welcomePracticeMove = null;
+		welcomePracticeHover = null;
+		welcomeTourPanelExpanded = false;
+	}
+
+	function beginWelcomePractice(resumeStepIndex: number): void {
+		welcomeTourStartStep = resumeStepIndex;
+		welcomeTourActive = false;
+		welcomePracticeActive = true;
+		welcomePracticeMove = null;
+		welcomePracticeHover = null;
+		welcomeTourPanelExpanded = false;
+		void tick().then(() => document.querySelector<HTMLElement>('.scene-shell')?.focus());
+	}
+
+	function resumeWelcomeTour(): void {
+		welcomePracticeActive = false;
+		welcomePracticeMove = null;
+		welcomePracticeHover = null;
+		welcomeTourActive = true;
+	}
+
+	function exitWelcomePractice(): void {
+		markWelcomeTourSeen(localStorage);
+		welcomePracticeActive = false;
+		welcomePracticeMove = null;
+		welcomePracticeHover = null;
+		closeWelcomeTour();
+	}
+
+	function resetView(): void {
+		viewResetKey += 1;
+	}
+
 	function completeWelcomeTour(): void {
 		markWelcomeTourSeen(localStorage);
 		closeWelcomeTour();
@@ -311,7 +402,10 @@
 
 	function closeWelcomeTour(): void {
 		welcomeTourActive = false;
-		welcomeTourPanelExpanded = false;
+		welcomePracticeActive = false;
+		welcomePracticeMove = null;
+		welcomePracticeHover = null;
+		welcomeTourPanelExpanded = welcomeTourRestorePanelExpanded;
 		welcomeTourPanelResetTimeout = window.setTimeout(() => {
 			welcomeTourPanelExpanded = null;
 			welcomeTourPanelResetTimeout = null;
@@ -349,7 +443,7 @@
 			<AxialScene
 				game={activeGame}
 				hoveredMove={activePreviewMove}
-				previewLocked={activeLockedMove !== null}
+				previewLocked={welcomePracticeMove !== null || activeLockedMove !== null}
 				labelsVisible={controller.labelsVisible}
 				gridLayersVisible={controller.gridLayersVisible}
 				uiTheme={controller.uiTheme}
@@ -358,8 +452,11 @@
 				pieceColors={controller.pieceColors}
 				placementMode={playMode === 'online' ? 'piece' : controller.placementMode}
 				doubleAdjacentAnchor={playMode === 'online' ? null : controller.pendingDoubleAdjacentOrigin}
+				{controlsExpanded}
+				{viewResetKey}
 				onHover={setSceneHover}
 				onPlay={playSceneMove}
+				onCancelSelection={cancelSceneMove}
 				onRecoverableError={handleRecoverableSceneError}
 			/>
 		{/key}
@@ -440,7 +537,29 @@
 		onToggleGridLayers={controller.toggleGridLayers}
 		onToggleLabels={controller.toggleLabels}
 		onToggleTheme={controller.toggleTheme}
+		onExpandedChange={(expanded) => (controlsExpanded = expanded)}
+		onResetView={resetView}
+		onShowHelp={startWelcomeTour}
 	/>
+
+	{#if activeLockedMove && activeLandingHeight >= 0}
+		<MoveConfirmBar
+			move={activeLockedMove}
+			landingHeight={activeLandingHeight}
+			{controlsExpanded}
+			onConfirm={confirmSceneMove}
+			onCancel={cancelSceneMove}
+		/>
+	{/if}
+
+	{#if welcomePracticeActive}
+		<TourPracticeBanner
+			move={welcomePracticeMove}
+			landingHeight={welcomePracticeLandingHeight}
+			onContinue={resumeWelcomeTour}
+			onExit={exitWelcomePractice}
+		/>
+	{/if}
 
 	{#if playMode !== 'online' && controller.showGameOverModal}
 		<GameOverModal
@@ -463,8 +582,10 @@
 
 	{#if welcomeTourActive}
 		<WelcomeTourOverlay
+			initialStepIndex={welcomeTourStartStep}
 			onComplete={completeWelcomeTour}
 			onSkip={skipWelcomeTour}
+			onPractice={beginWelcomePractice}
 			onPanelExpandedChange={setWelcomeTourPanelExpanded}
 		/>
 	{/if}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Eye, Play, RotateCcw, Trophy } from '@lucide/svelte';
 	import type { GameStatus } from '@axial/core';
+	import DialogShell from './DialogShell.svelte';
 
 	let {
 		status,
@@ -30,58 +31,65 @@
 	);
 </script>
 
-<div class="game-over-backdrop">
-	<dialog class="game-over-dialog" aria-labelledby="game-over-title" open>
-		<div class="result-header">
-			<div class="result-mark" data-result={status.state}>
-				<Trophy size={26} strokeWidth={1.7} />
+<DialogShell
+	labelledby="game-over-title"
+	describedby="game-over-detail"
+	initialFocusSelector=".modal-button.primary"
+	onEscape={onKeepBoard}
+>
+	<div class="game-over-backdrop">
+		<section class="game-over-dialog">
+			<div class="result-header">
+				<div class="result-mark" data-result={status.state}>
+					<Trophy size={26} strokeWidth={1.7} />
+				</div>
+
+				<p class="result-kicker">Game over</p>
+				<h2 id="game-over-title">{title}</h2>
+				<p id="game-over-detail" class="result-detail">{resultDetail}</p>
 			</div>
 
-			<p class="result-kicker">Game over</p>
-			<h2 id="game-over-title">{title}</h2>
-			<p class="result-detail">{resultDetail}</p>
-		</div>
-
-		<div class="modal-actions">
-			<button
-				class="modal-button primary"
-				type="button"
-				aria-label="Start a new match with an empty board"
-				onclick={onNewMatch}
-			>
-				<span class="button-icon"><RotateCcw size={17} strokeWidth={1.9} /></span>
-				<span class="button-copy">
-					<strong>New match</strong>
-					<small>Clear the board</small>
-				</span>
-			</button>
-			<button
-				class="modal-button"
-				type="button"
-				aria-label="Rewind this match to the start and step through it with redo"
-				onclick={onReviewFromStart}
-			>
-				<span class="button-icon"><Play size={17} strokeWidth={1.9} /></span>
-				<span class="button-copy">
-					<strong>Review from start</strong>
-					<small>Step with redo</small>
-				</span>
-			</button>
-			<button
-				class="modal-button"
-				type="button"
-				aria-label="Dismiss the result and keep the final board visible"
-				onclick={onKeepBoard}
-			>
-				<span class="button-icon"><Eye size={17} strokeWidth={1.9} /></span>
-				<span class="button-copy">
-					<strong>Keep board</strong>
-					<small>Dismiss result</small>
-				</span>
-			</button>
-		</div>
-	</dialog>
-</div>
+			<div class="modal-actions">
+				<button
+					class="modal-button primary"
+					type="button"
+					aria-label="Start a new match with an empty board"
+					onclick={onNewMatch}
+				>
+					<span class="button-icon"><RotateCcw size={17} strokeWidth={1.9} /></span>
+					<span class="button-copy">
+						<strong>New match</strong>
+						<small>Clear the board</small>
+					</span>
+				</button>
+				<button
+					class="modal-button"
+					type="button"
+					aria-label="Rewind this match to the start and step through it with redo"
+					onclick={onReviewFromStart}
+				>
+					<span class="button-icon"><Play size={17} strokeWidth={1.9} /></span>
+					<span class="button-copy">
+						<strong>Review from start</strong>
+						<small>Step with redo</small>
+					</span>
+				</button>
+				<button
+					class="modal-button"
+					type="button"
+					aria-label="Dismiss the result and keep the final board visible"
+					onclick={onKeepBoard}
+				>
+					<span class="button-icon"><Eye size={17} strokeWidth={1.9} /></span>
+					<span class="button-copy">
+						<strong>Keep board</strong>
+						<small>Dismiss result</small>
+					</span>
+				</button>
+			</div>
+		</section>
+	</div>
+</DialogShell>
 
 <style>
 	.game-over-backdrop {

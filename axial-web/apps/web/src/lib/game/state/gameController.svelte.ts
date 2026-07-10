@@ -390,7 +390,11 @@ export function createGameController() {
 		boardColor = savedBoardColor;
 		if (savedLabelsVisible !== null) labelsVisible = savedLabelsVisible;
 		if (savedGridLayersVisible !== null) gridLayersVisible = savedGridLayersVisible;
-		if (savedConfirmDropEnabled !== null) confirmDropEnabled = savedConfirmDropEnabled;
+		if (savedConfirmDropEnabled !== null) {
+			confirmDropEnabled = savedConfirmDropEnabled;
+		} else if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) {
+			confirmDropEnabled = true;
+		}
 		if (savedOpponentMode) opponentMode = savedOpponentMode;
 		if (savedAiDifficulty) aiDifficulty = savedAiDifficulty;
 		if (savedMatchMode) matchMode = savedMatchMode;
@@ -572,6 +576,19 @@ export function createGameController() {
 		} catch (error) {
 			moveError = error instanceof Error ? error.message : 'Move rejected';
 		}
+	}
+
+	function confirmSelectedMove(): void {
+		if (!lockedMove) return;
+		const moveToPlay = lockedMove;
+		lockedMove = null;
+		playMove(moveToPlay);
+	}
+
+	function cancelSelectedMove(): void {
+		lockedMove = null;
+		hoveredMove = null;
+		moveError = '';
 	}
 
 	function resetGame(): void {
@@ -1169,6 +1186,8 @@ export function createGameController() {
 		},
 		dismissGameOver,
 		destroy,
+		confirmSelectedMove,
+		cancelSelectedMove,
 		hydrateFromStorage,
 		playMove,
 		selectOrPlayMove,

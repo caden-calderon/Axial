@@ -5,7 +5,7 @@
 	import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 	import type { BoardDimensions, PlacedMove } from '@axial/core';
 	import { PIECE_DROP_DURATION_MAX_SECONDS, PIECE_DROP_DURATION_MIN_SECONDS } from '../animation';
-	import { CELL_SPACING, cellPosition, dropStartY, PIECE_SIZE } from './geometry';
+	import { CELL_SPACING, cellPosition, dropStartY, PIECE_SIZE, type Vec3 } from './geometry';
 	import type { PieceColors, PieceShape } from '../state/pieceAppearance';
 
 	let {
@@ -50,6 +50,14 @@
 	const highlightScale = $derived(1.18 + highlightPulse * 0.16);
 	const highlightOpacity = $derived(opacity * (highlighted ? 0.16 + highlightPulse * 0.22 : 0));
 	const highlightLight = $derived(highlighted ? 0.58 + highlightPulse * 0.52 : 0);
+	const playerBands = $derived<{ position: Vec3; rotation: Vec3 }[]>(
+		move.player === 1
+			? [{ position: [0, 0, 0], rotation: [Math.PI / 2, 0, 0] }]
+			: [
+					{ position: [-PIECE_SIZE * 0.13, 0, 0], rotation: [0, 0, 0] },
+					{ position: [PIECE_SIZE * 0.13, 0, 0], rotation: [0, 0, 0] }
+				]
+	);
 
 	useTask((delta) => {
 		if (highlighted) {
@@ -183,6 +191,20 @@
 			blending={AdditiveBlending}
 		/>
 	</T.Mesh>
+
+	{#if !isBlocker}
+		{#each playerBands as band, bandIndex (`${move.player}-${bandIndex}`)}
+			<T.Mesh position={band.position} rotation={band.rotation}>
+				<T.TorusGeometry args={[PIECE_SIZE * 0.51, PIECE_SIZE * 0.024, 8, 36]} />
+				<T.MeshBasicMaterial
+					color="#ffffff"
+					transparent
+					opacity={opacity * 0.46}
+					depthWrite={false}
+				/>
+			</T.Mesh>
+		{/each}
+	{/if}
 
 	<T.Mesh>
 		{#if renderShape === 'cube'}

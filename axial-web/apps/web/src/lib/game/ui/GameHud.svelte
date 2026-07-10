@@ -15,13 +15,14 @@
 	const boardDimensionLabel = $derived(
 		`${boardDimensions.height} x ${boardDimensions.rows} x ${boardDimensions.columns}`
 	);
-	const shineSpeed = 7.2;
-	const shineDelay = 0.18;
+	const shineSpeed = 2.8;
+	const shineDelay = 0.12;
 </script>
 
 <header class="hud top-left">
 	<div class="brand-lockup">
-		<span class="brand-title" aria-label="AXIAL">
+		<h1 class="brand-title">
+			<span class="sr-only">AXIAL</span>
 			<ShinyText
 				text="AXIAL"
 				color="var(--brand)"
@@ -31,8 +32,9 @@
 				spread={108}
 				ariaHidden
 			/>
-		</span>
-		<span class="board-dimensions" aria-label={boardDimensionLabel}>
+		</h1>
+		<p class="board-dimensions">
+			<span class="sr-only">{boardDimensionLabel}</span>
 			<ShinyText
 				text={boardDimensionLabel}
 				color="var(--brand-muted)"
@@ -42,7 +44,7 @@
 				spread={108}
 				ariaHidden
 			/>
-		</span>
+		</p>
 	</div>
 </header>
 
@@ -53,15 +55,17 @@
 	aria-live="polite"
 >
 	<span class="turn-chip-label" aria-hidden="true">
-		<ShinyText
-			text={currentLabel}
-			color="var(--text)"
-			shineColor="var(--accent)"
-			speed={shineSpeed}
-			delay={shineDelay}
-			spread={108}
-			ariaHidden
-		/>
+		{#key currentLabel}
+			<ShinyText
+				text={currentLabel}
+				color="var(--text)"
+				shineColor="var(--accent)"
+				speed={shineSpeed}
+				delay={shineDelay}
+				spread={108}
+				ariaHidden
+			/>
+		{/key}
 	</span>
 </div>
 
@@ -99,6 +103,7 @@
 
 	.brand-title {
 		display: inline-block;
+		margin: 0;
 		font-size: clamp(1.7rem, 2.35vw, 2.35rem);
 		font-weight: 300;
 		line-height: 0.9;
@@ -108,6 +113,7 @@
 
 	.board-dimensions {
 		display: inline-block;
+		margin: 0;
 		color: var(--brand-muted);
 		font-size: clamp(0.88rem, 1.15vw, 1.1rem);
 		font-weight: 350;
@@ -156,10 +162,10 @@
 		}
 
 		.top-left {
-			top: 0.9rem;
-			left: 1rem;
+			top: calc(0.9rem + env(safe-area-inset-top));
+			left: calc(1rem + env(safe-area-inset-left));
 			right: auto;
-			max-width: calc(100vw - 8.5rem);
+			max-width: calc(100vw - 7.5rem - env(safe-area-inset-left));
 		}
 
 		.brand-title {
@@ -174,6 +180,18 @@
 
 		.turn-chip {
 			display: none;
+		}
+	}
+
+	@media (max-width: 340px) {
+		.brand-title {
+			font-size: 1.05rem;
+			letter-spacing: 0.2em;
+		}
+
+		.board-dimensions {
+			font-size: 0.62rem;
+			letter-spacing: 0.1em;
 		}
 	}
 </style>

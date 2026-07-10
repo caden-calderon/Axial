@@ -104,10 +104,10 @@
 	});
 
 	const lineOpacity = $derived(
-		includeLayers ? (uiTheme === 'dark' ? 0.34 : 0.48) : uiTheme === 'dark' ? 0.44 : 0.56
+		includeLayers ? (uiTheme === 'dark' ? 0.34 : 0.52) : uiTheme === 'dark' ? 0.44 : 0.6
 	);
 	const edgeOpacity = $derived(
-		includeLayers ? (uiTheme === 'dark' ? 0.8 : 0.76) : uiTheme === 'dark' ? 0.88 : 0.82
+		includeLayers ? (uiTheme === 'dark' ? 0.8 : 0.84) : uiTheme === 'dark' ? 0.88 : 0.9
 	);
 	const innerStreakOpacity = $derived(
 		includeLayers ? (uiTheme === 'dark' ? 0.42 : 0.24) : uiTheme === 'dark' ? 0.34 : 0.2
@@ -116,13 +116,13 @@
 		includeLayers ? (uiTheme === 'dark' ? 0.18 : 0.12) : uiTheme === 'dark' ? 0.14 : 0.1
 	);
 	const nodeOpacity = $derived(
-		includeLayers ? (uiTheme === 'dark' ? 0.64 : 0.58) : uiTheme === 'dark' ? 0.7 : 0.64
+		includeLayers ? (uiTheme === 'dark' ? 0.64 : 0.42) : uiTheme === 'dark' ? 0.7 : 0.5
 	);
 	const nodeHaloOpacity = $derived(
-		includeLayers ? (uiTheme === 'dark' ? 0.11 : 0.14) : uiTheme === 'dark' ? 0.09 : 0.12
+		includeLayers ? (uiTheme === 'dark' ? 0.11 : 0.075) : uiTheme === 'dark' ? 0.09 : 0.07
 	);
 	const shellOpacity = $derived(
-		includeLayers ? (uiTheme === 'dark' ? 0.045 : 0.055) : uiTheme === 'dark' ? 0.07 : 0.08
+		includeLayers ? (uiTheme === 'dark' ? 0.045 : 0.038) : uiTheme === 'dark' ? 0.07 : 0.055
 	);
 	const gridLineBlending = $derived(uiTheme === 'dark' ? AdditiveBlending : NormalBlending);
 	const gridGlowBlending = AdditiveBlending;

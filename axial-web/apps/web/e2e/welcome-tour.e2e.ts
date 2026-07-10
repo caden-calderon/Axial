@@ -13,7 +13,17 @@ test('welcome tour shows once, opens the menu, and persists dismissal', async ({
 	await page.getByRole('button', { name: 'Next' }).click();
 	await expect(page.locator('[data-tour-step="board"]')).toBeVisible();
 
-	await page.getByRole('button', { name: 'Next' }).click();
+	await page.getByRole('button', { name: 'Try it' }).click();
+	await expect(page.getByRole('dialog')).toHaveCount(0);
+	await expect(page.getByText('Explore the board')).toBeVisible();
+
+	await page.locator('.scene-shell').focus();
+	await page.keyboard.press('ArrowRight');
+	await page.keyboard.press('Enter');
+	await expect(page.getByText('Drop staged')).toBeVisible();
+	await expect(page.getByText('0 moves', { exact: true }).first()).toBeVisible();
+	await page.getByRole('button', { name: 'Continue' }).click();
+
 	await expect(page.locator('[data-tour-step="menu-toggle"]')).toBeVisible();
 	await expect(page.locator('[data-tour-target="panel-toggle"]')).toBeVisible();
 	await expect(page.locator('.control-panel')).toHaveClass(/collapsed/);
@@ -40,14 +50,40 @@ test('welcome tour remains within a phone viewport', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto('/?tour=1');
 
-	for (let index = 0; index < 4; index += 1) {
-		await expect(page.getByRole('dialog')).toBeVisible();
-		await expectTourCardWithinViewport(page);
-		await page.getByRole('button', { name: 'Next' }).click();
-	}
+	await expectTourCardWithinViewport(page);
+	await page.getByRole('button', { name: 'Next' }).click();
+	await expectTourCardWithinViewport(page);
+	await page.getByRole('button', { name: 'Try it' }).click();
+	await page.locator('.scene-shell').focus();
+	await page.keyboard.press('ArrowRight');
+	await page.keyboard.press('Enter');
+	await page.getByRole('button', { name: 'Continue' }).click();
+	await expectTourCardWithinViewport(page);
+	await page.getByRole('button', { name: 'Next' }).click();
+	await expectTourCardWithinViewport(page);
+	await page.getByRole('button', { name: 'Next' }).click();
 
 	await expect(page.locator('[data-tour-step="rules"]')).toBeVisible();
 	await expectTourCardWithinViewport(page);
+});
+
+test('welcome tour traps focus and returns it to the Help action', async ({ page }) => {
+	await page.goto('/?tour=0');
+
+	const helpButton = page.getByRole('button', { name: 'How to play' });
+	await helpButton.click();
+	await expect(page.getByRole('dialog', { name: 'This is Axial' })).toBeVisible();
+
+	for (let index = 0; index < 10; index += 1) {
+		await page.keyboard.press('Tab');
+		await expect
+			.poll(() => page.evaluate(() => Boolean(document.activeElement?.closest('dialog[open]'))))
+			.toBe(true);
+	}
+
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('dialog')).toHaveCount(0);
+	await expect(helpButton).toBeFocused();
 });
 
 function collectPageErrors(page: Page): string[] {

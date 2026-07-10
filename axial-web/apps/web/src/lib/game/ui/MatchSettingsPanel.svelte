@@ -75,6 +75,19 @@
 			? 'Leave the room to change play mode'
 			: 'Start a new match to change opponent mode'
 	);
+	const playModeLabel = $derived(
+		playMode === 'local'
+			? 'Local match'
+			: playMode === 'ai'
+				? `AI · ${aiDifficulty}`
+				: 'Online room'
+	);
+	const rulesLabel = $derived(
+		`${matchMode === 'tactical' ? 'Tactical' : 'Classic'} · ${boardDimensions.height} × ${boardDimensions.rows} × ${boardDimensions.columns}`
+	);
+	const winLabel = $derived(
+		`Connect ${winCondition.lineLength} · ${winCondition.linesToWin} ${winCondition.linesToWin === 1 ? 'line' : 'lines'} to win`
+	);
 </script>
 
 <section class="panel-section" data-tour-target="match-section">
@@ -83,165 +96,177 @@
 		<span>Match</span>
 	</div>
 
-	<div
-		class="mode-switch play-mode-switch"
-		role="group"
-		aria-label="Opponent mode"
-		data-tour-target="play-mode"
-	>
-		<button
-			type="button"
-			class:selected={playMode === 'local'}
-			aria-pressed={playMode === 'local'}
-			disabled={playModeLocked}
-			title={playModeLocked ? playModeLockTitle : 'Local mode'}
-			onclick={() => choosePlayMode('local')}
-		>
-			<Users size={14} strokeWidth={2} />
-			<span>Local</span>
-		</button>
-		<button
-			type="button"
-			class:selected={playMode === 'ai'}
-			class:thinking={aiThinking}
-			aria-pressed={playMode === 'ai'}
-			disabled={playModeLocked}
-			title={playModeLocked ? playModeLockTitle : 'AI mode'}
-			onclick={() => choosePlayMode('ai')}
-		>
-			<Bot size={14} strokeWidth={2} />
-			<span>AI</span>
-		</button>
-		<button
-			type="button"
-			class:selected={playMode === 'online'}
-			aria-pressed={playMode === 'online'}
-			disabled={playModeLocked}
-			data-tour-target="online-mode"
-			title={playModeLocked ? playModeLockTitle : 'Online room'}
-			onclick={() => choosePlayMode('online')}
-		>
-			<Wifi size={14} strokeWidth={2} />
-			<span>Online</span>
-		</button>
-	</div>
-
-	<div class="mode-switch rules-switch" role="group" aria-label="Match rules">
-		<button
-			type="button"
-			class:selected={matchMode === 'classic'}
-			aria-pressed={matchMode === 'classic'}
-			disabled={setupLocked}
-			title={setupLocked ? 'Start a new match to change rules' : 'Classic rules'}
-			onclick={() => onMatchModeChange('classic')}
-		>
-			<Sparkles size={14} strokeWidth={2} />
-			<span>Classic</span>
-		</button>
-		<button
-			type="button"
-			class:selected={matchMode === 'tactical'}
-			aria-pressed={matchMode === 'tactical'}
-			disabled={setupLocked || onlineRulesLocked}
-			title={onlineRulesLocked
-				? 'Online v1 uses Classic rules'
-				: setupLocked
-					? 'Start a new match to change rules'
-					: 'Tactical rules'}
-			onclick={() => onMatchModeChange('tactical')}
-		>
-			<Shield size={14} strokeWidth={2} />
-			<span>Tactical</span>
-		</button>
-	</div>
-
-	<div class="setup-rules-cluster" data-tour-target="rules">
-		<div class="board-size-editor" class:locked={setupLocked} data-tour-target="board-size">
-			<div class="board-size-label">
-				<Boxes size={14} strokeWidth={2} />
-				<span>Board</span>
+	{#if setupLocked}
+		<div class="locked-match-summary" data-tour-target="rules">
+			<div class="locked-match-icon"><Boxes size={16} strokeWidth={2} /></div>
+			<div>
+				<strong>{playModeLabel}</strong>
+				<span>{rulesLabel}</span>
+				<small>{winLabel}</small>
 			</div>
-			<div class="dimension-buttons" role="group" aria-label="Board dimensions">
-				{#each dimensionControls as dimension (dimension.key)}
+			<span class="locked-match-badge">Live</span>
+		</div>
+	{:else}
+		<div
+			class="mode-switch play-mode-switch"
+			role="group"
+			aria-label="Opponent mode"
+			data-tour-target="play-mode"
+		>
+			<button
+				type="button"
+				class:selected={playMode === 'local'}
+				aria-pressed={playMode === 'local'}
+				disabled={playModeLocked}
+				title={playModeLocked ? playModeLockTitle : 'Local mode'}
+				onclick={() => choosePlayMode('local')}
+			>
+				<Users size={14} strokeWidth={2} />
+				<span>Local</span>
+			</button>
+			<button
+				type="button"
+				class:selected={playMode === 'ai'}
+				class:thinking={aiThinking}
+				aria-pressed={playMode === 'ai'}
+				disabled={playModeLocked}
+				title={playModeLocked ? playModeLockTitle : 'AI mode'}
+				onclick={() => choosePlayMode('ai')}
+			>
+				<Bot size={14} strokeWidth={2} />
+				<span>AI</span>
+			</button>
+			<button
+				type="button"
+				class:selected={playMode === 'online'}
+				aria-pressed={playMode === 'online'}
+				disabled={playModeLocked}
+				data-tour-target="online-mode"
+				title={playModeLocked ? playModeLockTitle : 'Online room'}
+				onclick={() => choosePlayMode('online')}
+			>
+				<Wifi size={14} strokeWidth={2} />
+				<span>Online</span>
+			</button>
+		</div>
+
+		<div class="mode-switch rules-switch" role="group" aria-label="Match rules">
+			<button
+				type="button"
+				class:selected={matchMode === 'classic'}
+				aria-pressed={matchMode === 'classic'}
+				disabled={setupLocked}
+				title={setupLocked ? 'Start a new match to change rules' : 'Classic rules'}
+				onclick={() => onMatchModeChange('classic')}
+			>
+				<Sparkles size={14} strokeWidth={2} />
+				<span>Classic</span>
+			</button>
+			<button
+				type="button"
+				class:selected={matchMode === 'tactical'}
+				aria-pressed={matchMode === 'tactical'}
+				disabled={setupLocked || onlineRulesLocked}
+				title={onlineRulesLocked
+					? 'Online v1 uses Classic rules'
+					: setupLocked
+						? 'Start a new match to change rules'
+						: 'Tactical rules'}
+				onclick={() => onMatchModeChange('tactical')}
+			>
+				<Shield size={14} strokeWidth={2} />
+				<span>Tactical</span>
+			</button>
+		</div>
+
+		<div class="setup-rules-cluster" data-tour-target="rules">
+			<div class="board-size-editor" class:locked={setupLocked} data-tour-target="board-size">
+				<div class="board-size-label">
+					<Boxes size={14} strokeWidth={2} />
+					<span>Board</span>
+				</div>
+				<div class="dimension-buttons" role="group" aria-label="Board dimensions">
+					{#each dimensionControls as dimension (dimension.key)}
+						<button
+							type="button"
+							disabled={setupLocked}
+							aria-label={`Increase board ${dimension.label} dimension`}
+							title={setupLocked ? 'Start a new match to change board size' : 'Click to increase'}
+							onclick={() => incrementDimension(dimension.key)}
+						>
+							<strong>{dimension.value}</strong>
+							<small>{dimension.label}</small>
+						</button>
+						{#if dimension.key !== 'columns'}
+							<span class="dimension-separator">x</span>
+						{/if}
+					{/each}
+				</div>
+			</div>
+
+			<div class="rule-customizer" class:locked={setupLocked}>
+				<div class="rule-control">
+					<span>
+						<CircleDot size={13} strokeWidth={2} />
+						Connect
+					</span>
+					<div class="mode-switch connect-switch" role="group" aria-label="Connect length">
+						{#each WIN_LINE_LENGTH_OPTIONS as option (option.value)}
+							<button
+								type="button"
+								class:selected={winCondition.lineLength === option.value}
+								aria-pressed={winCondition.lineLength === option.value}
+								disabled={setupLocked}
+								title={setupLocked ? 'Start a new match to change win rules' : option.label}
+								onclick={() => onWinLineLengthChange(option.value)}
+							>
+								<span>{option.shortLabel}</span>
+							</button>
+						{/each}
+					</div>
+				</div>
+				<div class="rule-control">
+					<span>
+						<Trophy size={13} strokeWidth={2} />
+						Lines
+					</span>
+					<div class="mode-switch line-count-switch" role="group" aria-label="Lines to win">
+						{#each LINES_TO_WIN_OPTIONS as option (option.value)}
+							<button
+								type="button"
+								class:selected={winCondition.linesToWin === option.value}
+								aria-pressed={winCondition.linesToWin === option.value}
+								disabled={setupLocked}
+								title={setupLocked ? 'Start a new match to change win rules' : option.label}
+								onclick={() => onLinesToWinChange(option.value)}
+							>
+								<span>{option.shortLabel}</span>
+							</button>
+						{/each}
+					</div>
+				</div>
+			</div>
+		</div>
+
+		{#if playMode === 'ai'}
+			<div class="control-label">
+				<Bot size={13} strokeWidth={2} />
+				<span>AI difficulty</span>
+			</div>
+			<div class="mode-switch difficulty-switch" role="group" aria-label="AI strength">
+				{#each AI_DIFFICULTY_OPTIONS as option (option.value)}
 					<button
 						type="button"
+						class:selected={aiDifficulty === option.value}
+						aria-pressed={aiDifficulty === option.value}
 						disabled={setupLocked}
-						aria-label={`Increase board ${dimension.label} dimension`}
-						title={setupLocked ? 'Start a new match to change board size' : 'Click to increase'}
-						onclick={() => incrementDimension(dimension.key)}
+						title={setupLocked ? 'Start a new match to change AI strength' : option.label}
+						onclick={() => onAiDifficultyChange(option.value)}
 					>
-						<strong>{dimension.value}</strong>
-						<small>{dimension.label}</small>
+						<span>{option.shortLabel}</span>
 					</button>
-					{#if dimension.key !== 'columns'}
-						<span class="dimension-separator">x</span>
-					{/if}
 				{/each}
 			</div>
-		</div>
-
-		<div class="rule-customizer" class:locked={setupLocked}>
-			<div class="rule-control">
-				<span>
-					<CircleDot size={13} strokeWidth={2} />
-					Connect
-				</span>
-				<div class="mode-switch connect-switch" role="group" aria-label="Connect length">
-					{#each WIN_LINE_LENGTH_OPTIONS as option (option.value)}
-						<button
-							type="button"
-							class:selected={winCondition.lineLength === option.value}
-							aria-pressed={winCondition.lineLength === option.value}
-							disabled={setupLocked}
-							title={setupLocked ? 'Start a new match to change win rules' : option.label}
-							onclick={() => onWinLineLengthChange(option.value)}
-						>
-							<span>{option.shortLabel}</span>
-						</button>
-					{/each}
-				</div>
-			</div>
-			<div class="rule-control">
-				<span>
-					<Trophy size={13} strokeWidth={2} />
-					Lines
-				</span>
-				<div class="mode-switch line-count-switch" role="group" aria-label="Lines to win">
-					{#each LINES_TO_WIN_OPTIONS as option (option.value)}
-						<button
-							type="button"
-							class:selected={winCondition.linesToWin === option.value}
-							aria-pressed={winCondition.linesToWin === option.value}
-							disabled={setupLocked}
-							title={setupLocked ? 'Start a new match to change win rules' : option.label}
-							onclick={() => onLinesToWinChange(option.value)}
-						>
-							<span>{option.shortLabel}</span>
-						</button>
-					{/each}
-				</div>
-			</div>
-		</div>
-	</div>
-
-	{#if playMode === 'ai'}
-		<div class="control-label">
-			<Bot size={13} strokeWidth={2} />
-			<span>AI difficulty</span>
-		</div>
-		<div class="mode-switch difficulty-switch" role="group" aria-label="AI strength">
-			{#each AI_DIFFICULTY_OPTIONS as option (option.value)}
-				<button
-					type="button"
-					class:selected={aiDifficulty === option.value}
-					aria-pressed={aiDifficulty === option.value}
-					disabled={setupLocked}
-					title={setupLocked ? 'Start a new match to change AI strength' : option.label}
-					onclick={() => onAiDifficultyChange(option.value)}
-				>
-					<span>{option.shortLabel}</span>
-				</button>
-			{/each}
-		</div>
+		{/if}
 	{/if}
 </section>

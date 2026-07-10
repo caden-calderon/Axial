@@ -3,6 +3,7 @@
 	import type { GameStatus, Player } from '@axial/core';
 	import type { RoomPlayer } from '@axial/multiplayer-protocol';
 	import type { OnlineController } from '$lib/multiplayer/onlineController.svelte';
+	import DialogShell from './DialogShell.svelte';
 
 	let { online }: { online: OnlineController } = $props();
 
@@ -30,8 +31,14 @@
 </script>
 
 {#if online.showStartOverlay && snapshot}
-	<div class="online-match-backdrop" data-mode="starting">
-		<dialog class="online-match-dialog start-dialog" aria-labelledby="online-start-title" open>
+	<div
+		class="online-match-backdrop"
+		data-mode="starting"
+		role="status"
+		aria-live="assertive"
+		aria-labelledby="online-start-title"
+	>
+		<section class="online-match-dialog start-dialog">
 			<p class="overlay-kicker">Match {snapshot.match.number}</p>
 			<h2 id="online-start-title">Ready on axis</h2>
 
@@ -57,69 +64,76 @@
 					>{online.startingPlayer?.displayName ?? `P${snapshot.match.startingPlayer}`} opens</strong
 				>
 			</div>
-		</dialog>
+		</section>
 	</div>
 {:else if online.showResultOverlay && snapshot}
-	<div class="online-match-backdrop" data-mode="result">
-		<dialog class="online-match-dialog result-dialog" aria-labelledby="online-result-title" open>
-			<div class="result-mark" data-result={snapshot.game.status.state}>
-				<Trophy size={26} strokeWidth={1.7} />
-			</div>
+	<DialogShell
+		labelledby="online-result-title"
+		describedby="online-result-detail"
+		initialFocusSelector=".overlay-button.primary"
+		onEscape={online.dismissResultOverlay}
+	>
+		<div class="online-match-backdrop" data-mode="result">
+			<section class="online-match-dialog result-dialog">
+				<div class="result-mark" data-result={snapshot.game.status.state}>
+					<Trophy size={26} strokeWidth={1.7} />
+				</div>
 
-			<p class="overlay-kicker">Game over</p>
-			<h2 id="online-result-title">{resultTitle}</h2>
-			<p class="overlay-detail">{resultDetail}</p>
+				<p class="overlay-kicker">Game over</p>
+				<h2 id="online-result-title">{resultTitle}</h2>
+				<p id="online-result-detail" class="overlay-detail">{resultDetail}</p>
 
-			<div class="rematch-meter" data-expired={online.rematchExpired}>
-				<Timer size={15} strokeWidth={2} />
-				<span>
-					{#if online.rematchExpired}
-						Rematch window closed
-					{:else}
-						{online.rematchSeconds}s to choose
-					{/if}
-				</span>
-			</div>
+				<div class="rematch-meter" data-expired={online.rematchExpired}>
+					<Timer size={15} strokeWidth={2} />
+					<span>
+						{#if online.rematchExpired}
+							Rematch window closed
+						{:else}
+							{online.rematchSeconds}s to choose
+						{/if}
+					</span>
+				</div>
 
-			<div class="rematch-roster">
-				{#each players as player (player.playerId)}
-					<div class="rematch-player" data-self={player.playerId === snapshot.you.playerId}>
-						<span>P{player.seat}</span>
-						<strong>{player.displayName}</strong>
-						<small>
-							{#if player.rematchReady}
-								Wants rematch
-							{:else if online.rematchExpired}
-								Timed out
-							{:else}
-								Choosing
-							{/if}
-						</small>
-					</div>
-				{/each}
-			</div>
+				<div class="rematch-roster">
+					{#each players as player (player.playerId)}
+						<div class="rematch-player" data-self={player.playerId === snapshot.you.playerId}>
+							<span>P{player.seat}</span>
+							<strong>{player.displayName}</strong>
+							<small>
+								{#if player.rematchReady}
+									Wants rematch
+								{:else if online.rematchExpired}
+									Timed out
+								{:else}
+									Choosing
+								{/if}
+							</small>
+						</div>
+					{/each}
+				</div>
 
-			<div class="online-overlay-actions">
-				<button
-					class="overlay-button primary"
-					type="button"
-					disabled={online.rematchExpired && !online.self?.rematchReady}
-					onclick={online.rematch}
-				>
-					<span><RotateCcw size={17} strokeWidth={1.9} /></span>
-					<strong>{rematchLabel}</strong>
-				</button>
-				<button class="overlay-button" type="button" onclick={online.dismissResultOverlay}>
-					<span><Eye size={17} strokeWidth={1.9} /></span>
-					<strong>Keep board</strong>
-				</button>
-				<button class="overlay-button" type="button" onclick={online.leaveRoom}>
-					<span><LogOut size={17} strokeWidth={1.9} /></span>
-					<strong>Leave</strong>
-				</button>
-			</div>
-		</dialog>
-	</div>
+				<div class="online-overlay-actions">
+					<button
+						class="overlay-button primary"
+						type="button"
+						disabled={online.rematchExpired && !online.self?.rematchReady}
+						onclick={online.rematch}
+					>
+						<span><RotateCcw size={17} strokeWidth={1.9} /></span>
+						<strong>{rematchLabel}</strong>
+					</button>
+					<button class="overlay-button" type="button" onclick={online.dismissResultOverlay}>
+						<span><Eye size={17} strokeWidth={1.9} /></span>
+						<strong>Keep board</strong>
+					</button>
+					<button class="overlay-button" type="button" onclick={online.leaveRoom}>
+						<span><LogOut size={17} strokeWidth={1.9} /></span>
+						<strong>Leave</strong>
+					</button>
+				</div>
+			</section>
+		</div>
+	</DialogShell>
 {/if}
 
 <style>

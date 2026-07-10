@@ -20,6 +20,7 @@
 	import type { PlacementMode } from '../state/gameController.svelte';
 	import type { PieceColors, PieceShape } from '../state/pieceAppearance';
 	import { resolveScenePalette, type UiThemeName } from '../theming/sceneThemes';
+	import { resolveCameraFit } from './cameraFit';
 
 	let {
 		game,
@@ -33,6 +34,8 @@
 		pieceColors,
 		placementMode,
 		doubleAdjacentAnchor,
+		controlsExpanded,
+		viewResetKey,
 		onHover,
 		onPlay
 	}: {
@@ -47,6 +50,8 @@
 		pieceColors: PieceColors;
 		placementMode: PlacementMode;
 		doubleAdjacentAnchor: PlacedMove | null;
+		controlsExpanded: boolean;
+		viewResetKey: number;
 		onHover: (move: Move | null) => void;
 		onPlay: (move: Move) => void;
 	} = $props();
@@ -67,13 +72,19 @@
 			? getDropHeight(game.board, hoveredMove, dimensions)
 			: -1
 	);
-	let isCompact = $state(false);
-	const cameraPosition: Vec3 = $derived(isCompact ? [8.8, 8.4, 18] : [5.8, 5.7, 9.4]);
-	const cameraFov = $derived(isCompact ? 46 : 42);
-	const boardFitScale = $derived(
-		Math.min(1, 7 / Math.max(dimensions.height, dimensions.rows, dimensions.columns))
+	let viewportWidth = $state(1280);
+	let viewportHeight = $state(800);
+	let coarsePointer = $state(false);
+	const cameraFit = $derived(
+		resolveCameraFit(
+			{ width: viewportWidth, height: viewportHeight, coarsePointer, controlsExpanded },
+			dimensions
+		)
 	);
-	const boardScale = $derived((isCompact ? 0.62 : 0.88) * boardFitScale);
+	const isCompact = $derived(cameraFit.compact);
+	const cameraPosition: Vec3 = $derived(cameraFit.position);
+	const cameraFov = $derived(cameraFit.fov);
+	const boardScale = $derived(cameraFit.boardScale);
 	const lastMoveIndex = $derived(game.moveHistory.length - 1);
 
 	const boardRotation = -0.34;
@@ -90,7 +101,9 @@
 
 	onMount(() => {
 		const updateViewport = () => {
-			isCompact = isCompactViewport();
+			viewportWidth = window.innerWidth;
+			viewportHeight = window.innerHeight;
+			coarsePointer = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
 		};
 
 		updateViewport();
@@ -104,12 +117,6 @@
 		if (scene.fog === sceneFog) scene.fog = null;
 	});
 
-	function isCompactViewport(): boolean {
-		return (
-			window.innerWidth < 720 || window.matchMedia('(hover: none) and (pointer: coarse)').matches
-		);
-	}
-
 	function isMovePlayable(move: Move): boolean {
 		return (
 			placementMode !== 'double-adjacent' ||
@@ -119,19 +126,21 @@
 	}
 </script>
 
-<T.PerspectiveCamera makeDefault position={cameraPosition} fov={cameraFov}>
-	<OrbitCameraControls
-		enableDamping
-		dampingFactor={0.075}
-		enablePan={false}
-		rotateSpeed={0.52}
-		zoomSpeed={0.58}
-		minDistance={7.2}
-		maxDistance={15.5}
-		target={[0, 0, 0]}
-		maxPolarAngle={Math.PI * 0.72}
-	/>
-</T.PerspectiveCamera>
+{#key viewResetKey}
+	<T.PerspectiveCamera makeDefault position={cameraPosition} fov={cameraFov}>
+		<OrbitCameraControls
+			enableDamping
+			dampingFactor={0.075}
+			enablePan={false}
+			rotateSpeed={0.52}
+			zoomSpeed={0.58}
+			minDistance={cameraFit.minDistance}
+			maxDistance={cameraFit.maxDistance}
+			target={cameraFit.target}
+			maxPolarAngle={Math.PI * 0.72}
+		/>
+	</T.PerspectiveCamera>
+{/key}
 
 <ColumnPicker {game} {boardRotation} {boardScale} {onHover} {onPlay} {isMovePlayable} />
 
