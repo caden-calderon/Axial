@@ -89,7 +89,7 @@ Caden approved the full pass on 2026-07-09 with one override: hiding turn/status
 
 ## 2026-07-10 Follow-up
 
-- Centered the dimensions readout under the AXIAL wordmark with a shared lockup alignment contract and Playwright geometry assertion.
+- Optically aligned the AXIAL wordmark's visible left edge with the first board-dimension digit, preserving the larger wordmark scale across responsive layouts and locking both behaviors with Playwright geometry assertions.
 - Scoped opener alternation to a continuous AI series. The user always opens the first AI match after initial load or after returning from Local/Online; rematches continue alternating while AI mode remains active.
 - Added an explicit AI-series exit when entering Online, including URL-driven Online entry, so background AI work is cancelled and returning to AI resets the opener.
 - Hardened AI worker recovery: undo/reset/mode changes invalidate and terminate pending work, timed-out workers are recycled, and the controller falls back to a legal inexpensive move instead of leaving a turn stuck.

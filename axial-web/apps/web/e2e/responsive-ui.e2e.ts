@@ -9,8 +9,12 @@ test('collapsed phone controls stay minimal and avoid the brand at 320px', async
 
 	const brand = await page.locator('.brand-lockup').boundingBox();
 	const panel = await page.locator('.control-panel').boundingBox();
+	const brandTitleFontSize = Number.parseFloat(
+		await page.locator('.brand-title').evaluate((title) => getComputedStyle(title).fontSize)
+	);
 	expect(brand).not.toBeNull();
 	expect(panel).not.toBeNull();
+	expect(brandTitleFontSize).toBeGreaterThanOrEqual(27);
 	if (!brand || !panel) return;
 
 	expect(rectanglesOverlap(brand, panel)).toBe(false);

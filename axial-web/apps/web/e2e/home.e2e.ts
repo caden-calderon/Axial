@@ -22,14 +22,13 @@ test('Axial shell loads and renders the game canvas', async ({ page }) => {
 	await expect(page.locator('.board-dimensions .sr-only')).toHaveText('6 x 6 x 7');
 	const brandTitleBounds = await page.locator('.brand-title').boundingBox();
 	const boardDimensionsBounds = await page.locator('.board-dimensions').boundingBox();
+	const brandTitleFontSize = Number.parseFloat(
+		await page.locator('.brand-title').evaluate((title) => getComputedStyle(title).fontSize)
+	);
 	expect(brandTitleBounds).not.toBeNull();
 	expect(boardDimensionsBounds).not.toBeNull();
 	expect(
-		Math.abs(
-			brandTitleBounds!.x +
-				brandTitleBounds!.width / 2 -
-				(boardDimensionsBounds!.x + boardDimensionsBounds!.width / 2)
-		)
+		Math.abs(boardDimensionsBounds!.x - brandTitleBounds!.x - brandTitleFontSize * 0.4)
 	).toBeLessThan(1);
 	await expect(page.getByRole('group', { name: 'Opponent mode' })).toBeVisible();
 	await expect(

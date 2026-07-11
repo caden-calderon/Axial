@@ -97,8 +97,7 @@
 
 	.brand-lockup {
 		display: grid;
-		width: max-content;
-		justify-items: center;
+		justify-items: start;
 		gap: 0.42rem;
 		color: var(--brand);
 	}
@@ -110,6 +109,7 @@
 		font-weight: 300;
 		line-height: 0.9;
 		letter-spacing: 0.34em;
+		transform: translateX(-0.4em);
 		white-space: pre;
 	}
 
@@ -170,30 +170,8 @@
 			max-width: calc(100vw - 7.5rem - env(safe-area-inset-left));
 		}
 
-		.brand-title {
-			font-size: 1.22rem;
-			letter-spacing: 0.25em;
-		}
-
-		.board-dimensions {
-			font-size: 0.68rem;
-			letter-spacing: 0.13em;
-		}
-
 		.turn-chip {
 			display: none;
-		}
-	}
-
-	@media (max-width: 340px) {
-		.brand-title {
-			font-size: 1.05rem;
-			letter-spacing: 0.2em;
-		}
-
-		.board-dimensions {
-			font-size: 0.62rem;
-			letter-spacing: 0.1em;
 		}
 	}
 </style>
