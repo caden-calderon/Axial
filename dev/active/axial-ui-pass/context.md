@@ -1,8 +1,8 @@
 # Axial UI Pass Context
 
-Status: implementation and local QA complete; awaiting product review and real-device PWA smoke.
+Status: implementation and first post-release correctness follow-up complete; awaiting real-device PWA smoke.
 
-Date: 2026-07-09
+Date: 2026-07-10
 
 ## Mission
 
@@ -87,9 +87,18 @@ Caden approved the full pass on 2026-07-09 with one override: hiding turn/status
 - Mobile Lighthouse on the local app: Accessibility 100, Best Practices 100, SEO 100, Agentic Browsing 100.
 - Live visual matrix rechecked at 1440x900, 390x844, 320x568, and 844x390 plus expanded/collapsed, tutorial/practice/confirm, dark/light, and active-match states.
 
+## 2026-07-10 Follow-up
+
+- Centered the dimensions readout under the AXIAL wordmark with a shared lockup alignment contract and Playwright geometry assertion.
+- Scoped opener alternation to a continuous AI series. The user always opens the first AI match after initial load or after returning from Local/Online; rematches continue alternating while AI mode remains active.
+- Added an explicit AI-series exit when entering Online, including URL-driven Online entry, so background AI work is cancelled and returning to AI resets the opener.
+- Hardened AI worker recovery: undo/reset/mode changes invalidate and terminate pending work, timed-out workers are recycled, and the controller falls back to a legal inexpensive move instead of leaving a turn stuck.
+- Added regression coverage for worker timeout, cancel/retry, AI-series resets through Local and Online, stale AI work after undo, and rapid mode transitions.
+- Follow-up verification: `pnpm check`, `pnpm lint`, and `pnpm build` pass; workspace unit suites pass (63 web, 39 AI, 22 core, 11 Worker); the full Playwright matrix passes (13/13).
+
 ## Remaining External QA
 
 - Smoke the installed PWA on a physical notched phone in portrait and landscape.
 - Verify background/resume and an Online reconnect on the physical device.
 - A production route trace and graphics-quality presets remain deliberately deferred; the current data justified lazy QR loading, not another user-facing quality control.
-- No commit, push, deploy, or production mutation was performed.
+- The original UI pass was committed and pushed as `f90f433`; this follow-up remains local pending review.

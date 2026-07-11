@@ -97,6 +97,8 @@
 
 	.brand-lockup {
 		display: grid;
+		width: max-content;
+		justify-items: center;
 		gap: 0.42rem;
 		color: var(--brand);
 	}

@@ -268,6 +268,7 @@ export function createGameController() {
 	let aiThinking = $state(false);
 	let aiSearchRequestId = 0;
 	let classicAiClient: ClassicAiClient | null = null;
+	let aiSeriesActive = false;
 	let matchId = 0;
 	let recordedMatchId: number | null = null;
 
@@ -395,7 +396,10 @@ export function createGameController() {
 		} else if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) {
 			confirmDropEnabled = true;
 		}
-		if (savedOpponentMode) opponentMode = savedOpponentMode;
+		if (savedOpponentMode) {
+			opponentMode = savedOpponentMode;
+			aiSeriesActive = savedOpponentMode === 'ai';
+		}
 		if (savedAiDifficulty) aiDifficulty = savedAiDifficulty;
 		if (savedMatchMode) matchMode = savedMatchMode;
 		if (savedBoardDimensions) boardDimensions = savedBoardDimensions;
@@ -440,6 +444,7 @@ export function createGameController() {
 			startingPlayer = saved.startingPlayer ?? 1;
 			matchMode = saved.matchMode;
 			opponentMode = saved.opponentMode;
+			aiSeriesActive = saved.opponentMode === 'ai';
 			aiDifficulty = saved.aiDifficulty;
 			game = restoredGame;
 			redoMoves = saved.redoMoves;
@@ -714,12 +719,30 @@ export function createGameController() {
 			return;
 		}
 
+		const startsNewAiSeries = nextMode === 'ai' && (!aiSeriesActive || opponentMode !== 'ai');
+
 		clearQueuedAiMove();
 		selectedSpecial = null;
 		lockedMove = null;
+		if (startsNewAiSeries) {
+			startingPlayer = 1;
+			game = createGame(winCondition, boardDimensions, startingPlayer);
+			redoMoves = [];
+			gameOverDismissed = false;
+			gameOverModalReady = false;
+			clearSavedActiveMatch();
+		}
 		opponentMode = nextMode;
+		aiSeriesActive = nextMode === 'ai';
 		persist(STORAGE_KEYS.opponentMode, nextMode);
 		queueAiMove();
+	}
+
+	function leaveAiSeries(): void {
+		if (!aiSeriesActive) return;
+
+		clearQueuedAiMove();
+		aiSeriesActive = false;
 	}
 
 	function setAiDifficulty(nextDifficulty: AiDifficulty): void {
@@ -1198,6 +1221,7 @@ export function createGameController() {
 		setAiDifficulty,
 		setBoardDimension,
 		setLinesToWin,
+		leaveAiSeries,
 		setMatchMode,
 		setOpponentMode,
 		setPieceColor,

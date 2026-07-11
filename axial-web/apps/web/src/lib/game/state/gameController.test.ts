@@ -309,6 +309,36 @@ describe('game controller appearance lock', () => {
 		expect(controller.currentPlayer).toBe(1);
 	});
 
+	it('starts a new AI series with the user and alternates only within that series', () => {
+		const controller = createGameController();
+
+		controller.setOpponentMode('ai');
+		expect(controller.currentPlayer).toBe(1);
+
+		controller.playMove({ row: 0, col: 0 });
+		controller.playMove({ row: 1, col: 0 }, 'ai');
+		controller.resetGame();
+		expect(controller.currentPlayer).toBe(2);
+
+		controller.setOpponentMode('local');
+		controller.setOpponentMode('ai');
+		expect(controller.currentPlayer).toBe(1);
+	});
+
+	it('resets the AI opener after leaving for online mode', () => {
+		const controller = createGameController();
+
+		controller.setOpponentMode('ai');
+		controller.playMove({ row: 0, col: 0 });
+		controller.playMove({ row: 1, col: 0 }, 'ai');
+		controller.resetGame();
+		expect(controller.currentPlayer).toBe(2);
+
+		controller.leaveAiSeries();
+		controller.setOpponentMode('ai');
+		expect(controller.currentPlayer).toBe(1);
+	});
+
 	it('plays a tactical blocker combo without advancing until the regular piece lands', () => {
 		const controller = createGameController();
 

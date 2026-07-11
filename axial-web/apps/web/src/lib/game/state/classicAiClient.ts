@@ -19,6 +19,7 @@ type PendingRequest = {
 	resolve: (result: MctsMoveResult | null) => void;
 	reject: (error: unknown) => void;
 	fallbackColumns: number;
+	timeout: ReturnType<typeof setTimeout>;
 };
 
 export type ClassicAiWorkerFactory = () => WorkerLike;
@@ -49,6 +50,7 @@ export function createClassicAiClient(
 		if (!request) return;
 
 		pending.delete(response.id);
+		clearTimeout(request.timeout);
 
 		if (!response.ok) {
 			request.reject(new Error(response.error));
@@ -73,6 +75,7 @@ export function createClassicAiClient(
 
 	function rejectAll(error: unknown): void {
 		for (const request of pending.values()) {
+			clearTimeout(request.timeout);
 			request.reject(error);
 		}
 		pending.clear();
@@ -92,7 +95,18 @@ export function createClassicAiClient(
 			nextRequestId += 1;
 
 			return new Promise((resolve, reject) => {
-				pending.set(id, { resolve, reject, fallbackColumns: game.dimensions.columns });
+				const timeout = setTimeout(() => {
+					if (!pending.has(id)) return;
+
+					rejectAll(new Error('Classic AI worker timed out'));
+					resetWorker();
+				}, requestTimeoutMs(options));
+				pending.set(id, {
+					resolve,
+					reject,
+					fallbackColumns: game.dimensions.columns,
+					timeout
+				});
 				getWorker().postMessage({ id, game, options });
 			});
 		},
@@ -106,6 +120,11 @@ export function createClassicAiClient(
 			resetWorker();
 		}
 	};
+}
+
+export function requestTimeoutMs(options: MctsOptions): number {
+	const searchBudgetMs = options.maxTimeMs ?? 2_500;
+	return Math.min(20_000, Math.max(4_000, Math.ceil(searchBudgetMs * 1.75 + 1_000)));
 }
 
 function createClassicAiWorker(): WorkerLike {

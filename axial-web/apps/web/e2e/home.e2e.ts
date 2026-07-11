@@ -20,6 +20,17 @@ test('Axial shell loads and renders the game canvas', async ({ page }) => {
 	await expect(page).toHaveTitle(/Axial/);
 	await expect(page.locator('.brand-title')).toHaveAccessibleName('AXIAL');
 	await expect(page.locator('.board-dimensions .sr-only')).toHaveText('6 x 6 x 7');
+	const brandTitleBounds = await page.locator('.brand-title').boundingBox();
+	const boardDimensionsBounds = await page.locator('.board-dimensions').boundingBox();
+	expect(brandTitleBounds).not.toBeNull();
+	expect(boardDimensionsBounds).not.toBeNull();
+	expect(
+		Math.abs(
+			brandTitleBounds!.x +
+				brandTitleBounds!.width / 2 -
+				(boardDimensionsBounds!.x + boardDimensionsBounds!.width / 2)
+		)
+	).toBeLessThan(1);
 	await expect(page.getByRole('group', { name: 'Opponent mode' })).toBeVisible();
 	await expect(
 		page.getByRole('button', { name: /enter fullscreen|exit fullscreen/i })
@@ -102,4 +113,38 @@ test('saved AI mode stays visually and behaviorally selected after reload', asyn
 	);
 	await expect(page.getByRole('group', { name: 'AI strength' })).toBeVisible();
 	await expect(page.getByText('Your turn', { exact: true }).first()).toBeVisible();
+});
+
+test('undo cancels stale AI work and mode changes reset the AI opener', async ({ page }) => {
+	test.setTimeout(60_000);
+	await page.goto('/?tour=0');
+
+	const modeGroup = page.getByRole('group', { name: 'Opponent mode' });
+	await modeGroup.getByRole('button', { name: 'AI', exact: true }).click();
+	await expect(page.getByText('Your turn', { exact: true }).first()).toBeVisible();
+
+	await page.locator('.scene-shell').focus();
+	await page.keyboard.press('Enter');
+	await expect(page.getByText('1 move', { exact: true }).first()).toBeVisible();
+	await page.getByRole('button', { name: 'Undo move' }).click();
+	await expect(page.getByText('0 moves', { exact: true }).first()).toBeVisible();
+	await expect(page.getByText('Your turn', { exact: true }).first()).toBeVisible();
+	await page.waitForTimeout(2_200);
+	await expect(page.getByText('0 moves', { exact: true }).first()).toBeVisible();
+
+	await page.locator('.scene-shell').focus();
+	await page.keyboard.press('Enter');
+	await expect(page.getByText('2 moves', { exact: true }).first()).toBeVisible({ timeout: 5_000 });
+	await page.getByRole('button', { name: 'Reset game' }).click();
+	await modeGroup.getByRole('button', { name: 'Local', exact: true }).click();
+	await modeGroup.getByRole('button', { name: 'AI', exact: true }).click();
+	await expect(page.getByText('Your turn', { exact: true }).first()).toBeVisible();
+	await page.waitForTimeout(2_200);
+	await expect(page.getByText('0 moves', { exact: true }).first()).toBeVisible();
+
+	await modeGroup.getByRole('button', { name: 'Online', exact: true }).click();
+	await modeGroup.getByRole('button', { name: 'AI', exact: true }).click();
+	await expect(page.getByText('Your turn', { exact: true }).first()).toBeVisible();
+	await page.waitForTimeout(2_200);
+	await expect(page.getByText('0 moves', { exact: true }).first()).toBeVisible();
 });

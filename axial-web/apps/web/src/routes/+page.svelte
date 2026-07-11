@@ -91,6 +91,7 @@
 		const searchParams = url.searchParams;
 		embedMode = searchParams.get('embed') === '1';
 		if (online.hydrateFromBrowser(searchParams)) {
+			controller.leaveAiSeries();
 			online.useRules({
 				mode: 'classic',
 				board: controller.boardDimensions,
@@ -252,6 +253,7 @@
 		}
 
 		if (nextMode === 'online') {
+			controller.leaveAiSeries();
 			online.useRules({
 				mode: 'classic',
 				board: controller.boardDimensions,

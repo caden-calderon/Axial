@@ -105,3 +105,13 @@ Status: implementation and local QA complete; real-device PWA smoke remains.
 - [ ] Smoke an installed PWA on a real phone in portrait and landscape.
 - [ ] Verify background/resume, safe areas, Online reconnect, and orientation changes.
 - [x] Re-run the UI audit against the original viewport matrix.
+
+## Post-release Correctness Follow-up
+
+- [x] Align the dimensions readout to the AXIAL wordmark.
+- [x] Guarantee the user opens the first game of every AI-mode series.
+- [x] Preserve alternating openers for uninterrupted AI rematches.
+- [x] Reset the AI series after switching through Local or Online.
+- [x] Cancel stale AI work on undo, reset, and mode changes.
+- [x] Add a bounded timeout and fresh-worker recovery for unresponsive MCTS requests.
+- [x] Add unit and browser regressions for undo recovery, cancel/retry, and opener lifecycle.
