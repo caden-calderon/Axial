@@ -69,6 +69,11 @@ export function createClassicAiClient(
 			reason: response.reason ?? 'search',
 			simulations: response.simulations,
 			elapsedMs: response.elapsedMs,
+			maxDepth: response.maxDepth ?? 0,
+			rootChildren: response.rootChildren ?? 0,
+			lookaheadDepth: response.lookaheadDepth ?? 0,
+			lookaheadComplete: response.lookaheadComplete ?? true,
+			stopReason: response.stopReason ?? 'simulations',
 			stats: response.stats
 		});
 	}

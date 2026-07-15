@@ -30,7 +30,7 @@ describe('bridge state snapshot', () => {
 			settings: {
 				theme: 'dark',
 				labelsVisible: true,
-				gridLayersVisible: true,
+				gridLayersVisible: false,
 				confirmDrop: false
 			},
 			locks: {

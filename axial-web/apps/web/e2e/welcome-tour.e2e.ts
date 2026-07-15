@@ -54,17 +54,34 @@ test('welcome tour remains within a phone viewport', async ({ page }) => {
 	await page.getByRole('button', { name: 'Next' }).click();
 	await expectTourCardWithinViewport(page);
 	await page.getByRole('button', { name: 'Try it' }).click();
+	await expectElementWithinViewport(page, '.practice-banner');
 	await page.locator('.scene-shell').focus();
 	await page.keyboard.press('ArrowRight');
 	await page.keyboard.press('Enter');
 	await page.getByRole('button', { name: 'Continue' }).click();
+	await expect(page.locator('[data-tour-step="menu-toggle"]')).toBeVisible();
 	await expectTourCardWithinViewport(page);
-	await page.getByRole('button', { name: 'Next' }).click();
-	await expectTourCardWithinViewport(page);
-	await page.getByRole('button', { name: 'Next' }).click();
+	await expectMenuSpotlightLayout(page);
 
+	await page.getByRole('button', { name: 'Next' }).click();
+	await expect(page.locator('[data-tour-step="play-mode"]')).toBeVisible();
+	await expectTourCardWithinViewport(page);
+	await expectPortraitPanelStepLayout(page, '[data-tour-target="play-mode"]');
+
+	await page.getByRole('button', { name: 'Next' }).click();
 	await expect(page.locator('[data-tour-step="rules"]')).toBeVisible();
 	await expectTourCardWithinViewport(page);
+	await expectPortraitPanelStepLayout(page, '[data-tour-target="rules"]');
+
+	await page.getByRole('button', { name: 'Next' }).click();
+	await expect(page.locator('[data-tour-step="appearance"]')).toBeVisible();
+	await expectTourCardWithinViewport(page);
+	await expectPortraitPanelStepLayout(page, '[data-tour-target="appearance-section"]');
+
+	await page.getByRole('button', { name: 'Next' }).click();
+	await expect(page.locator('[data-tour-step="finish"]')).toBeVisible();
+	await expectTourCardWithinViewport(page);
+	await expectPortraitPanelStepLayout(page, '[data-tour-target="control-panel"]');
 });
 
 test('welcome tour traps focus and returns it to the Help action', async ({ page }) => {
@@ -93,7 +110,67 @@ function collectPageErrors(page: Page): string[] {
 }
 
 async function expectTourCardWithinViewport(page: Page): Promise<void> {
-	const box = await page.locator('.tour-card').boundingBox();
+	await expectElementWithinViewport(page, '.tour-card');
+}
+
+async function expectMenuSpotlightLayout(page: Page): Promise<void> {
+	await expect
+		.poll(async () => {
+			const [card, spotlight, target] = await Promise.all([
+				page.locator('.tour-card').boundingBox(),
+				page.locator('.tour-spotlight').boundingBox(),
+				page.locator('[data-tour-target="panel-toggle"]').boundingBox()
+			]);
+			if (!card || !spotlight || !target) return false;
+
+			const spotlightContainsTarget =
+				spotlight.x <= target.x &&
+				spotlight.y <= target.y &&
+				spotlight.x + spotlight.width >= target.x + target.width &&
+				spotlight.y + spotlight.height >= target.y + target.height;
+			const aspectRatio = spotlight.width / spotlight.height;
+
+			return (
+				spotlightContainsTarget &&
+				aspectRatio >= 0.85 &&
+				aspectRatio <= 1.15 &&
+				!rectanglesOverlap(card, spotlight)
+			);
+		})
+		.toBe(true);
+}
+
+async function expectPortraitPanelStepLayout(page: Page, targetSelector: string): Promise<void> {
+	await expect
+		.poll(async () => {
+			const [card, spotlight, panel, target, scroller] = await Promise.all([
+				page.locator('.tour-card').boundingBox(),
+				page.locator('.tour-spotlight').boundingBox(),
+				page.locator('.control-panel').boundingBox(),
+				page.locator(targetSelector).boundingBox(),
+				page.locator('.panel-body-clip').boundingBox()
+			]);
+			if (!card || !spotlight || !panel || !target || !scroller) return false;
+
+			const panelBottom = panel.y + panel.height;
+			const spotlightBottom = spotlight.y + spotlight.height;
+			const targetsWholePanel = targetSelector.includes('control-panel');
+			const spotlightRespectsClip = targetsWholePanel
+				? spotlight.y >= panel.y - 1 && spotlightBottom <= panelBottom + 11
+				: spotlight.y >= scroller.y - 1 && spotlightBottom <= scroller.y + scroller.height + 1;
+
+			return (
+				card.y >= panelBottom + 12 &&
+				spotlightRespectsClip &&
+				!rectanglesOverlap(card, panel) &&
+				!rectanglesOverlap(card, spotlight)
+			);
+		})
+		.toBe(true);
+}
+
+async function expectElementWithinViewport(page: Page, selector: string): Promise<void> {
+	const box = await page.locator(selector).boundingBox();
 	const viewport = page.viewportSize();
 
 	expect(box).not.toBeNull();
@@ -104,4 +181,16 @@ async function expectTourCardWithinViewport(page: Page): Promise<void> {
 	expect(box.y).toBeGreaterThanOrEqual(0);
 	expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
 	expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 1);
+}
+
+function rectanglesOverlap(
+	first: { x: number; y: number; width: number; height: number },
+	second: { x: number; y: number; width: number; height: number }
+): boolean {
+	return !(
+		first.x + first.width <= second.x ||
+		second.x + second.width <= first.x ||
+		first.y + first.height <= second.y ||
+		second.y + second.height <= first.y
+	);
 }

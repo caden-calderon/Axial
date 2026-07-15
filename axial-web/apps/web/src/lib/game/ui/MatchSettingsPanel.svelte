@@ -25,7 +25,6 @@
 		aiThinking,
 		setupLocked,
 		playModeLocked,
-		onlineRulesLocked,
 		onPlayModeChange,
 		onAiDifficultyChange,
 		onMatchModeChange,
@@ -41,7 +40,6 @@
 		aiThinking: boolean;
 		setupLocked: boolean;
 		playModeLocked: boolean;
-		onlineRulesLocked: boolean;
 		onPlayModeChange: (mode: PlayMode) => void;
 		onAiDifficultyChange: (difficulty: AiDifficulty) => void;
 		onMatchModeChange: (mode: MatchMode) => void;
@@ -75,11 +73,16 @@
 			? 'Leave the room to change play mode'
 			: 'Start a new match to change opponent mode'
 	);
+	const aiDifficultyLabel = $derived(
+		AI_DIFFICULTY_OPTIONS.find((option) => option.value === aiDifficulty)?.label ?? aiDifficulty
+	);
 	const playModeLabel = $derived(
 		playMode === 'local'
 			? 'Local match'
 			: playMode === 'ai'
-				? `AI · ${aiDifficulty}`
+				? matchMode === 'classic'
+					? `AI · ${aiDifficultyLabel}`
+					: 'AI · Tactical baseline'
 				: 'Online room'
 	);
 	const rulesLabel = $derived(
@@ -164,18 +167,16 @@
 			</button>
 			<button
 				type="button"
+				class="coming-soon-option"
 				class:selected={matchMode === 'tactical'}
 				aria-pressed={matchMode === 'tactical'}
-				disabled={setupLocked || onlineRulesLocked}
-				title={onlineRulesLocked
-					? 'Online v1 uses Classic rules'
-					: setupLocked
-						? 'Start a new match to change rules'
-						: 'Tactical rules'}
-				onclick={() => onMatchModeChange('tactical')}
+				aria-label="Tactical mode — coming soon"
+				disabled
+				title="Tactical mode is coming soon"
 			>
 				<Shield size={14} strokeWidth={2} />
 				<span>Tactical</span>
+				<small aria-hidden="true">Coming soon</small>
 			</button>
 		</div>
 
@@ -248,7 +249,7 @@
 			</div>
 		</div>
 
-		{#if playMode === 'ai'}
+		{#if playMode === 'ai' && matchMode === 'classic'}
 			<div class="control-label">
 				<Bot size={13} strokeWidth={2} />
 				<span>AI difficulty</span>
@@ -267,6 +268,10 @@
 					</button>
 				{/each}
 			</div>
+		{:else if playMode === 'ai'}
+			<p class="ai-baseline-note">
+				Tactical is coming soon. Switch to Classic to use the active AI opponent.
+			</p>
 		{/if}
 	{/if}
 </section>

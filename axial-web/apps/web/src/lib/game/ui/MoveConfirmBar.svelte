@@ -134,7 +134,7 @@
 
 	@media (max-width: 720px), (hover: none) and (pointer: coarse) {
 		.move-confirm-bar {
-			bottom: calc(max(0.5rem, env(safe-area-inset-bottom)) + 3.7rem);
+			bottom: max(0.5rem, env(safe-area-inset-bottom));
 			width: min(26rem, calc(100vw - 1rem));
 			justify-content: space-between;
 		}

@@ -5,7 +5,7 @@ Status: implementation and local QA complete; real-device PWA smoke remains.
 ## Review Gate
 
 - [x] Review the full plan with Caden.
-- [x] Confirm portrait bottom-sheet direction.
+- [x] Confirm the portrait control direction; the original bottom-sheet approval was superseded by Caden's 2026-07-14 top-right override.
 - [x] Confirm staged-drop default for new coarse-pointer users.
 - [x] Confirm light mode remains a fully supported target.
 - [x] Confirm keyboard board navigation belongs in this pass.
@@ -38,9 +38,9 @@ Status: implementation and local QA complete; real-device PWA smoke remains.
 ## Milestone 2: Touch-safe, State-driven Controls
 
 - [x] Add a shared responsive control-surface shell.
-- [x] Render portrait controls as a bottom sheet.
+- [x] Render portrait controls as a compact top-right dropdown.
 - [x] Retain desktop and coarse-landscape rail behavior.
-- [x] Support accessible collapsed, partial, and full sheet states.
+- [x] Support accessible collapsed and expanded portrait states from one stable anchor.
 - [x] Raise coarse-pointer target sizes to at least 44px.
 - [x] Raise mobile input text to at least 16px.
 - [x] Add visible scroll continuation.
@@ -115,3 +115,5 @@ Status: implementation and local QA complete; real-device PWA smoke remains.
 - [x] Cancel stale AI work on undo, reset, and mode changes.
 - [x] Add a bounded timeout and fresh-worker recovery for unresponsive MCTS requests.
 - [x] Add unit and browser regressions for undo recovery, cancel/retry, and opener lifecycle.
+- [x] Reposition portrait controls from the bottom to the top-right without restoring collapsed status UI.
+- [x] Remove unused collapsed-toolbar space and expand the panel downward from the same anchor.

@@ -1,5 +1,5 @@
 import type { GameSnapshot, Move } from '@axial/core';
-import type { MctsMoveStat, MctsOptions } from '@axial/ai';
+import type { MctsMoveStat, MctsOptions, MctsStopReason } from '@axial/ai';
 
 export type ClassicAiWorkerRequest = {
 	id: number;
@@ -15,6 +15,11 @@ export type ClassicAiWorkerSuccess = {
 	reason: 'tactical' | 'lookahead' | 'search' | 'heuristic' | null;
 	simulations: number;
 	elapsedMs: number;
+	maxDepth?: number;
+	rootChildren?: number;
+	lookaheadDepth?: number;
+	lookaheadComplete?: boolean;
+	stopReason?: MctsStopReason;
 	stats: MctsMoveStat[];
 };
 

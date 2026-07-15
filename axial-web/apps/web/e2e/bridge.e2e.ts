@@ -42,7 +42,7 @@ test('same-origin iframe bridge sends ready, state, settings ack, and payload er
 		settings: {
 			theme: 'dark',
 			labelsVisible: true,
-			gridLayersVisible: true,
+			gridLayersVisible: false,
 			confirmDrop: false
 		}
 	});

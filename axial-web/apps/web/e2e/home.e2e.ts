@@ -20,6 +20,11 @@ test('Axial shell loads and renders the game canvas', async ({ page }) => {
 	await expect(page).toHaveTitle(/Axial/);
 	await expect(page.locator('.brand-title')).toHaveAccessibleName('AXIAL');
 	await expect(page.locator('.board-dimensions .sr-only')).toHaveText('6 x 6 x 7');
+	expect(
+		await page
+			.locator('.brand-title .shiny-overlay')
+			.evaluate((overlay) => getComputedStyle(overlay).animationIterationCount)
+	).toBe('infinite');
 	const brandTitleBounds = await page.locator('.brand-title').boundingBox();
 	const boardDimensionsBounds = await page.locator('.board-dimensions').boundingBox();
 	const brandTitleFontSize = Number.parseFloat(
@@ -114,6 +119,22 @@ test('saved AI mode stays visually and behaviorally selected after reload', asyn
 	await expect(page.getByText('Your turn', { exact: true }).first()).toBeVisible();
 });
 
+test('Tactical is visibly paused while Classic AI remains available', async ({ page }) => {
+	await page.goto('/?tour=0');
+
+	await page
+		.getByRole('group', { name: 'Opponent mode' })
+		.getByRole('button', { name: 'AI', exact: true })
+		.click();
+	const tacticalButton = page
+		.getByRole('group', { name: 'Match rules' })
+		.getByRole('button', { name: 'Tactical mode — coming soon' });
+	await expect(tacticalButton).toBeDisabled();
+	await expect(tacticalButton).toContainText('Coming soon');
+	await expect(tacticalButton).toHaveAttribute('aria-pressed', 'false');
+	await expect(page.getByRole('group', { name: 'AI strength' })).toBeVisible();
+});
+
 test('undo cancels stale AI work and mode changes reset the AI opener', async ({ page }) => {
 	test.setTimeout(60_000);
 	await page.goto('/?tour=0');
@@ -135,7 +156,7 @@ test('undo cancels stale AI work and mode changes reset the AI opener', async ({
 	await page.keyboard.press('Enter');
 	await expect(page.getByText('2 moves', { exact: true }).first()).toBeVisible({ timeout: 5_000 });
 	await page.getByRole('button', { name: 'Reset game' }).click();
-	await modeGroup.getByRole('button', { name: 'Local', exact: true }).click();
+	await modeGroup.getByRole('button', { name: 'Local', exact: true }).press('Enter');
 	await modeGroup.getByRole('button', { name: 'AI', exact: true }).click();
 	await expect(page.getByText('Your turn', { exact: true }).first()).toBeVisible();
 	await page.waitForTimeout(2_200);
@@ -146,4 +167,25 @@ test('undo cancels stale AI work and mode changes reset the AI opener', async ({
 	await expect(page.getByText('Your turn', { exact: true }).first()).toBeVisible();
 	await page.waitForTimeout(2_200);
 	await expect(page.getByText('0 moves', { exact: true }).first()).toBeVisible();
+});
+
+test('changing to a multi-line rule requeues a pending AI opener', async ({ page }) => {
+	test.setTimeout(30_000);
+	await page.goto('/?tour=0');
+
+	const modeGroup = page.getByRole('group', { name: 'Opponent mode' });
+	await modeGroup.getByRole('button', { name: 'AI', exact: true }).click();
+	await page.locator('.scene-shell').focus();
+	await page.keyboard.press('Enter');
+	await expect(page.getByText('2 moves', { exact: true }).first()).toBeVisible({ timeout: 6_000 });
+
+	await page.getByRole('button', { name: 'Reset game' }).click();
+	const twoLineButton = page
+		.getByRole('group', { name: 'Lines to win' })
+		.getByRole('button', { name: '2', exact: true });
+	await twoLineButton.click();
+	await expect(twoLineButton).toHaveAttribute('aria-pressed', 'true');
+
+	await expect(page.getByText('1 move', { exact: true }).first()).toBeVisible({ timeout: 6_000 });
+	await expect(page.getByText('Your turn', { exact: true }).first()).toBeVisible();
 });

@@ -5,7 +5,7 @@ import { resolveCameraFit } from './cameraFit';
 const defaultBoard: BoardDimensions = { height: 6, rows: 6, columns: 7 };
 
 describe('resolveCameraFit', () => {
-	it('keeps phone portrait compact and leaves extra room for an expanded sheet', () => {
+	it('keeps phone portrait framing stable while the top sheet overlays the scene', () => {
 		const collapsed = resolveCameraFit(
 			{ width: 390, height: 844, coarsePointer: true, controlsExpanded: false },
 			defaultBoard
@@ -16,7 +16,10 @@ describe('resolveCameraFit', () => {
 		);
 
 		expect(collapsed.portrait).toBe(true);
-		expect(expanded.boardScale).toBeLessThan(collapsed.boardScale);
+		expect(expanded.position).toEqual(collapsed.position);
+		expect(expanded.target).toEqual(collapsed.target);
+		expect(expanded.fov).toBe(collapsed.fov);
+		expect(expanded.boardScale).toBe(collapsed.boardScale);
 		expect(collapsed.maxDistance).toBeGreaterThan(15.5);
 	});
 

@@ -1,6 +1,6 @@
 # Axial UI Pass Context
 
-Status: implementation and first post-release correctness follow-up complete; awaiting real-device PWA smoke.
+Status: implementation and AI/portrait follow-up complete; awaiting real-device PWA smoke.
 
 Date: 2026-07-10
 
@@ -62,9 +62,9 @@ Caden approved the full pass on 2026-07-09 with one override: hiding turn/status
 
 ## Implemented
 
-- Responsive safe-area/dynamic-viewport shell with a portrait bottom sheet, coarse-landscape rail, and desktop rail.
+- Responsive safe-area/dynamic-viewport shell with a portrait top-right dropdown, coarse-landscape rail, and desktop rail.
 - Tested camera fitting across portrait, landscape, desktop, expanded controls, and oversized boards.
-- 44px coarse-pointer controls, 16px mobile Online inputs, visible panel scrollbar, 320px collision fix, and partial/full sheet states.
+- 44px coarse-pointer controls, 16px mobile Online inputs, visible panel scrollbar, and a 320px-safe collapsed toolbar.
 - New coarse-pointer staged-drop default that preserves saved preferences; contextual row/column/layer confirm and cancel UI appears only while armed.
 - Keyboard board navigation with announced landing layer, invalid/full columns, Enter/Space selection, and Escape cancellation.
 - Native shared dialog shell with focus containment/restoration for the tour and result overlays; Online countdown is a non-interactive announced status.
@@ -95,6 +95,14 @@ Caden approved the full pass on 2026-07-09 with one override: hiding turn/status
 - Hardened AI worker recovery: undo/reset/mode changes invalidate and terminate pending work, timed-out workers are recycled, and the controller falls back to a legal inexpensive move instead of leaving a turn stuck.
 - Added regression coverage for worker timeout, cancel/retry, AI-series resets through Local and Online, stale AI work after undo, and rapid mode transitions.
 - Follow-up verification: `pnpm check`, `pnpm lint`, and `pnpm build` pass; workspace unit suites pass (63 web, 39 AI, 22 core, 11 Worker); the full Playwright matrix passes (13/13).
+
+## 2026-07-14 Portrait Product Override
+
+- Caden rejected the portrait bottom placement and requested a compact top-right menu.
+- Portrait controls now sit below the brand at the top-right, hug their toolbar content while collapsed, and expand downward from the same anchor.
+- The collapsed state remains intentionally status-free, and coarse-landscape/desktop rail behavior is unchanged.
+- Camera fitting shifts the board away from the expanded top-right panel instead of reserving space for a bottom sheet.
+- The implementation and verification lane lives in `dev/active/axial-ai-mobile-review/`.
 
 ## Remaining External QA
 

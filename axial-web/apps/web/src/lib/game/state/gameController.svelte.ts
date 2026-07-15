@@ -26,6 +26,7 @@ import {
 	type TacticalSpecialId,
 	type WinCondition
 } from '@axial/core';
+import { classicAiSearchOptionsForGame, type ClassicAiDifficulty } from '@axial/ai/presets';
 import { DEFAULT_BOARD_COLOR, normalizeBoardColor, type UiThemeName } from '../theming/sceneThemes';
 import {
 	DEFAULT_PIECE_COLORS,
@@ -62,7 +63,8 @@ const LEGACY_SCENE_THEME_KEY = 'axial-scene-theme';
 
 export type OpponentMode = 'local' | 'ai';
 export type PlayMode = OpponentMode | 'online';
-export type AiDifficulty = 'easy' | 'medium' | 'hard' | 'nightmare';
+export type AiDifficulty = ClassicAiDifficulty;
+export { classicAiSearchOptionsForGame };
 
 export const WIN_LINE_LENGTH_OPTIONS: readonly {
 	value: number;
@@ -91,7 +93,7 @@ export const AI_DIFFICULTY_OPTIONS: readonly {
 	{ value: 'easy', label: 'Easy', shortLabel: 'Easy' },
 	{ value: 'medium', label: 'Medium', shortLabel: 'Med' },
 	{ value: 'hard', label: 'Hard', shortLabel: 'Hard' },
-	{ value: 'nightmare', label: 'Nightmare', shortLabel: 'Max' }
+	{ value: 'nightmare', label: 'Max', shortLabel: 'Max' }
 ];
 
 const LOCAL_TURN_LABELS: Record<Player, string> = {
@@ -115,99 +117,10 @@ const AI_RESULT_LABELS: Record<Player, string> = {
 };
 
 const AI_MINIMUM_THINK_MS = {
-	easy: 780,
-	medium: 1180,
-	hard: 1680,
-	nightmare: 2450
-} as const satisfies Record<AiDifficulty, number>;
-
-type ClassicAiSearchOptions = {
-	simulations?: number;
-	maxTimeMs?: number;
-	exploration?: number;
-	progressiveBias?: number;
-	lookaheadDepth?: number;
-	lookaheadMaxMoves?: number;
-	lookaheadRootMaxMoves?: number;
-	lookaheadNodeLimit?: number;
-	lookaheadWeight?: number;
-	lookaheadOverrideMargin?: number;
-	seed?: number;
-	smartRolloutRate?: number;
-	earlyExitVisits?: number;
-	earlyExitRatio?: number;
-	useRave?: boolean;
-};
-
-type ClassicAiSearchPreset = ClassicAiSearchOptions & {
-	simulations: number;
-	maxTimeMs: number;
-	earlyExitVisits: number;
-};
-
-const CLASSIC_AI_SEARCH_PRESETS = {
-	easy: {
-		simulations: 24,
-		maxTimeMs: 110,
-		progressiveBias: 0.08,
-		lookaheadDepth: 0,
-		lookaheadWeight: 0,
-		smartRolloutRate: 0.45,
-		earlyExitVisits: 18,
-		earlyExitRatio: 0.92,
-		useRave: false
-	},
-	medium: {
-		simulations: 88,
-		maxTimeMs: 280,
-		progressiveBias: 0.14,
-		lookaheadDepth: 1,
-		lookaheadMaxMoves: 8,
-		lookaheadRootMaxMoves: 10,
-		lookaheadNodeLimit: 900,
-		lookaheadWeight: 0.16,
-		smartRolloutRate: 0.62,
-		earlyExitVisits: 54,
-		earlyExitRatio: 0.92,
-		useRave: true
-	},
-	hard: {
-		simulations: 220,
-		maxTimeMs: 680,
-		progressiveBias: 0.2,
-		lookaheadDepth: 2,
-		lookaheadMaxMoves: 10,
-		lookaheadRootMaxMoves: 14,
-		lookaheadNodeLimit: 4_000,
-		lookaheadWeight: 0.36,
-		lookaheadOverrideMargin: 72_000,
-		smartRolloutRate: 0.76,
-		earlyExitVisits: 140,
-		earlyExitRatio: 0.94,
-		useRave: true
-	},
-	nightmare: {
-		simulations: 760,
-		maxTimeMs: 2200,
-		progressiveBias: 0.26,
-		lookaheadDepth: 3,
-		lookaheadMaxMoves: 12,
-		lookaheadRootMaxMoves: 18,
-		lookaheadNodeLimit: 16_000,
-		lookaheadWeight: 0.62,
-		lookaheadOverrideMargin: 34_000,
-		smartRolloutRate: 0.86,
-		earlyExitVisits: 420,
-		earlyExitRatio: 0.97,
-		useRave: true
-	}
-} as const satisfies Record<AiDifficulty, ClassicAiSearchPreset>;
-
-const CLASSIC_AI_BOARD_SCALE = {
-	easy: 0.22,
-	medium: 0.48,
-	hard: 0.78,
-	nightmare: 1.16
+	easy: 420,
+	medium: 420,
+	hard: 420,
+	nightmare: 420
 } as const satisfies Record<AiDifficulty, number>;
 
 type MoveSource = 'human' | 'ai';
@@ -251,7 +164,7 @@ export function createGameController() {
 	let uiTheme = $state<UiThemeName>('dark');
 	let boardColor = $state(DEFAULT_BOARD_COLOR);
 	let labelsVisible = $state(true);
-	let gridLayersVisible = $state(true);
+	let gridLayersVisible = $state(false);
 	let confirmDropEnabled = $state(false);
 	let opponentMode = $state<OpponentMode>('local');
 	let aiDifficulty = $state<AiDifficulty>('hard');
@@ -838,6 +751,7 @@ export function createGameController() {
 		persist(STORAGE_KEYS.winLineLength, String(winCondition.lineLength));
 		persist(STORAGE_KEYS.linesToWin, String(winCondition.linesToWin));
 		clearSavedActiveMatch();
+		queueAiMove();
 	}
 
 	function toggleBlockerCombo(): void {
@@ -1515,46 +1429,6 @@ export async function chooseAiMove(
 		if (isAbortError(error)) throw error;
 		return chooseRandomMove(game);
 	}
-}
-
-export function classicAiSearchOptionsForGame(
-	aiDifficulty: AiDifficulty,
-	game: GameSnapshot
-): ClassicAiSearchOptions {
-	const preset: ClassicAiSearchPreset = CLASSIC_AI_SEARCH_PRESETS[aiDifficulty];
-	const winRuleMultiplier =
-		1 +
-		(game.winCondition.linesToWin - 1) * 0.34 +
-		(game.winCondition.lineLength - DEFAULT_WIN_CONDITION.lineLength) * 0.16;
-	const boardArea =
-		(game.dimensions.rows * game.dimensions.columns) /
-		(DEFAULT_BOARD_DIMENSIONS.rows * DEFAULT_BOARD_DIMENSIONS.columns);
-	const boardBreadthMultiplier =
-		1 + (Math.sqrt(boardArea) - 1) * CLASSIC_AI_BOARD_SCALE[aiDifficulty];
-	const heightMultiplier =
-		1 +
-		Math.max(0, game.dimensions.height - DEFAULT_BOARD_DIMENSIONS.height) *
-			(aiDifficulty === 'nightmare' ? 0.055 : 0.04);
-	const multiplier = winRuleMultiplier * boardBreadthMultiplier * heightMultiplier;
-	const earlyExitMultiplier = Math.min(multiplier, aiDifficulty === 'nightmare' ? 2 : 1.65);
-	const lookaheadBreadthMultiplier =
-		1 + (Math.sqrt(boardArea) - 1) * (aiDifficulty === 'nightmare' ? 0.38 : 0.24);
-	const lookaheadNodeMultiplier = Math.min(multiplier, aiDifficulty === 'nightmare' ? 2.2 : 1.7);
-
-	return {
-		...preset,
-		simulations: Math.round(preset.simulations * multiplier),
-		maxTimeMs: Math.round(preset.maxTimeMs * multiplier),
-		earlyExitVisits: Math.round(preset.earlyExitVisits * earlyExitMultiplier),
-		lookaheadRootMaxMoves:
-			preset.lookaheadRootMaxMoves === undefined
-				? undefined
-				: Math.round(preset.lookaheadRootMaxMoves * lookaheadBreadthMultiplier),
-		lookaheadNodeLimit:
-			preset.lookaheadNodeLimit === undefined
-				? undefined
-				: Math.round(preset.lookaheadNodeLimit * lookaheadNodeMultiplier)
-	};
 }
 
 export function remainingAiThinkingDelayMs(aiDifficulty: AiDifficulty, elapsedMs: number): number {

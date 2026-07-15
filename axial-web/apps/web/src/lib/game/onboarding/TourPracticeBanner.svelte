@@ -38,7 +38,13 @@
 		<button type="button" class="practice-exit" aria-label="Exit tutorial" onclick={onExit}>
 			<X size={17} strokeWidth={2.2} />
 		</button>
-		<button type="button" class="practice-continue" disabled={!move} onclick={onContinue}>
+		<button
+			type="button"
+			class="practice-continue"
+			aria-label="Continue tutorial"
+			disabled={!move}
+			onclick={onContinue}
+		>
 			<span>Continue</span>
 			<ArrowRight size={17} strokeWidth={2.2} />
 		</button>
@@ -157,7 +163,7 @@
 
 	@media (max-width: 720px), (hover: none) and (pointer: coarse) {
 		.practice-banner {
-			bottom: calc(max(0.5rem, env(safe-area-inset-bottom)) + 3.7rem);
+			bottom: max(0.5rem, env(safe-area-inset-bottom));
 			width: calc(100vw - 1rem);
 			gap: 0.48rem;
 			padding: 0.46rem;
@@ -173,6 +179,14 @@
 	}
 
 	@media (max-width: 430px) {
+		.practice-banner {
+			left: max(0.5rem, env(safe-area-inset-left));
+			right: max(0.5rem, env(safe-area-inset-right));
+			width: auto;
+			grid-template-columns: minmax(0, 1fr) auto;
+			transform: none;
+		}
+
 		.practice-mark {
 			display: none;
 		}
@@ -180,11 +194,27 @@
 		.practice-copy small {
 			white-space: normal;
 		}
-	}
 
-	@media (max-width: 340px) {
+		.practice-continue {
+			width: 2.75rem;
+			padding: 0;
+		}
+
 		.practice-continue span {
 			display: none;
+		}
+	}
+
+	@media (max-width: 430px) and (prefers-reduced-motion: no-preference) {
+		.practice-banner {
+			animation-name: practice-in-mobile;
+		}
+	}
+
+	@keyframes practice-in-mobile {
+		from {
+			opacity: 0;
+			transform: translateY(0.6rem) scale(0.98);
 		}
 	}
 </style>

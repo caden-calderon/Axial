@@ -167,6 +167,7 @@ button {
 .panel-toolbar {
 	display: flex;
 	flex: 0 0 auto;
+	width: 100%;
 	align-items: center;
 	justify-content: center;
 	gap: 0.28rem;
@@ -483,6 +484,18 @@ button {
 	justify-self: center;
 }
 
+.ai-baseline-note {
+	margin: 0;
+	padding: 0.48rem 0.58rem;
+	border: 1px solid color-mix(in oklab, var(--text) 9%, transparent);
+	border-radius: 0.9rem;
+	background: color-mix(in oklab, var(--surface) 34%, transparent);
+	color: var(--muted);
+	font-size: 0.68rem;
+	font-weight: 660;
+	line-height: 1.4;
+}
+
 .lock-indicator {
 	display: inline-flex;
 	width: 1.32rem;
@@ -555,6 +568,31 @@ button {
 .mode-switch button:disabled {
 	cursor: not-allowed;
 	opacity: 0.48;
+}
+
+.mode-switch button.coming-soon-option {
+	position: relative;
+	justify-content: flex-start;
+	padding-inline: 0.54rem;
+	opacity: 1;
+}
+
+.coming-soon-option > svg,
+.coming-soon-option > span {
+	opacity: 0.38;
+}
+
+.coming-soon-option small {
+	margin-left: auto;
+	padding: 0.18rem 0.32rem;
+	border: 1px solid color-mix(in oklab, var(--accent) 24%, transparent);
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--accent) 12%, var(--surface));
+	color: color-mix(in oklab, var(--accent) 62%, var(--text));
+	font-size: 0.52rem;
+	font-weight: 820;
+	line-height: 1;
+	white-space: nowrap;
 }
 
 .rules-switch {
@@ -1556,31 +1594,101 @@ button {
 }
 
 @media (max-width: 720px) and (orientation: portrait) {
-	.control-panel,
+	.control-panel:not(.collapsed) {
+		inset: 0 0 auto;
+		z-index: 5;
+		width: 100%;
+		height: min(50dvh, 30rem);
+		max-height: none;
+		padding: max(0.5rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) 0.42rem
+			max(0.5rem, env(safe-area-inset-left));
+		border-radius: 0 0 1.55rem 1.55rem;
+		transform-origin: 50% 0;
+	}
+
 	.control-panel.collapsed {
-		--control-panel-width: calc(
+		inset: max(0.5rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) auto auto;
+		width: 8.875rem;
+		max-width: calc(
 			100vw - max(0.5rem, env(safe-area-inset-left)) - max(0.5rem, env(safe-area-inset-right))
 		);
-		inset: auto max(0.5rem, env(safe-area-inset-right)) max(0.5rem, env(safe-area-inset-bottom))
-			max(0.5rem, env(safe-area-inset-left));
-		max-height: min(72dvh, 42rem);
-		width: auto;
+		max-height: calc(var(--target-coarse) + 0.375rem);
+		padding: 0.125rem 0.25rem;
 		border-radius: 1.55rem;
-		transform-origin: 50% 100%;
+		transform-origin: 100% 0;
 	}
 
-	.control-panel.sheet-full {
-		max-height: calc(
-			100dvh - max(0.5rem, env(safe-area-inset-top)) - max(0.5rem, env(safe-area-inset-bottom))
-		);
-	}
-
-	.control-panel.collapsed {
-		max-height: calc(var(--target-coarse) + 0.36rem);
+	.control-panel.tactical-panel.collapsed {
+		width: 11.625rem;
 	}
 
 	.panel-toolbar {
-		justify-content: flex-end;
+		justify-content: center;
+	}
+
+	.control-panel.collapsed .toolbar-history-action,
+	.control-panel.collapsed .toolbar-fullscreen-action {
+		display: none;
+	}
+
+	.control-panel.collapsed .panel-toolbar {
+		gap: 0;
+	}
+
+	.control-panel:not(.tactical-panel):not(.collapsed) .panel-toolbar:not(.pieces-mode) {
+		align-self: flex-end;
+		width: auto;
+		gap: 0;
+		margin: -1px -1px 0 0;
+		padding: 0.125rem 0.25rem;
+		border: 1px solid var(--border);
+		border-radius: 1.55rem;
+		background: color-mix(in oklab, var(--surface) 18%, transparent);
+	}
+
+	.control-panel.collapsed .icon-button,
+	.control-panel:not(.tactical-panel):not(.collapsed)
+		.panel-toolbar:not(.pieces-mode)
+		.icon-button {
+		position: relative;
+		border-color: transparent;
+		border-radius: 0.75rem;
+		background: transparent;
+	}
+
+	.control-panel:not(.tactical-panel):not(.collapsed)
+		.panel-toolbar:not(.pieces-mode)
+		.icon-button:hover:not(:disabled) {
+		transform: none;
+		border-color: transparent;
+		background: color-mix(in oklab, var(--accent) 12%, transparent);
+	}
+
+	.control-panel.collapsed .toolbar-theme-action::before,
+	.control-panel.collapsed .collapse-button::before,
+	.control-panel.tactical-panel.collapsed .toolbar-reset-action::before,
+	.control-panel:not(.tactical-panel):not(.collapsed)
+		.panel-toolbar:not(.pieces-mode)
+		.icon-button
+		+ .icon-button::before {
+		position: absolute;
+		left: 0;
+		top: 50%;
+		width: 1px;
+		height: 1.5rem;
+		background: color-mix(in oklab, var(--text) 11%, transparent);
+		content: '';
+		transform: translateY(-50%);
+	}
+
+	.control-panel.tour-controlled .panel-body-shell {
+		transition: none;
+	}
+
+	.control-panel.sheet-full:not(.collapsed) {
+		height: 100dvh;
+		padding-bottom: max(0.42rem, env(safe-area-inset-bottom));
+		border-radius: 0;
 	}
 
 	.panel-quick-actions {

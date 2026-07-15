@@ -10,16 +10,16 @@ import {
 import type { ClassicAiClient } from './classicAiClient';
 
 describe('game controller AI timing', () => {
-	it('keeps visible thinking time meaningfully longer on stronger difficulties', () => {
+	it('uses one short response floor instead of simulating stronger search with extra delay', () => {
 		const easy = remainingAiThinkingDelayMs('easy', 0);
 		const medium = remainingAiThinkingDelayMs('medium', 0);
 		const hard = remainingAiThinkingDelayMs('hard', 0);
 		const max = remainingAiThinkingDelayMs('nightmare', 0);
 
 		expect(easy).toBeGreaterThan(0);
-		expect(medium).toBeGreaterThan(easy);
-		expect(hard).toBeGreaterThan(medium);
-		expect(max).toBeGreaterThan(hard);
+		expect(medium).toBe(easy);
+		expect(hard).toBe(easy);
+		expect(max).toBe(easy);
 		expect(remainingAiThinkingDelayMs('nightmare', max)).toBe(0);
 	});
 
@@ -30,11 +30,41 @@ describe('game controller AI timing', () => {
 			createGame(undefined, { height: 10, rows: 10, columns: 10 })
 		);
 
-		expect(defaultBoard.maxTimeMs).toBeGreaterThan(2000);
+		expect(defaultBoard.maxTimeMs).toBeGreaterThan(3500);
 		expect(largeBoard.maxTimeMs).toBeGreaterThan(defaultBoard.maxTimeMs!);
 		expect(largeBoard.simulations).toBeGreaterThan(defaultBoard.simulations!);
 		expect(largeBoard.earlyExitVisits).toBeGreaterThan(defaultBoard.earlyExitVisits!);
 		expect(largeBoard.earlyExitRatio).toBeGreaterThanOrEqual(defaultBoard.earlyExitRatio!);
+	});
+
+	it('separates difficulty capability and real search budgets', () => {
+		const easy = classicAiSearchOptionsForGame('easy', createGame());
+		const medium = classicAiSearchOptionsForGame('medium', createGame());
+		const hard = classicAiSearchOptionsForGame('hard', createGame());
+		const max = classicAiSearchOptionsForGame('nightmare', createGame());
+
+		expect(easy.tacticalMode).toBe('immediate-only');
+		expect(easy.progressiveWidening).toBe(false);
+		for (const stronger of [medium, hard, max]) {
+			expect(stronger.tacticalMode).toBe('forced-only');
+			expect(stronger.progressiveWidening).toBe(true);
+		}
+		expect(medium.simulations).toBeGreaterThan(easy.simulations!);
+		expect(hard.simulations).toBeGreaterThan(medium.simulations!);
+		expect(max.simulations).toBeGreaterThan(hard.simulations!);
+		expect(max.maxTimeMs).toBeGreaterThan(hard.maxTimeMs!);
+	});
+
+	it('spends more real search budget on multi-line games', () => {
+		const standard = classicAiSearchOptionsForGame('nightmare', createGame());
+		const twoLines = classicAiSearchOptionsForGame(
+			'nightmare',
+			createGame({ lineLength: 4, linesToWin: 2 })
+		);
+
+		expect(twoLines.simulations).toBeGreaterThan(standard.simulations!);
+		expect(twoLines.maxTimeMs).toBeGreaterThan(standard.maxTimeMs!);
+		expect(twoLines.lookaheadNodeLimit).toBeGreaterThan(standard.lookaheadNodeLimit!);
 	});
 
 	it('falls back to a cheap legal move when the AI worker fails', async () => {
@@ -205,10 +235,12 @@ describe('game controller appearance lock', () => {
 	it('toggles grid layers independently from axis labels', () => {
 		const controller = createGameController();
 
+		expect(controller.gridLayersVisible).toBe(false);
+
 		controller.toggleGridLayers();
 		controller.toggleLabels();
 
-		expect(controller.gridLayersVisible).toBe(false);
+		expect(controller.gridLayersVisible).toBe(true);
 		expect(controller.labelsVisible).toBe(false);
 	});
 
