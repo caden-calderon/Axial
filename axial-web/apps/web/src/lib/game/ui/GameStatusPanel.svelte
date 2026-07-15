@@ -56,7 +56,6 @@
 		pieceColors,
 		setupLocked,
 		playModeLocked,
-		onlineRulesLocked,
 		appearanceLocked,
 		activeSpecialCharges,
 		activeSpecialCounts,
@@ -115,7 +114,6 @@
 		pieceColors: PieceColors;
 		setupLocked: boolean;
 		playModeLocked: boolean;
-		onlineRulesLocked: boolean;
 		appearanceLocked: boolean;
 		activeSpecialCharges: number;
 		activeSpecialCounts: TacticalSpecialCounts;
@@ -209,6 +207,9 @@
 	class="control-panel"
 	class:collapsed={!panelExpanded}
 	class:sheet-full={sheetFull}
+	class:tactical-panel={matchMode === 'tactical'}
+	class:tour-controlled={forcedExpanded !== null}
+	data-sheet-state={panelExpanded ? (sheetFull ? 'full' : 'half') : 'collapsed'}
 	data-tour-target="control-panel"
 >
 	<div
@@ -266,7 +267,7 @@
 			</button>
 		{:else}
 			<button
-				class="icon-button"
+				class="icon-button toolbar-history-action"
 				type="button"
 				aria-label="Undo move"
 				title="Undo move"
@@ -276,7 +277,7 @@
 				<Undo2 size={18} strokeWidth={1.9} />
 			</button>
 			<button
-				class="icon-button"
+				class="icon-button toolbar-history-action"
 				type="button"
 				aria-label="Redo move"
 				title="Redo move"
@@ -285,18 +286,9 @@
 			>
 				<Redo2 size={18} strokeWidth={1.9} />
 			</button>
-			<button
-				class="icon-button"
-				type="button"
-				aria-label="Reset game"
-				title="Reset game"
-				onclick={onReset}
-			>
-				<RotateCcw size={18} strokeWidth={1.9} />
-			</button>
 			{#if fullscreenAvailable}
 				<button
-					class="icon-button"
+					class="icon-button toolbar-fullscreen-action"
 					type="button"
 					aria-label={fullscreenActive ? 'Exit fullscreen' : 'Enter fullscreen'}
 					aria-pressed={fullscreenActive}
@@ -311,7 +303,16 @@
 				</button>
 			{/if}
 			<button
-				class="icon-button"
+				class="icon-button toolbar-reset-action"
+				type="button"
+				aria-label="Reset game"
+				title="Reset game"
+				onclick={onReset}
+			>
+				<RotateCcw size={18} strokeWidth={1.9} />
+			</button>
+			<button
+				class="icon-button toolbar-theme-action"
 				type="button"
 				aria-label={uiTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
 				title={uiTheme === 'dark' ? 'Light mode' : 'Dark mode'}
@@ -398,7 +399,6 @@
 						{aiThinking}
 						{setupLocked}
 						{playModeLocked}
-						{onlineRulesLocked}
 						{onPlayModeChange}
 						{onAiDifficultyChange}
 						{onMatchModeChange}

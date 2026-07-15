@@ -90,10 +90,10 @@ Important boundaries:
 - The centered desktop turn pill is a status-only chip with no arrow/expansion affordance; Tactical piece actions live in the top-right Pieces toolbar mode.
 - Desktop control pills share the centered turn pill's full-height acrylic scale, while mobile keeps the tighter compact control height.
 - Game-over modal actions distinguish `New match`, `Review from start`, and `Keep board`.
-- Classic AI uses difficulty-aware minimum visible thinking time in addition to its worker search
-  budget: Easy stays brisk, while Max waits long enough to feel deliberate even when the worker
-  finds a fast obvious move. Larger boards scale Max's worker budget by board breadth/height, and
-  true tactical forks are enforced before MCTS simulations. Softer non-terminal line-race
+- Classic AI uses one short response floor to avoid visually abrupt replies; difficulty differences
+  come from real worker search budgets rather than artificial per-preset delays. Larger boards scale
+  Max's worker budget by board breadth/height, and true tactical forks are enforced before MCTS
+  simulations. Softer non-terminal line-race
   heuristics still search, but immediate win, immediate block, own fork creation, and opponent fork
   prevention are treated as tactical root decisions.
 - Classic MCTS combines UCT, RAVE, threat-ordered expansion, smart rollouts, and progressive bias.

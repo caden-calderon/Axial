@@ -25,6 +25,10 @@ export {
 } from "./classic/geometry";
 export { ClassicSearchState } from "./classic/state";
 export {
+  classicAiSearchOptionsForGame,
+  type ClassicAiDifficulty,
+} from "./classic/presets";
+export {
   analyzeHeuristicMove,
   chooseHeuristicMove,
   compareMoveIndicesByShape,
@@ -32,6 +36,7 @@ export {
   countLineCompletionThreats,
   countLineCompletionsForMove,
   evaluatePosition,
+  findLineCompletionMoves,
   findForcingMoves,
   findWinningMoves,
   scoreLegalMoves,
@@ -40,6 +45,7 @@ export {
   selectTacticalMove,
   type ForcingMove,
   type HeuristicMoveResult,
+  type LineCompletionMove,
   type MoveScore,
   type TacticalMoveMode,
 } from "./classic/heuristic";
@@ -49,6 +55,7 @@ export {
   type MctsMoveResult,
   type MctsMoveStat,
   type MctsOptions,
+  type MctsStopReason,
 } from "./classic/mcts";
 export {
   evaluateLookaheadPosition,

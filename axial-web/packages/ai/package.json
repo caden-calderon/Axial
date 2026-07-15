@@ -5,7 +5,15 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./presets": "./src/classic/presets.ts"
+  },
   "scripts": {
+    "eval:rules": "AXIAL_AI_RULE_EVAL=1 vitest run src/rules.eval.test.ts --reporter=verbose",
+    "eval:rules:full": "AXIAL_AI_FULL_RULE_EVAL=1 vitest run src/rules.eval.test.ts --reporter=verbose",
+    "eval:variants": "AXIAL_AI_VARIANT_EVAL=1 vitest run src/rules.eval.test.ts --reporter=verbose",
+    "eval:strength": "AXIAL_AI_STRENGTH_EVAL=1 vitest run src/strength.eval.test.ts --reporter=verbose",
     "test:unit": "vitest run",
     "test": "vitest run"
   },

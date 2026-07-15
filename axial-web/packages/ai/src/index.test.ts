@@ -5,6 +5,7 @@ import {
   cellCount,
   createGame,
   indexOf,
+  legalMoves,
   replayMoves,
   type BoardDimensions,
   type GameSnapshot,
@@ -16,11 +17,13 @@ import {
   WINNING_SEGMENTS,
   analyzeHeuristicMove,
   analyzeMctsMove,
+  classicAiSearchOptionsForGame,
   chooseHeuristicMove,
   chooseRandomMove,
   countLineCompletionsForMove,
   createSeededRandom,
   evaluatePosition,
+  findLineCompletionMoves,
   getClassicMoves,
   getSegmentTable,
   moveCountForDimensions,
@@ -248,6 +251,29 @@ describe("Classic search state", () => {
     expect(evaluatePosition(state, 1) - beforeExtension).toBeLessThan(10_000);
   });
 
+  it("ranks productive new lines and excludes extensions of a banked line", () => {
+    const state = new ClassicSearchState(undefined, {
+      lineLength: 4,
+      linesToWin: 2,
+    });
+
+    for (const col of [0, 1, 2, 3]) {
+      state.makeMove(moveToIndex({ row: 2, col }), 1);
+    }
+    for (const col of [0, 1, 2]) {
+      state.makeMove(moveToIndex({ row: 3, col }), 1);
+    }
+
+    const productiveMove = moveToIndex({ row: 3, col: 3 });
+    const existingLineExtension = moveToIndex({ row: 2, col: 4 });
+    const moves = findLineCompletionMoves(state, 1);
+
+    expect(moves[0]).toEqual({ moveIndex: productiveMove, completions: 1 });
+    expect(moves.some((move) => move.moveIndex === existingLineExtension)).toBe(
+      false,
+    );
+  });
+
   it("can be constructed from canonical replay state", () => {
     const game = replayMoves([
       { row: 0, col: 0 },
@@ -290,6 +316,44 @@ describe("Classic search state", () => {
 
     expect(state.winner).toBe(1);
     expect(state.winningLine).toHaveLength(4);
+  });
+
+  it("matches canonical completed-line state across generated custom-rule games", () => {
+    const rules = [
+      { lineLength: 4, linesToWin: 1 },
+      { lineLength: 4, linesToWin: 2 },
+      { lineLength: 4, linesToWin: 3 },
+      { lineLength: 5, linesToWin: 1 },
+      { lineLength: 5, linesToWin: 2 },
+      { lineLength: 5, linesToWin: 3 },
+    ];
+
+    for (const rule of rules) {
+      for (let seed = 1; seed <= 10; seed += 1) {
+        const random = createSeededRandom(
+          seed * 997 + rule.lineLength * 31 + rule.linesToWin,
+        );
+        let game = createGame(rule);
+
+        while (game.status.state === "playing") {
+          const moves = legalMoves(game.board, game.dimensions);
+          const move = moves[Math.floor(random() * moves.length)];
+          expect(move).toBeDefined();
+          game = applyMove(game, move!);
+
+          const searchState = ClassicSearchState.fromGame(game);
+          for (const player of [1, 2] as const) {
+            expect(searchState.completedLineCount(player)).toBe(
+              game.completedLines.filter((line) => line.player === player)
+                .length,
+            );
+          }
+          expect(searchState.winner).toBe(
+            game.status.state === "won" ? game.status.winner : null,
+          );
+        }
+      }
+    }
   });
 });
 
@@ -500,9 +564,176 @@ describe("Classic tactical lookahead", () => {
       )?.score ?? Number.NEGATIVE_INFINITY,
     );
   });
+
+  it("shares a bounded node budget across every root candidate", () => {
+    const result = selectLookaheadMove(
+      ClassicSearchState.fromGame(createGame({ lineLength: 4, linesToWin: 2 })),
+      1,
+      {
+        depth: 4,
+        maxMoves: 6,
+        rootMaxMoves: 4,
+        nodeLimit: 40,
+      },
+    );
+
+    expect(result?.candidates).toHaveLength(4);
+    expect(result?.candidates.every((candidate) => candidate.nodes > 0)).toBe(
+      true,
+    );
+    expect(result?.nodes).toBeLessThanOrEqual(40);
+    expect(result?.depth).toBe(4);
+    expect(result?.complete).toBe(false);
+  });
 });
 
 describe("Classic MCTS AI", () => {
+  it("separates difficulty capabilities and scales custom-rule budgets", () => {
+    const standard = createGame();
+    const multiLine = createGame({ lineLength: 4, linesToWin: 2 });
+    const easy = classicAiSearchOptionsForGame("easy", standard);
+    const hard = classicAiSearchOptionsForGame("hard", standard);
+    const max = classicAiSearchOptionsForGame("nightmare", standard);
+    const multiLineMax = classicAiSearchOptionsForGame("nightmare", multiLine);
+
+    expect(easy.tacticalMode).toBe("immediate-only");
+    expect(easy.progressiveWidening).toBe(false);
+    expect(hard.tacticalMode).toBe("forced-only");
+    expect(hard.progressiveWidening).toBe(true);
+    expect(max.simulations).toBeGreaterThan(hard.simulations!);
+    expect(max.maxTimeMs).toBeGreaterThan(hard.maxTimeMs!);
+    expect(multiLineMax.simulations).toBeGreaterThan(max.simulations!);
+    expect(multiLineMax.maxTimeMs).toBeGreaterThan(max.maxTimeMs!);
+  });
+
+  it("deepens and strengthens Max lookahead as cumulative-line targets rise", () => {
+    const standard = classicAiSearchOptionsForGame(
+      "nightmare",
+      createGame({ lineLength: 4, linesToWin: 1 }),
+    );
+    const twoLines = classicAiSearchOptionsForGame(
+      "nightmare",
+      createGame({ lineLength: 4, linesToWin: 2 }),
+    );
+    const threeLines = classicAiSearchOptionsForGame(
+      "nightmare",
+      createGame({ lineLength: 4, linesToWin: 3 }),
+    );
+
+    expect(standard.lookaheadDepth).toBe(3);
+    expect(twoLines.lookaheadDepth).toBe(4);
+    expect(threeLines.lookaheadDepth).toBe(5);
+    expect(twoLines.lookaheadWeight).toBeGreaterThan(standard.lookaheadWeight!);
+    expect(threeLines.lookaheadOverrideMargin).toBeLessThan(
+      twoLines.lookaheadOverrideMargin!,
+    );
+    expect(threeLines.lookaheadTimeFraction).toBeGreaterThan(
+      twoLines.lookaheadTimeFraction!,
+    );
+    expect(standard.minimumSearchDepth).toBe(3);
+    expect(twoLines.minimumSearchDepth).toBe(4);
+  });
+
+  it.each([
+    { lineLength: 4, linesToWin: 2 },
+    { lineLength: 4, linesToWin: 3 },
+    { lineLength: 5, linesToWin: 2 },
+    { lineLength: 5, linesToWin: 3 },
+  ])(
+    "banks an uncontested first line in a $lineLength/$linesToWin Max search",
+    ({ lineLength, linesToWin }) => {
+      const state = new ClassicSearchState(undefined, {
+        lineLength,
+        linesToWin,
+      });
+      for (let col = 0; col < lineLength - 1; col += 1) {
+        state.makeMove(moveToIndex({ row: 2, col }), 1);
+      }
+      const game = gameFromSearchState(state, 1);
+      const result = analyzeMctsMove(game, {
+        ...classicAiSearchOptionsForGame("nightmare", game),
+        simulations: 600,
+        maxTimeMs: 500,
+        seed: 71,
+      });
+
+      expect(result?.move).toEqual({ row: 2, col: lineLength - 1 });
+    },
+  );
+
+  it("keeps the strategic line-banking floor on expanded boards", () => {
+    const state = new ClassicSearchState(
+      undefined,
+      { lineLength: 5, linesToWin: 3 },
+      LARGE_TEST_DIMENSIONS,
+    );
+    for (let col = 0; col < 4; col += 1) {
+      state.makeMove(moveToIndex({ row: 3, col }, LARGE_TEST_DIMENSIONS), 1);
+    }
+    const game = gameFromSearchState(state, 1);
+    const result = analyzeMctsMove(game, {
+      ...classicAiSearchOptionsForGame("nightmare", game),
+      simulations: 0,
+      maxTimeMs: 0,
+      seed: 79,
+    });
+
+    expect(result?.reason).toBe("tactical");
+    expect(result?.simulations).toBe(0);
+    expect(result?.move).toEqual({ row: 3, col: 4 });
+  });
+
+  it("blocks a productive three-line race before generic search can override it", () => {
+    const game = replayMoves(
+      [
+        { row: 2, col: 3 },
+        { row: 2, col: 3 },
+        { row: 2, col: 3 },
+        { row: 2, col: 3 },
+        { row: 3, col: 3 },
+        { row: 3, col: 3 },
+        { row: 1, col: 3 },
+        { row: 4, col: 3 },
+        { row: 0, col: 3 },
+        { row: 1, col: 3 },
+        { row: 4, col: 3 },
+        { row: 0, col: 3 },
+        { row: 2, col: 2 },
+        { row: 2, col: 4 },
+        { row: 3, col: 1 },
+      ],
+      { lineLength: 4, linesToWin: 3 },
+    );
+    const result = analyzeMctsMove(game, {
+      ...classicAiSearchOptionsForGame("nightmare", game),
+      seed: 3_867,
+    });
+
+    expect(result?.reason).toBe("tactical");
+    expect(result?.simulations).toBe(0);
+    expect(result?.move).toEqual({ row: 0, col: 4 });
+  });
+
+  it("bounds lookahead and MCTS under one end-to-end decision budget", () => {
+    const game = createGame({ lineLength: 5, linesToWin: 3 });
+    const startedAt = performance.now();
+    const result = analyzeMctsMove(game, {
+      simulations: 100_000,
+      maxTimeMs: 80,
+      lookaheadDepth: 5,
+      lookaheadMaxMoves: 12,
+      lookaheadRootMaxMoves: 18,
+      lookaheadNodeLimit: 1_000_000,
+      lookaheadTimeFraction: 0.5,
+      seed: 97,
+    });
+    const wallTimeMs = performance.now() - startedAt;
+
+    expect(result?.elapsedMs).toBeLessThan(300);
+    expect(wallTimeMs).toBeLessThan(500);
+    expect(Math.abs(wallTimeMs - result!.elapsedMs)).toBeLessThan(80);
+  });
+
   it("returns tactical wins without spending simulations", () => {
     const game = replayMoves([
       { row: 2, col: 0 },
@@ -516,6 +747,8 @@ describe("Classic MCTS AI", () => {
 
     expect(result?.reason).toBe("tactical");
     expect(result?.simulations).toBe(0);
+    expect(result?.stopReason).toBe("tactical");
+    expect(result?.maxDepth).toBe(0);
     expect(result?.move).toEqual({ row: 2, col: 3 });
   });
 
@@ -596,6 +829,9 @@ describe("Classic MCTS AI", () => {
     expect(first?.move).toEqual(second?.move);
     expect(first?.simulations).toBe(40);
     expect(first?.stats[0]?.visits).toBeGreaterThan(0);
+    expect(first?.rootChildren).toBeLessThan(42);
+    expect(first?.maxDepth).toBeGreaterThan(1);
+    expect(first?.stopReason).toBe("simulations");
   });
 
   it("runs seeded search on larger boards with legal move indices", () => {
@@ -646,6 +882,28 @@ describe("AI evaluation harness", () => {
     expect(result.games).toBe(4);
     expect(result.illegalMoves).toBe(0);
     expect(result.playerOneWins + result.playerTwoWins + result.draws).toBe(4);
+  });
+
+  it("evaluates custom rules, dimensions, and starting players", () => {
+    const result = playAiMatch({
+      seed: 29,
+      winCondition: { lineLength: 4, linesToWin: 2 },
+      dimensions: LARGE_TEST_DIMENSIONS,
+      startingPlayer: 2,
+      maxMoves: 24,
+      players: {
+        1: (game) => chooseHeuristicMove(game),
+        2: (game, random) => chooseRandomMove(game, random),
+      },
+    });
+
+    expect(result.illegalMoveBy).toBeNull();
+    expect(result.finalGame.winCondition).toEqual({
+      lineLength: 4,
+      linesToWin: 2,
+    });
+    expect(result.finalGame.dimensions).toEqual(LARGE_TEST_DIMENSIONS);
+    expect(result.finalGame.moveHistory[0]?.player).toBe(2);
   });
 
   it("keeps returned moves compatible with the canonical core", () => {

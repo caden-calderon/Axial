@@ -16,6 +16,11 @@ worker.onmessage = ({ data }: MessageEvent<ClassicAiWorkerRequest>) => {
 			reason: result?.reason ?? null,
 			simulations: result?.simulations ?? 0,
 			elapsedMs: result?.elapsedMs ?? 0,
+			maxDepth: result?.maxDepth ?? 0,
+			rootChildren: result?.rootChildren ?? 0,
+			lookaheadDepth: result?.lookaheadDepth ?? 0,
+			lookaheadComplete: result?.lookaheadComplete ?? true,
+			stopReason: result?.stopReason ?? 'simulations',
 			stats: result?.stats ?? []
 		};
 		worker.postMessage(response);

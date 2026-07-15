@@ -37,15 +37,14 @@ export function resolveCameraFit(viewport: SceneViewport, dimensions: BoardDimen
 
 	if (portrait) {
 		const narrowScale = width <= 340 ? 0.67 : width <= 390 ? 0.72 : 0.76;
-		const sheetScale = viewport.controlsExpanded ? 0.84 : 1;
 
 		return {
 			compact,
 			portrait,
 			position: PORTRAIT_CAMERA,
-			target: [0, viewport.controlsExpanded ? 0.2 : -0.12, 0],
+			target: [0, -0.12, 0],
 			fov: 47,
-			boardScale: narrowScale * sheetScale * dimensionScale,
+			boardScale: narrowScale * dimensionScale,
 			minDistance: 7.2,
 			maxDistance: 20
 		};

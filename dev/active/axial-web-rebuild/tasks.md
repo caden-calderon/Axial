@@ -192,7 +192,8 @@
   navigation lands on a live AI turn.
 - [x] Remove the browser-main-thread MCTS failure path; Worker failure now chooses only a cheap
   legal fallback move, and page teardown terminates the AI client.
-- [x] Add difficulty-aware visible thinking delay for Classic AI replies.
+- [x] Replace difficulty-specific presentation delays with one short response floor so difficulty
+  differences come from real worker search.
 - [ ] Add progress messages from long-running Classic AI search.
 - [x] Add difficulty presets.
 - [x] Alternate the starting player after each played/completed Local or AI match reset.

@@ -40,6 +40,7 @@
 	const cardWidth = 548;
 	const cardHeightEstimate = 342;
 	const viewportMargin = 14;
+	const spotlightViewportMargin = 4;
 	const popoverGap = 18;
 	const initialViewportWidth = typeof window === 'undefined' ? 0 : window.innerWidth;
 	const initialViewportHeight = typeof window === 'undefined' ? 0 : window.innerHeight;
@@ -58,6 +59,9 @@
 	let glowTarget = { x: 50, y: 0, edge: 0 };
 	let headingRevealToken = 0;
 	let tourCard: HTMLElement | null = null;
+	let measuredCardHeight = $state(0);
+	let layoutReady = $state(false);
+	let stepLayoutToken = 0;
 
 	const currentStep = $derived(WELCOME_TOUR_STEPS[stepIndex] as WelcomeTourStep);
 	const isFirstStep = $derived(stepIndex === 0);
@@ -66,7 +70,14 @@
 	const hasSpotlight = $derived(targetRect !== null && currentStep.placement !== 'center');
 	const spotlightStyle = $derived(rectToStyle(targetRect));
 	const cardPlacement = $derived(
-		resolveCardPlacement(targetRect, viewportWidth, viewportHeight, currentStep.placement ?? 'auto')
+		resolveCardPlacement(
+			targetRect,
+			viewportWidth,
+			viewportHeight,
+			currentStep.placement ?? 'auto',
+			measuredCardHeight,
+			isPortraitPanelStep(currentStep, viewportWidth, viewportHeight)
+		)
 	);
 	const cardStyle = $derived(
 		`--tour-card-x: ${cardPlacement.x}px; --tour-card-y: ${cardPlacement.y}px; --tour-card-width: ${effectiveCardWidth(viewportWidth)}px; --tour-card-transform: ${cardPlacement.transform};`
@@ -78,6 +89,7 @@
 		startTargetTracking();
 
 		return () => {
+			stepLayoutToken += 1;
 			if (rafId) cancelAnimationFrame(rafId);
 			if (cardGlowFrame) cancelAnimationFrame(cardGlowFrame);
 			clearCardSweep();
@@ -86,13 +98,43 @@
 
 	$effect(() => {
 		const step = currentStep;
+		const token = ++stepLayoutToken;
 		headingSettled = false;
+		layoutReady = !step.target || step.placement === 'center';
+		targetRect = null;
 		onPanelExpandedChange(step.panelExpanded);
-		void tick().then(() => {
-			refreshTargetRect();
-			startCardSweep();
-		});
+		void prepareStepLayout(step, token);
 	});
+
+	async function prepareStepLayout(step: WelcomeTourStep, token: number): Promise<void> {
+		await tick();
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+		if (token !== stepLayoutToken) return;
+
+		scrollTargetIntoPanel(step.target);
+		refreshTargetRect();
+		layoutReady = true;
+		startCardSweep();
+	}
+
+	function scrollTargetIntoPanel(targetSelector?: string): void {
+		if (!targetSelector) return;
+
+		const target = document.querySelector(targetSelector);
+		if (!(target instanceof HTMLElement)) return;
+
+		const scroller = target.closest('.panel-body-clip');
+		if (!(scroller instanceof HTMLElement) || scroller.clientHeight <= 0) return;
+
+		const targetBounds = target.getBoundingClientRect();
+		const scrollerBounds = scroller.getBoundingClientRect();
+		const visibleTargetHeight = Math.min(targetBounds.height, scroller.clientHeight);
+		const centeredOffset = (scroller.clientHeight - visibleTargetHeight) / 2;
+		const targetTop =
+			scroller.scrollTop + targetBounds.top - scrollerBounds.top - Math.max(0, centeredOffset);
+
+		scroller.scrollTop = Math.max(0, targetTop);
+	}
 
 	function startTargetTracking(): void {
 		const track = () => {
@@ -106,6 +148,14 @@
 	function refreshTargetRect(): void {
 		viewportWidth = window.innerWidth;
 		viewportHeight = window.innerHeight;
+		const cardBounds = tourCard?.getBoundingClientRect();
+		if (
+			cardBounds &&
+			cardBounds.height > 0 &&
+			Math.abs(cardBounds.height - measuredCardHeight) > 0.5
+		) {
+			measuredCardHeight = cardBounds.height;
+		}
 
 		if (!currentStep.target || currentStep.placement === 'center') {
 			targetRect = null;
@@ -124,17 +174,40 @@
 			return;
 		}
 
+		const clippingParent = target.closest('.panel-body-clip');
+		const clippingRect =
+			clippingParent instanceof HTMLElement ? clippingParent.getBoundingClientRect() : null;
+		const clipLeft = Math.max(spotlightViewportMargin, clippingRect?.left ?? 0);
+		const clipTop = Math.max(spotlightViewportMargin, clippingRect?.top ?? 0);
+		const clipRight = Math.min(
+			viewportWidth - spotlightViewportMargin,
+			clippingRect?.right ?? viewportWidth
+		);
+		const clipBottom = Math.min(
+			viewportHeight - spotlightViewportMargin,
+			clippingRect?.bottom ?? viewportHeight
+		);
+		const visibleLeft = Math.max(rect.left, clipLeft);
+		const visibleTop = Math.max(rect.top, clipTop);
+		const visibleRight = Math.min(rect.right, clipRight);
+		const visibleBottom = Math.min(rect.bottom, clipBottom);
+
+		if (visibleRight <= visibleLeft || visibleBottom <= visibleTop) {
+			targetRect = null;
+			return;
+		}
+
 		const padding = currentStep.targetPadding ?? 8;
-		const x = clamp(rect.left - padding, viewportMargin, viewportWidth - viewportMargin);
-		const y = clamp(rect.top - padding, viewportMargin, viewportHeight - viewportMargin);
-		const maxWidth = Math.max(0, viewportWidth - viewportMargin - x);
-		const maxHeight = Math.max(0, viewportHeight - viewportMargin - y);
+		const x = Math.max(clipLeft, visibleLeft - padding);
+		const y = Math.max(clipTop, visibleTop - padding);
+		const right = Math.min(clipRight, visibleRight + padding);
+		const bottom = Math.min(clipBottom, visibleBottom + padding);
 
 		targetRect = {
 			x,
 			y,
-			width: Math.min(rect.width + padding * 2, maxWidth),
-			height: Math.min(rect.height + padding * 2, maxHeight)
+			width: right - x,
+			height: bottom - y
 		};
 	}
 
@@ -222,9 +295,13 @@
 		rect: Rect | null,
 		width: number,
 		height: number,
-		preferred: WelcomeTourPlacement
+		preferred: WelcomeTourPlacement,
+		currentCardHeight: number,
+		portraitPanelStep: boolean
 	): CardPlacement {
 		const usableCardWidth = effectiveCardWidth(width);
+		const usableCardHeight =
+			currentCardHeight > 0 ? currentCardHeight : width <= 760 ? 264 : cardHeightEstimate;
 
 		if (!rect || preferred === 'center') {
 			return {
@@ -234,18 +311,32 @@
 			};
 		}
 
-		const requestedSide = preferred === 'auto' ? chooseSide(rect, width, height) : preferred;
-		const side = sideFits(requestedSide, rect, width, height)
+		if (portraitPanelStep) {
+			const sheetHeight = Math.min(height * 0.5, 480);
+			return {
+				x: width / 2,
+				y: clamp(
+					sheetHeight + popoverGap,
+					viewportMargin,
+					Math.max(viewportMargin, height - viewportMargin - usableCardHeight)
+				),
+				transform: 'translate(-50%, 0)'
+			};
+		}
+
+		const requestedSide =
+			preferred === 'auto' ? chooseSide(rect, width, height, usableCardHeight) : preferred;
+		const side = sideFits(requestedSide, rect, width, height, usableCardHeight)
 			? requestedSide
-			: chooseSide(rect, width, height);
+			: chooseSide(rect, width, height, usableCardHeight);
 
 		if (side === 'left') {
 			return {
 				x: Math.max(viewportMargin, rect.x - popoverGap),
 				y: clamp(
 					rect.y + rect.height / 2,
-					viewportMargin + cardHeightEstimate / 2,
-					height - viewportMargin - cardHeightEstimate / 2
+					viewportMargin + usableCardHeight / 2,
+					height - viewportMargin - usableCardHeight / 2
 				),
 				transform: 'translate(-100%, -50%)'
 			};
@@ -256,8 +347,8 @@
 				x: Math.min(width - viewportMargin - usableCardWidth, rect.x + rect.width + popoverGap),
 				y: clamp(
 					rect.y + rect.height / 2,
-					viewportMargin + cardHeightEstimate / 2,
-					height - viewportMargin - cardHeightEstimate / 2
+					viewportMargin + usableCardHeight / 2,
+					height - viewportMargin - usableCardHeight / 2
 				),
 				transform: 'translate(0, -50%)'
 			};
@@ -283,13 +374,18 @@
 			),
 			y: Math.max(
 				viewportMargin,
-				Math.min(height - viewportMargin - cardHeightEstimate, rect.y + rect.height + popoverGap)
+				Math.min(height - viewportMargin - usableCardHeight, rect.y + rect.height + popoverGap)
 			),
 			transform: 'translate(-50%, 0)'
 		};
 	}
 
-	function chooseSide(rect: Rect, width: number, height: number): WelcomeTourPlacement {
+	function chooseSide(
+		rect: Rect,
+		width: number,
+		height: number,
+		usableCardHeight: number
+	): WelcomeTourPlacement {
 		const usableCardWidth = effectiveCardWidth(width);
 		const leftSpace = rect.x;
 		const rightSpace = width - (rect.x + rect.width);
@@ -298,8 +394,8 @@
 
 		if (leftSpace >= usableCardWidth + popoverGap + viewportMargin) return 'left';
 		if (rightSpace >= usableCardWidth + popoverGap + viewportMargin) return 'right';
-		if (bottomSpace >= cardHeightEstimate + popoverGap + viewportMargin) return 'bottom';
-		if (topSpace >= cardHeightEstimate + popoverGap + viewportMargin) return 'top';
+		if (bottomSpace >= usableCardHeight + popoverGap + viewportMargin) return 'bottom';
+		if (topSpace >= usableCardHeight + popoverGap + viewportMargin) return 'top';
 
 		return bottomSpace >= topSpace ? 'bottom' : 'top';
 	}
@@ -308,7 +404,8 @@
 		side: WelcomeTourPlacement,
 		rect: Rect,
 		width: number,
-		height: number
+		height: number,
+		usableCardHeight: number
 	): boolean {
 		const usableCardWidth = effectiveCardWidth(width);
 
@@ -316,9 +413,9 @@
 		if (side === 'right') {
 			return width - (rect.x + rect.width) >= usableCardWidth + popoverGap + viewportMargin;
 		}
-		if (side === 'top') return rect.y >= cardHeightEstimate + popoverGap + viewportMargin;
+		if (side === 'top') return rect.y >= usableCardHeight + popoverGap + viewportMargin;
 		if (side === 'bottom') {
-			return height - (rect.y + rect.height) >= cardHeightEstimate + popoverGap + viewportMargin;
+			return height - (rect.y + rect.height) >= usableCardHeight + popoverGap + viewportMargin;
 		}
 
 		return true;
@@ -330,6 +427,10 @@
 
 	function effectiveCardWidth(currentViewportWidth: number): number {
 		return Math.min(cardWidth, Math.max(0, currentViewportWidth - viewportMargin * 2));
+	}
+
+	function isPortraitPanelStep(step: WelcomeTourStep, width: number, height: number): boolean {
+		return width <= 720 && height >= width && step.panelExpanded === true;
 	}
 
 	function setCardGlowTargetFromClientPoint(
@@ -546,6 +647,7 @@
 
 		<section
 			class="tour-card"
+			class:layout-pending={!layoutReady}
 			role="group"
 			aria-label={`${currentStep.title} tour step`}
 			style={cardStyle}
@@ -656,11 +758,17 @@
 			0 0 36px color-mix(in oklab, var(--accent) 34%, transparent);
 		pointer-events: none;
 		transition:
+			opacity 160ms ease,
 			left 280ms cubic-bezier(0.22, 1, 0.36, 1),
 			top 280ms cubic-bezier(0.22, 1, 0.36, 1),
 			width 280ms cubic-bezier(0.22, 1, 0.36, 1),
 			height 280ms cubic-bezier(0.22, 1, 0.36, 1),
 			border-radius 220ms ease;
+	}
+
+	.tour-card.layout-pending {
+		opacity: 0;
+		pointer-events: none;
 	}
 
 	.tour-card {

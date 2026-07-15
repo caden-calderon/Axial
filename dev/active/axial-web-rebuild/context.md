@@ -22,7 +22,11 @@ Worker, WebSocket and HTTPS fallback presence coexist safely, HTTP-only presence
 snapshots cannot regress, room URLs survive reload, explicit Leave expires the private room, and the
 two-browser multiplayer path is now a committed Playwright test.
 
-Classic-mode AI remains an important future lane. Caden wants an AI opponent that can beat him as the benchmark. Tactical/special-piece AI remains deferred.
+2026-07-14 Classic AI follow-up replaced shallow all-child-first MCTS with progressive widening,
+centralized honest difficulty presets, added worker telemetry and multi-line lifecycle coverage, and
+moved strong modes from fake presentation delay to real search work. A real-budget smoke had Max
+beat Easy from both seats under default and two-line rules. Tactical/special-piece AI remains an
+explicitly labeled random baseline rather than inheriting misleading Classic difficulty controls.
 
 Research and architecture notes for the Classic AI direction now live in `dev/active/axial-web-rebuild/classic-ai-research.md`.
 
@@ -37,8 +41,8 @@ Research and architecture notes for the Classic AI direction now live in `dev/ac
 - Legal moves: 42 surface columns `(row, col)`; gravity selects the first empty height.
 - Core index formula: `idx = h + r * D + c * D * R`.
 - Active web core lives in `axial-web/packages/core`.
-- Baseline browser AI lives in `axial-web/packages/ai`.
-- Serious AI target for the next phase is Classic mode only, not Tactical mode.
+- Classic heuristic, lookahead, and MCTS AI live in `axial-web/packages/ai`.
+- Serious AI remains Classic-only; Tactical uses an explicitly labeled random baseline.
 
 ## Current Web State
 
@@ -183,8 +187,8 @@ Implemented gameplay/UX:
   a cheap legal move, and route teardown terminates pending AI work.
 - Classic AI has pre-match difficulty presets: Easy, Medium, Hard, and Max. Hard preserves a strong
   midrange worker budget; Max uses a larger worker-only budget that scales with board area/height.
-  AI replies also have difficulty-aware minimum visible thinking time so stronger settings feel more
-  deliberate even when the worker finds an obvious move quickly.
+  AI replies share one short response floor; stronger settings feel more deliberate only when their
+  larger real search budgets perform additional work.
 - Classic MCTS now treats true tactical forks as non-negotiable root decisions: immediate wins,
   immediate blocks, own fork creation, and opponent fork prevention return before simulations. This
   fixes the open-ended horizontal trap regression where MCTS could override the heuristic
@@ -395,12 +399,16 @@ For existing web/game work:
 - Caden locked the Classic AI direction on 2026-06-06: rewrite MCTS/search in the web repo first, then train a policy-value model with self-play/RL after search and evaluation are trustworthy.
 - First implementation landed in `@axial/ai`: precomputed 954 winning segments, row-major move indices, mutable Classic search state, heuristic tactical selector, seeded evaluation harness, and deterministic MCTS with RAVE-style statistics.
 - Classic AI opponent mode now calls bounded MCTS through a Vite Web Worker. Difficulty budgets are
-  larger than the first pass and scale with board area/height; Max starts at `760` simulations /
-  `2200ms` before board and win-rule multipliers.
+  centralized in `@axial/ai`, scale with board/rule complexity, and start Max at `6000`
+  simulations / `3600ms`; that time now bounds heuristic preparation, lookahead, and MCTS together.
 - Classic AI search now reads `game.winCondition`, including connect-5 and multi-line targets, through dynamic segment tables.
 - Classic AI search now reads `game.dimensions`; expanded board sizes use dimension-aware segment
   tables, move indices, center scoring, and MCTS rollouts instead of the old random fallback.
 - Classic AI now gives multi-line modes stronger strategy weight: non-terminal line completions are valuable, opponent line progress is blocked, line-completion forks influence forcing moves, rollouts pursue/block line progress, and search budgets scale upward for connect-5 / 2-3-line variants.
+- Multi-line search also preserves a rule-aware strategy floor: productive line completions/blocks
+  are mandatory lookahead candidates, already-banked-run extensions are filtered, root candidates
+  receive fair deterministic budgets, and MCTS cannot override the anchor until it reaches the
+  preset's minimum useful depth.
 - Classic AI no longer short-circuits MCTS for non-terminal forcing/block-forcing heuristic moves;
   only immediate wins, immediate blocks, true own forks, and true opponent-fork blocks bypass search.
   Root heuristic scoring now weighs fork creation and opponent immediate replies more aggressively.

@@ -4,6 +4,10 @@ Status: implemented and locally verified; awaiting product review and real-devic
 
 Date: 2026-07-09
 
+## 2026-07-14 Product Override
+
+Caden replaced the original portrait bottom-sheet decision with a compact top-right control surface. The collapsed toolbar sits below the brand, uses only the width its controls require, and expands downward from the same anchor. The intentionally status-free collapsed state and the coarse-landscape/desktop rails remain unchanged. This override supersedes bottom-sheet language in the original audit history below; implementation details live in `dev/active/axial-ai-mobile-review/`.
+
 ## Outcome
 
 Turn the current polished Axial build into a genuinely first-class desktop and mobile game surface without replacing its identity. The board remains the hero. The pass should improve responsive framing, mobile reachability, learnability, accessibility, light-theme parity, and state-driven motion while preserving local, AI, Tactical, Online, PWA, and portfolio-bridge behavior.
@@ -130,7 +134,7 @@ Direction: keep the signature shine, but trigger it on first load and turn/state
 
 ### Coarse pointer, portrait
 
-- Use an accessible bottom sheet with collapsed, partial, and full states rather than a narrow full-height right rail.
+- Use an accessible top-right dropdown with collapsed and expanded states rather than a bottom sheet or narrow full-height rail.
 - Controls are at least 44px; input text is at least 16px.
 - The collapsed composition remains intentionally minimal; contextual confirmation appears only while a touch move is armed.
 - The board is framed between the top brand region and the bottom safe-area inset.
@@ -156,7 +160,7 @@ Likely files:
 
 ### 2. Responsive control-surface contract
 
-Keep the current section components, but render them inside a shared control-surface shell with desktop-rail and portrait-sheet layouts. The shell owns collapse/snap state, scroll affordance, safe areas, and focus behavior. Content selection remains semantic and state-driven rather than duplicated per viewport.
+Keep the current section components, but render them inside a shared control-surface shell with desktop-rail and portrait-dropdown layouts. The shell owns collapse state, scroll affordance, safe areas, and focus behavior. Content selection remains semantic and state-driven rather than duplicated per viewport.
 
 Likely files:
 
@@ -219,7 +223,7 @@ Exit: board framing is stable at every target viewport and the collapsed mobile 
 
 ### Milestone 2: Touch-safe control surface and state-driven information architecture
 
-- Introduce portrait bottom sheet and retain rail behavior for desktop/landscape.
+- Introduce a portrait top-right dropdown and retain rail behavior for desktop/landscape.
 - Increase coarse-pointer targets and mobile input type.
 - Promote Online create/join/lobby actions when Online is selected.
 - Collapse locked setup into a match summary during play.
@@ -281,7 +285,7 @@ Exit: all checks pass; no server-authority, persistence, bridge, or gameplay reg
 
 Approved direction:
 
-- Use a portrait bottom sheet instead of trying to enlarge the current narrow right rail.
+- Use a bounded portrait top-right dropdown instead of enlarging the current narrow right rail.
 - Default new coarse-pointer users to staged drop while preserving saved preferences and one-click desktop play.
 - Keep light mode as a fully supported scene, not a best-effort alternate.
 - Include keyboard board navigation in this pass so the new input architecture is designed once.

@@ -8,7 +8,7 @@ import {
   type Player,
 } from "@axial/core";
 import { ClassicSearchState } from "./state";
-import { moveFromIndex, type MoveIndex } from "./geometry";
+import { cellToMoveIndex, moveFromIndex, type MoveIndex } from "./geometry";
 
 export type MoveScore = {
   moveIndex: MoveIndex;
@@ -34,7 +34,15 @@ export type ForcingMove = {
   kind: "fork" | "line-race";
 };
 
-export type TacticalMoveMode = "forced-only" | "include-line-races";
+export type LineCompletionMove = {
+  moveIndex: MoveIndex;
+  completions: number;
+};
+
+export type TacticalMoveMode =
+  | "immediate-only"
+  | "forced-only"
+  | "include-line-races";
 
 const WIN_SCORE = 1_000_000;
 const BLOCK_SCORE = 800_000;
@@ -99,6 +107,8 @@ export function selectTacticalMove(
   if (immediateBlocks.length > 0) {
     return scoredResult(state, player, immediateBlocks, "block", BLOCK_SCORE);
   }
+
+  if (mode === "immediate-only") return null;
 
   const forcingMoves = tacticalForcingMoves(state, player, mode);
   if (forcingMoves.length > 0) {
@@ -217,21 +227,35 @@ export function evaluatePosition(
     if (own > 0) {
       if (own >= lineLength) continue;
 
-      score += segmentScore(own, lineLength, false);
+      const playableCompletion =
+        own === lineLength - 1 && segmentHasPlayableEmpty(state, segment.id);
       if (
-        own === lineLength - 1 &&
-        segmentHasPlayableEmpty(state, segment.id)
+        playableCompletion &&
+        state.winCondition.linesToWin > 1 &&
+        !segmentHasProductivePlayableEmpty(state, segment.id, player)
       ) {
+        continue;
+      }
+
+      score += segmentScore(own, lineLength, false);
+      if (playableCompletion) {
         score += 950;
       }
     } else if (opp > 0) {
       if (opp >= lineLength) continue;
 
-      score -= segmentScore(opp, lineLength, true);
+      const playableCompletion =
+        opp === lineLength - 1 && segmentHasPlayableEmpty(state, segment.id);
       if (
-        opp === lineLength - 1 &&
-        segmentHasPlayableEmpty(state, segment.id)
+        playableCompletion &&
+        state.winCondition.linesToWin > 1 &&
+        !segmentHasProductivePlayableEmpty(state, segment.id, opponent)
       ) {
+        continue;
+      }
+
+      score -= segmentScore(opp, lineLength, true);
+      if (playableCompletion) {
         score -= 1_150;
       }
     }
@@ -339,14 +363,33 @@ export function countLineCompletionThreats(
   state: ClassicSearchState,
   player: Player,
 ): number {
-  let threats = 0;
+  return findLineCompletionMoves(state, player).reduce(
+    (total, move) => total + move.completions,
+    0,
+  );
+}
+
+export function findLineCompletionMoves(
+  state: ClassicSearchState,
+  player: Player,
+): LineCompletionMove[] {
+  const moves: LineCompletionMove[] = [];
 
   for (const moveIndex of state.legalMoveIndices()) {
     const completions = countLineCompletionsForMove(state, moveIndex, player);
-    if (completions > 0) threats += completions;
+    if (completions > 0) moves.push({ moveIndex, completions });
   }
 
-  return threats;
+  return moves.sort((first, second) => {
+    if (first.completions !== second.completions) {
+      return second.completions - first.completions;
+    }
+    return compareMoveIndicesByShape(
+      first.moveIndex,
+      second.moveIndex,
+      state.dimensions,
+    );
+  });
 }
 
 export function countLineCompletionsForMove(
@@ -438,6 +481,25 @@ function segmentHasPlayableEmpty(
   return segment.cells.some((cell) => state.isPlayableCell(cell));
 }
 
+function segmentHasProductivePlayableEmpty(
+  state: ClassicSearchState,
+  segmentId: number,
+  player: Player,
+): boolean {
+  const segment = state.segmentTable.segments[segmentId];
+
+  return segment.cells.some((cell) => {
+    if (!state.isPlayableCell(cell)) return false;
+    return (
+      countLineCompletionsForMove(
+        state,
+        cellToMoveIndex(cell, state.dimensions),
+        player,
+      ) > 0
+    );
+  });
+}
+
 function segmentScore(
   count: number,
   lineLength: number,
@@ -460,7 +522,7 @@ function completedLineValue(
 ): number {
   const completed = state.completedLineCount(player);
   const remaining = Math.max(1, state.winCondition.linesToWin - completed);
-  const base = state.winCondition.linesToWin > 1 ? 34_000 : 18_000;
+  const base = state.winCondition.linesToWin > 1 ? 120_000 : 18_000;
   const urgency = defensive ? 1.28 : 1;
   const closeness = 1 + (state.winCondition.linesToWin - remaining) * 0.32;
 
@@ -477,7 +539,7 @@ function lineCompletionScore(
 
   const completed = state.completedLineCount(player);
   const remaining = Math.max(1, state.winCondition.linesToWin - completed);
-  const base = state.winCondition.linesToWin > 1 ? 48_000 : 12_000;
+  const base = state.winCondition.linesToWin > 1 ? 90_000 : 12_000;
   const urgency = defensive ? 1.2 : 1;
   const closeness = remaining <= 1 ? 1.45 : 1 + (1 / remaining) * 0.35;
   const forkBonus = completions > 1 ? 1 + (completions - 1) * 0.42 : 1;

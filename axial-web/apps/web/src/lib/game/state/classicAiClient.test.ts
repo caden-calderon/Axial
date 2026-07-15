@@ -49,6 +49,9 @@ describe('Classic AI worker client', () => {
 			reason: 'search',
 			simulations: 12,
 			elapsedMs: 14,
+			maxDepth: 3,
+			rootChildren: 9,
+			stopReason: 'time',
 			stats: []
 		});
 
@@ -57,7 +60,10 @@ describe('Classic AI worker client', () => {
 			moveIndex: 17,
 			reason: 'search',
 			simulations: 12,
-			elapsedMs: 14
+			elapsedMs: 14,
+			maxDepth: 3,
+			rootChildren: 9,
+			stopReason: 'time'
 		});
 	});
 

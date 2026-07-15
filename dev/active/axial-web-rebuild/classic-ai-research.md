@@ -102,6 +102,67 @@ TypeScript implementation result:
   when that makes the opponent's height-one fork playable next turn. This covers the class of trap
   where the AI creates the support needed for the opponent's future tactic.
 
+## 2026-07-14 Difficulty And Custom-Rule Audit
+
+Caden reported that the difficulty ladder felt identical, Max MCTS completed suspiciously quickly, and custom rules such as two lines to win could break the opponent. The audit found three separate causes rather than one rule-engine defect:
+
+- Generated parity checks across connect 4/5 and one/two/three-line games found the canonical core and mutable search state agree on completed lines and winners.
+- Changing the win condition during an AI-opening rematch cancelled the pending worker and rebuilt the game without queuing replacement AI work, leaving a valid AI turn stuck.
+- MCTS expanded all 42 root columns before revisiting a move. The old Max cap of 760 simulations was therefore broad and shallow, often finishing in roughly 0.7-1.0 seconds before a 2.45-second UI delay made it look as if more work occurred.
+- All difficulties used the same fork-level tactical gate, so many visible positions returned the same zero-simulation answer regardless of budget.
+
+Implemented correction:
+
+- MCTS now supports progressive widening, with narrower/deeper widening on Hard and Max and deliberately broad behavior on Easy.
+- Search results expose maximum depth, root children, and stop reason through the worker boundary.
+- Presets moved into `@axial/ai`: Easy uses immediate win/block only; Medium, Hard, and Max retain fork tactics, increasingly deep alpha-beta guidance, and real budgets up to 6000 simulations/3.6 seconds before rule and board scaling.
+- The controller uses one short 420ms response floor instead of difficulty-specific fake delays.
+- Win-condition changes requeue the AI opener, and Playwright covers the two-lines-to-win sequence.
+- The evaluation harness now accepts win conditions, dimensions, starters, and rule-appropriate move caps.
+- Tactical AI is still a random baseline. The setup UI now says so and hides Classic difficulty controls in Tactical mode.
+
+Verification includes generated search/core parity, progressive-widening depth assertions, preset separation, worker/controller regressions, and an opt-in actual-budget command: `pnpm --filter @axial/ai eval:strength`. In the final four-game smoke, Max beat Easy from both seats under both default and two-line rules, reached depth 4, and completed 1,808-4,881 total simulations per match. This is evidence of meaningful separation, not a statistical rating or proof that Max can yet beat expert human play.
+
+### Cumulative-line correction after review
+
+The initial pass still did not prove multi-line competence. A follow-up Max-versus-rule-aware-heuristic matrix reproduced Caden's concern: shallow Max won only 2 of 12 games across connect 4/5 and one/two/three-line modes. The rule counter was correct; MCTS was overriding a better strategic anchor with noisy rollout visits.
+
+The correction makes cumulative-line strategy structural rather than a budget multiplier:
+
+- Productive non-terminal line completions and blocks are always considered by root lookahead.
+- Extensions of an already banked maximal run are not treated as fresh line progress.
+- Completed lines receive objective-scale evaluation weight, with deeper/stronger Max lookahead as two/three-line targets rise.
+- Lookahead node and time budgets are divided across root candidates, preventing the earliest candidate from exhausting the entire deterministic search.
+- The public decision budget now includes heuristic preparation, lookahead, and MCTS.
+- Every difficulty has a minimum useful tree depth. If search remains shallower, the engine keeps the rule-aware heuristic move instead of accepting noisy MCTS visits.
+- Faster rollout wins receive more value than slower wins, improving discrimination between root moves with similarly high terminal win rates.
+
+New commands separate concerns:
+
+- `pnpm --filter @axial/ai eval:rules` checks the deterministic strategy floor for all six Classic rule combinations from both seats.
+- `pnpm --filter @axial/ai eval:rules:full` checks actual Max search against the stronger heuristic in two-line mode. Max won both seats, reached depth 4, and banked two lines against one in each game.
+- `pnpm --filter @axial/ai eval:strength` still checks the difficulty ladder against Easy under standard and two-line rules; the refreshed result remained 4-0 for Max.
+
+This is credible evidence that two-line Max has a strategy and improves on the deterministic floor. It still is not a broad Elo estimate; recorded Caden losses remain future evidence work.
+
+### Full Connect-5 and three-line continuation
+
+The 2026-07-15 continuation closed the missing full-budget variant coverage and corrected two evaluation/search assumptions:
+
+- The old 72-move matrix could truncate a 252-cell Connect-5 game without a terminal result. Full challenges now run to a real terminal state or the board cell count.
+- Root lookahead exposes whether every deadline-bounded candidate completed. Partial scores remain useful priors, but are no longer presented as uniformly completed depth.
+- A direct three-line completion/block safeguard prevents generic search from surrendering an immediately bankable distinct line. It intentionally does not force speculative two-line races, because doing so regressed the existing two-line strength gate.
+- `pnpm --filter @axial/ai eval:variants` covers alternating-seat Connect-4/three-line and Connect-5 one/two/three-line challenges.
+
+Final-policy results against the rule-aware heuristic:
+
+- Connect-4/three-line split by opener: Max won 3-1 as Player 1 and lost 1-3 as Player 2.
+- Connect-5/two-line: Max won 2-1 from both seats in 65 and 88 moves.
+- Connect-5/three-line: Max won 3-2 from both seats in 117 and 100 moves, reaching search depth 6/4.
+- Standard Connect-5 baseline: Max won from both seats; the longer game required 120 moves.
+
+These are terminal full-budget challenge results, not an Elo rating. The next credible strength step is paired seeded openings plus recorded human challenge positions, not another one-off empty-board win claim.
+
 ## Caden Decision Update
 
 On 2026-06-06, Caden agreed with the staged direction:

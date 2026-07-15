@@ -4,6 +4,7 @@ import {
   countImmediateThreats,
   countLineCompletionThreats,
   evaluatePosition,
+  findLineCompletionMoves,
   findForcingMoves,
   findWinningMoves,
   scoreLegalMoves,
@@ -16,11 +17,14 @@ export type LookaheadOptions = {
   maxMoves?: number;
   rootMaxMoves?: number;
   nodeLimit?: number;
+  maxTimeMs?: number;
 };
 
 export type LookaheadMoveScore = {
   moveIndex: MoveIndex;
   score: number;
+  nodes: number;
+  complete: boolean;
 };
 
 export type LookaheadMoveResult = {
@@ -28,6 +32,7 @@ export type LookaheadMoveResult = {
   score: number;
   depth: number;
   nodes: number;
+  complete: boolean;
   candidates: LookaheadMoveScore[];
 };
 
@@ -36,6 +41,12 @@ type SearchContext = {
   maxMoves: number;
   nodeLimit: number;
   nodes: number;
+  deadlineAt: number | null;
+};
+
+type SearchResult = {
+  score: number;
+  complete: boolean;
 };
 
 const DEFAULT_LOOKAHEAD_DEPTH = 2;
@@ -55,6 +66,7 @@ export function selectLookaheadMove(
     options.depth ?? DEFAULT_LOOKAHEAD_DEPTH,
   );
   if (depth <= 0) return null;
+  if (options.maxTimeMs !== undefined && options.maxTimeMs <= 0) return null;
 
   const maxMoves = normalizedPositiveInteger(
     options.maxMoves ?? DEFAULT_MAX_MOVES,
@@ -62,23 +74,52 @@ export function selectLookaheadMove(
   const rootMaxMoves = normalizedPositiveInteger(
     options.rootMaxMoves ?? Math.max(DEFAULT_ROOT_MAX_MOVES, maxMoves),
   );
-  const context: SearchContext = {
-    rootPlayer: player,
-    maxMoves: Math.max(1, maxMoves),
-    nodeLimit: Math.max(
-      1,
-      normalizedPositiveInteger(options.nodeLimit ?? DEFAULT_NODE_LIMIT),
-    ),
-    nodes: 0,
-  };
-
   const candidates = candidateMoves(state, player, Math.max(1, rootMaxMoves));
   if (candidates.length === 0) return null;
 
+  const totalNodeLimit = Math.max(
+    1,
+    normalizedPositiveInteger(options.nodeLimit ?? DEFAULT_NODE_LIMIT),
+  );
+  const nodeLimitPerCandidate = Math.max(
+    1,
+    Math.floor(totalNodeLimit / candidates.length),
+  );
+  const start = performanceNow();
+  const decisionDeadline =
+    options.maxTimeMs === undefined
+      ? null
+      : start + Math.max(0, options.maxTimeMs);
   const scored: LookaheadMoveScore[] = [];
-  for (const moveIndex of candidates) {
+  let totalNodes = 0;
+  for (let index = 0; index < candidates.length; index += 1) {
+    if (
+      decisionDeadline !== null &&
+      performanceNow() >= decisionDeadline &&
+      scored.length > 0
+    ) {
+      break;
+    }
+
+    const moveIndex = candidates[index]!;
+    const remainingCandidates = candidates.length - index;
+    const remainingTime =
+      decisionDeadline === null
+        ? null
+        : Math.max(0, decisionDeadline - performanceNow());
+    const context: SearchContext = {
+      rootPlayer: player,
+      maxMoves: Math.max(1, maxMoves),
+      nodeLimit: nodeLimitPerCandidate,
+      nodes: 0,
+      deadlineAt:
+        remainingTime === null
+          ? null
+          : performanceNow() + remainingTime / remainingCandidates,
+    };
+
     state.makeMove(moveIndex, player);
-    const score = searchScore(
+    const result = searchScore(
       state,
       otherPlayer(player),
       depth - 1,
@@ -89,7 +130,13 @@ export function selectLookaheadMove(
     );
     state.unmakeMove();
 
-    scored.push({ moveIndex, score });
+    totalNodes += context.nodes;
+    scored.push({
+      moveIndex,
+      score: result.score,
+      nodes: context.nodes,
+      complete: result.complete,
+    });
   }
 
   scored.sort((first, second) => {
@@ -107,7 +154,10 @@ export function selectLookaheadMove(
   return {
     ...best,
     depth,
-    nodes: context.nodes,
+    nodes: totalNodes,
+    complete:
+      scored.length === candidates.length &&
+      scored.every((candidate) => candidate.complete),
     candidates: scored,
   };
 }
@@ -174,34 +224,39 @@ function searchScore(
   beta: number,
   ply: number,
   context: SearchContext,
-): number {
+): SearchResult {
   context.nodes += 1;
 
   const terminal = terminalScore(state, context.rootPlayer, ply);
-  if (terminal !== null) return terminal;
+  if (terminal !== null) return { score: terminal, complete: true };
 
-  if (depth <= 0 || context.nodes >= context.nodeLimit) {
-    return evaluateLookaheadPosition(
-      state,
-      context.rootPlayer,
-      playerToMove,
-    );
+  if (depth <= 0) {
+    return {
+      score: evaluateLookaheadPosition(state, context.rootPlayer, playerToMove),
+      complete: true,
+    };
+  }
+  if (searchBudgetExhausted(context)) {
+    return {
+      score: evaluateLookaheadPosition(state, context.rootPlayer, playerToMove),
+      complete: false,
+    };
   }
 
   const moves = candidateMoves(state, playerToMove, context.maxMoves);
   if (moves.length === 0) {
-    return evaluateLookaheadPosition(
-      state,
-      context.rootPlayer,
-      playerToMove,
-    );
+    return {
+      score: evaluateLookaheadPosition(state, context.rootPlayer, playerToMove),
+      complete: true,
+    };
   }
 
   if (playerToMove === context.rootPlayer) {
     let best = Number.NEGATIVE_INFINITY;
-    for (const moveIndex of moves) {
+    for (let index = 0; index < moves.length; index += 1) {
+      const moveIndex = moves[index]!;
       state.makeMove(moveIndex, playerToMove);
-      const score = searchScore(
+      const result = searchScore(
         state,
         otherPlayer(playerToMove),
         depth - 1,
@@ -212,17 +267,24 @@ function searchScore(
       );
       state.unmakeMove();
 
-      best = Math.max(best, score);
+      best = Math.max(best, result.score);
       alpha = Math.max(alpha, best);
-      if (alpha >= beta || context.nodes >= context.nodeLimit) break;
+      if (alpha >= beta) break;
+      if (
+        !result.complete ||
+        (index < moves.length - 1 && searchBudgetExhausted(context))
+      ) {
+        return { score: best, complete: false };
+      }
     }
-    return best;
+    return { score: best, complete: true };
   }
 
   let best = Number.POSITIVE_INFINITY;
-  for (const moveIndex of moves) {
+  for (let index = 0; index < moves.length; index += 1) {
+    const moveIndex = moves[index]!;
     state.makeMove(moveIndex, playerToMove);
-    const score = searchScore(
+    const result = searchScore(
       state,
       otherPlayer(playerToMove),
       depth - 1,
@@ -233,12 +295,18 @@ function searchScore(
     );
     state.unmakeMove();
 
-    best = Math.min(best, score);
+    best = Math.min(best, result.score);
     beta = Math.min(beta, best);
-    if (alpha >= beta || context.nodes >= context.nodeLimit) break;
+    if (alpha >= beta) break;
+    if (
+      !result.complete ||
+      (index < moves.length - 1 && searchBudgetExhausted(context))
+    ) {
+      return { score: best, complete: false };
+    }
   }
 
-  return best;
+  return { score: best, complete: true };
 }
 
 function terminalScore(
@@ -247,7 +315,8 @@ function terminalScore(
   ply: number,
 ): number | null {
   if (state.winner === player) return TERMINAL_SCORE - ply * 30_000;
-  if (state.winner === otherPlayer(player)) return -TERMINAL_SCORE + ply * 30_000;
+  if (state.winner === otherPlayer(player))
+    return -TERMINAL_SCORE + ply * 30_000;
   if (state.isDraw()) return 0;
   return null;
 }
@@ -290,6 +359,12 @@ function criticalCandidateMoves(
   if (blocks.length > 0) return blocks;
 
   return [
+    ...(state.winCondition.linesToWin > 1
+      ? findLineCompletionMoves(state, player).map((move) => move.moveIndex)
+      : []),
+    ...(state.winCondition.linesToWin > 1
+      ? findLineCompletionMoves(state, opponent).map((move) => move.moveIndex)
+      : []),
     ...findForcingMoves(state, player)
       .filter((move) => move.kind === "fork")
       .map((move) => move.moveIndex),
@@ -330,7 +405,8 @@ function multiLineThreatValue(
 
   const base = defensive ? 14_000 : 11_000;
   const tempo = hasTempo ? 1.75 : 1;
-  const racePressure = threats >= linesNeeded ? 1.6 : 1 / Math.sqrt(linesNeeded);
+  const racePressure =
+    threats >= linesNeeded ? 1.6 : 1 / Math.sqrt(linesNeeded);
 
   return Math.round(threats * base * tempo * racePressure);
 }
@@ -338,4 +414,15 @@ function multiLineThreatValue(
 function normalizedPositiveInteger(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.floor(value));
+}
+
+function searchBudgetExhausted(context: SearchContext): boolean {
+  return (
+    context.nodes >= context.nodeLimit ||
+    (context.deadlineAt !== null && performanceNow() >= context.deadlineAt)
+  );
+}
+
+function performanceNow(): number {
+  return globalThis.performance?.now() ?? Date.now();
 }

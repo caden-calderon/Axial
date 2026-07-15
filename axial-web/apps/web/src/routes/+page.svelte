@@ -503,7 +503,6 @@
 		setupLocked={activeSetupLocked}
 		playModeLocked={(playMode !== 'online' && controller.setupLocked) ||
 			(playMode === 'online' && online.hasRoom)}
-		onlineRulesLocked={playMode === 'online'}
 		appearanceLocked={controller.appearanceLocked}
 		activeSpecialCharges={controller.activeSpecialCharges}
 		activeSpecialCounts={controller.activeSpecialCounts}
