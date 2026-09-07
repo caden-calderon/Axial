@@ -116,13 +116,6 @@ const AI_RESULT_LABELS: Record<Player, string> = {
 	2: 'AI'
 };
 
-const AI_MINIMUM_THINK_MS = {
-	easy: 420,
-	medium: 420,
-	hard: 420,
-	nightmare: 420
-} as const satisfies Record<AiDifficulty, number>;
-
 type MoveSource = 'human' | 'ai';
 export type PlacementMode = 'piece' | 'blocker' | 'double-adjacent';
 export type TacticalSpecialCounts = Record<TacticalSpecialId, number>;
@@ -886,10 +879,10 @@ export function createGameController() {
 		clearQueuedAiMove();
 		aiThinking = true;
 		const requestId = aiSearchRequestId;
-		void runQueuedAiMove(requestId, nowMs());
+		void runQueuedAiMove(requestId);
 	}
 
-	async function runQueuedAiMove(requestId: number, queuedAtMs: number): Promise<void> {
+	async function runQueuedAiMove(requestId: number): Promise<void> {
 		if (!isCurrentAiTurn(requestId)) {
 			aiThinking = false;
 			return;
@@ -909,14 +902,6 @@ export function createGameController() {
 				getClassicAiClient
 			);
 			if (move && isCurrentAiTurn(requestId) && matchId === requestMatchId) {
-				const remainingThinkMs = remainingAiThinkingDelayMs(
-					requestDifficulty,
-					nowMs() - queuedAtMs
-				);
-				if (remainingThinkMs > 0) {
-					await sleep(remainingThinkMs);
-				}
-
 				if (!isCurrentAiTurn(requestId) || matchId !== requestMatchId) return;
 				playMove(move, 'ai');
 			}
@@ -924,14 +909,6 @@ export function createGameController() {
 			if (!isAbortError(error) && isCurrentAiTurn(requestId)) {
 				const move = chooseRandomMove(game);
 				if (move) {
-					const remainingThinkMs = remainingAiThinkingDelayMs(
-						requestDifficulty,
-						nowMs() - queuedAtMs
-					);
-					if (remainingThinkMs > 0) {
-						await sleep(remainingThinkMs);
-					}
-
 					if (isCurrentAiTurn(requestId) && matchId === requestMatchId) {
 						playMove(move, 'ai');
 					}
@@ -1431,10 +1408,6 @@ export async function chooseAiMove(
 	}
 }
 
-export function remainingAiThinkingDelayMs(aiDifficulty: AiDifficulty, elapsedMs: number): number {
-	return Math.max(0, AI_MINIMUM_THINK_MS[aiDifficulty] - elapsedMs);
-}
-
 function aiSeedForGame(game: GameSnapshot, matchId: number): number {
 	let hash = (0x811c9dc5 ^ matchId) >>> 0;
 
@@ -1582,16 +1555,6 @@ function canStartDoubleAdjacent(game: GameSnapshot): boolean {
 		} catch {
 			return false;
 		}
-	});
-}
-
-function nowMs(): number {
-	return typeof performance === 'undefined' ? Date.now() : performance.now();
-}
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => {
-		setTimeout(resolve, ms);
 	});
 }
 

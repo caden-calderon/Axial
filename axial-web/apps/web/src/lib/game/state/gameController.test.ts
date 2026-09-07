@@ -4,25 +4,11 @@ import { GAME_OVER_MODAL_DELAY_MS } from '../animation';
 import {
 	classicAiSearchOptionsForGame,
 	chooseAiMove,
-	createGameController,
-	remainingAiThinkingDelayMs
+	createGameController
 } from './gameController.svelte';
 import type { ClassicAiClient } from './classicAiClient';
 
 describe('game controller AI timing', () => {
-	it('uses one short response floor instead of simulating stronger search with extra delay', () => {
-		const easy = remainingAiThinkingDelayMs('easy', 0);
-		const medium = remainingAiThinkingDelayMs('medium', 0);
-		const hard = remainingAiThinkingDelayMs('hard', 0);
-		const max = remainingAiThinkingDelayMs('nightmare', 0);
-
-		expect(easy).toBeGreaterThan(0);
-		expect(medium).toBe(easy);
-		expect(hard).toBe(easy);
-		expect(max).toBe(easy);
-		expect(remainingAiThinkingDelayMs('nightmare', max)).toBe(0);
-	});
-
 	it('scales Max Classic search budget up on larger boards', () => {
 		const defaultBoard = classicAiSearchOptionsForGame('nightmare', createGame());
 		const largeBoard = classicAiSearchOptionsForGame(

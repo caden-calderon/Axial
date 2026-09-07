@@ -1,5 +1,5 @@
 import type { GameSnapshot, Move } from '@axial/core';
-import type { MctsMoveStat, MctsOptions, MctsStopReason } from '@axial/ai';
+import type { MctsMoveStat, MctsOptions, MctsStopReason, MctsTelemetry } from '@axial/ai';
 
 export type ClassicAiWorkerRequest = {
 	id: number;
@@ -18,9 +18,12 @@ export type ClassicAiWorkerSuccess = {
 	maxDepth?: number;
 	rootChildren?: number;
 	lookaheadDepth?: number;
+	lookaheadCompletedDepth?: number;
+	lookaheadPartialDepth?: number;
 	lookaheadComplete?: boolean;
 	stopReason?: MctsStopReason;
 	stats: MctsMoveStat[];
+	telemetry?: MctsTelemetry;
 };
 
 export type ClassicAiWorkerFailure = {

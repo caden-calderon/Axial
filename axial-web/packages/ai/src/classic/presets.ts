@@ -12,6 +12,7 @@ type ClassicAiSearchPreset = MctsOptions & {
   maxTimeMs: number;
   earlyExitVisits: number;
   minimumSearchDepth: number;
+  rolloutMaxMoves: number;
 };
 
 const SEARCH_PRESETS = {
@@ -23,6 +24,8 @@ const SEARCH_PRESETS = {
     lookaheadWeight: 0,
     lookaheadTimeFraction: 0.05,
     smartRolloutRate: 0.45,
+    rolloutMaxMoves: 12,
+    rolloutEvaluationScale: 260_000,
     earlyExitVisits: 24,
     earlyExitRatio: 0.92,
     useRave: false,
@@ -41,6 +44,8 @@ const SEARCH_PRESETS = {
     lookaheadWeight: 0.16,
     lookaheadTimeFraction: 0.22,
     smartRolloutRate: 0.62,
+    rolloutMaxMoves: 20,
+    rolloutEvaluationScale: 240_000,
     earlyExitVisits: 180,
     earlyExitRatio: 0.95,
     useRave: true,
@@ -62,6 +67,8 @@ const SEARCH_PRESETS = {
     lookaheadTimeFraction: 0.3,
     lookaheadOverrideMargin: 72_000,
     smartRolloutRate: 0.76,
+    rolloutMaxMoves: 32,
+    rolloutEvaluationScale: 225_000,
     earlyExitVisits: 700,
     earlyExitRatio: 0.97,
     useRave: true,
@@ -83,6 +90,8 @@ const SEARCH_PRESETS = {
     lookaheadTimeFraction: 0.36,
     lookaheadOverrideMargin: 34_000,
     smartRolloutRate: 0.86,
+    rolloutMaxMoves: 48,
+    rolloutEvaluationScale: 210_000,
     earlyExitVisits: 2_200,
     earlyExitRatio: 0.985,
     useRave: true,
@@ -139,9 +148,7 @@ export function classicAiSearchOptionsForGame(
         : 0;
   const lineRaceMultiplier =
     1 + Math.max(0, game.winCondition.linesToWin - 1) * 0.22;
-  const minimumSearchDepth =
-    preset.minimumSearchDepth +
-    (difficulty === "nightmare" && game.winCondition.linesToWin > 1 ? 1 : 0);
+  const minimumSearchDepth = preset.minimumSearchDepth;
 
   return {
     ...preset,
@@ -169,6 +176,10 @@ export function classicAiSearchOptionsForGame(
               Math.max(0, game.winCondition.linesToWin - 1) * 0.04,
           ),
     minimumSearchDepth,
+    rolloutMaxMoves:
+      preset.rolloutMaxMoves +
+      Math.max(0, game.winCondition.lineLength - 4) * 6 +
+      Math.max(0, game.winCondition.linesToWin - 1) * 4,
     lookaheadRootMaxMoves:
       preset.lookaheadRootMaxMoves === undefined
         ? undefined

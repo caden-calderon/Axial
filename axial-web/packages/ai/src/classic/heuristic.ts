@@ -122,11 +122,20 @@ export function selectTacticalMove(
   }
 
   const opponentForcingMoves = tacticalForcingMoves(state, opponent, mode);
-  if (opponentForcingMoves.length > 0) {
+  const opponentForkMoves = opponentForcingMoves.filter(
+    (move) => move.kind === "fork",
+  );
+  const forcedOpponentBlocks = neutralizingForkBlocks(
+    state,
+    player,
+    opponent,
+    opponentForkMoves,
+  );
+  if (forcedOpponentBlocks.length > 0) {
     return scoredResult(
       state,
       player,
-      opponentForcingMoves.map((move) => move.moveIndex),
+      forcedOpponentBlocks,
       "block-forcing",
       BLOCK_FORCING_SCORE,
     );
@@ -295,6 +304,10 @@ export function findForcingMoves(
 
   for (const moveIndex of state.legalMoveIndices()) {
     state.makeMove(moveIndex, player);
+    if (state.winner === player) {
+      state.unmakeMove();
+      continue;
+    }
     const immediateThreats = countImmediateThreats(state, player);
     const lineThreats = countLineCompletionThreats(state, player);
     const linesNeeded = Math.max(
@@ -346,10 +359,33 @@ function tacticalForcingMoves(
   return moves.filter((move) => move.kind === "fork");
 }
 
+function neutralizingForkBlocks(
+  state: ClassicSearchState,
+  player: Player,
+  opponent: Player,
+  opponentForkMoves: readonly ForcingMove[],
+): MoveIndex[] {
+  const candidates = new Set(opponentForkMoves.map((move) => move.moveIndex));
+  const neutralizing: MoveIndex[] = [];
+
+  for (const moveIndex of candidates) {
+    if (!state.isLegalMove(moveIndex)) continue;
+    state.makeMove(moveIndex, player);
+    const remainingForks = findForcingMoves(state, opponent).some(
+      (move) => move.kind === "fork",
+    );
+    state.unmakeMove();
+    if (!remainingForks) neutralizing.push(moveIndex);
+  }
+
+  return neutralizing;
+}
+
 export function countImmediateThreats(
   state: ClassicSearchState,
   player: Player,
 ): number {
+  if (state.winner !== null) return 0;
   let threats = 0;
 
   for (const moveIndex of state.legalMoveIndices()) {
@@ -363,6 +399,7 @@ export function countLineCompletionThreats(
   state: ClassicSearchState,
   player: Player,
 ): number {
+  if (state.winner !== null) return 0;
   return findLineCompletionMoves(state, player).reduce(
     (total, move) => total + move.completions,
     0,
@@ -436,21 +473,25 @@ function scoredResult(
   reason: MoveScore["reason"],
   baseScore: number,
 ): Omit<HeuristicMoveResult, "move"> {
-  const forcedScores = moveIndices.map((moveIndex) => {
-    const scored = scoreMove(state, moveIndex, player);
-    return {
-      ...scored,
-      reason,
-      score: baseScore + scored.score,
-    };
-  });
+  const forcedScores = moveIndices
+    .map((moveIndex) => {
+      const scored = scoreMove(state, moveIndex, player);
+      return {
+        ...scored,
+        reason,
+        score: baseScore + scored.score,
+      };
+    })
+    .sort((first, second) =>
+      compareMoveScores(first, second, state.dimensions),
+    );
   const candidates = [
     ...forcedScores,
     ...scoreLegalMoves(state, player).filter(
       (candidate) => !moveIndices.includes(candidate.moveIndex),
     ),
   ].sort((first, second) => compareMoveScores(first, second, state.dimensions));
-  const best = candidates[0];
+  const best = forcedScores[0];
 
   return {
     moveIndex: best.moveIndex,

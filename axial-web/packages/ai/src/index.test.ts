@@ -291,6 +291,25 @@ describe("Classic search state", () => {
     );
   });
 
+  it("maintains deterministic incremental position hashes through clone and undo", () => {
+    const state = new ClassicSearchState(undefined, {
+      lineLength: 5,
+      linesToWin: 3,
+    });
+    const initialKey = state.positionKey(1);
+
+    state.makeMove(moveToIndex({ row: 2, col: 3 }), 1);
+    const afterFirstMove = state.positionKey(2);
+    state.makeMove(moveToIndex({ row: 2, col: 3 }), 2);
+    const clone = state.clone();
+
+    expect(afterFirstMove).not.toBe(initialKey);
+    expect(clone.positionKey(1)).toBe(state.positionKey(1));
+    state.unmakeMove();
+    state.unmakeMove();
+    expect(state.positionKey(1)).toBe(initialKey);
+  });
+
   it("tracks gravity and wins on larger boards", () => {
     const state = new ClassicSearchState(
       undefined,
@@ -583,6 +602,12 @@ describe("Classic tactical lookahead", () => {
     );
     expect(result?.nodes).toBeLessThanOrEqual(40);
     expect(result?.depth).toBe(4);
+    expect(result?.completedDepth).toBeGreaterThanOrEqual(1);
+    expect(
+      result?.candidates.every(
+        (candidate) => candidate.completedDepth === result.completedDepth,
+      ),
+    ).toBe(true);
     expect(result?.complete).toBe(false);
   });
 });
@@ -631,7 +656,7 @@ describe("Classic MCTS AI", () => {
       twoLines.lookaheadTimeFraction!,
     );
     expect(standard.minimumSearchDepth).toBe(3);
-    expect(twoLines.minimumSearchDepth).toBe(4);
+    expect(twoLines.minimumSearchDepth).toBe(3);
   });
 
   it.each([
@@ -661,7 +686,7 @@ describe("Classic MCTS AI", () => {
     },
   );
 
-  it("keeps the strategic line-banking floor on expanded boards", () => {
+  it("keeps the strategic line-banking floor on expanded boards at zero budget", () => {
     const state = new ClassicSearchState(
       undefined,
       { lineLength: 5, linesToWin: 3 },
@@ -678,12 +703,12 @@ describe("Classic MCTS AI", () => {
       seed: 79,
     });
 
-    expect(result?.reason).toBe("tactical");
+    expect(result?.reason).toBe("heuristic");
     expect(result?.simulations).toBe(0);
     expect(result?.move).toEqual({ row: 3, col: 4 });
   });
 
-  it("blocks a productive three-line race before generic search can override it", () => {
+  it("searches the former three-line guard position instead of forcing one line block", () => {
     const game = replayMoves(
       [
         { row: 2, col: 3 },
@@ -705,13 +730,19 @@ describe("Classic MCTS AI", () => {
       { lineLength: 4, linesToWin: 3 },
     );
     const result = analyzeMctsMove(game, {
-      ...classicAiSearchOptionsForGame("nightmare", game),
+      simulations: 80,
+      lookaheadDepth: 2,
+      lookaheadMaxMoves: 10,
+      lookaheadRootMaxMoves: 14,
+      lookaheadNodeLimit: 1_000,
+      minimumSearchDepth: 2,
+      progressiveWidening: true,
       seed: 3_867,
     });
 
-    expect(result?.reason).toBe("tactical");
-    expect(result?.simulations).toBe(0);
-    expect(result?.move).toEqual({ row: 0, col: 4 });
+    expect(result?.reason).not.toBe("tactical");
+    expect(result?.simulations).toBeGreaterThan(0);
+    expect(result?.lookaheadCompletedDepth).toBeGreaterThan(0);
   });
 
   it("bounds lookahead and MCTS under one end-to-end decision budget", () => {
@@ -832,6 +863,29 @@ describe("Classic MCTS AI", () => {
     expect(first?.rootChildren).toBeLessThan(42);
     expect(first?.maxDepth).toBeGreaterThan(1);
     expect(first?.stopReason).toBe("simulations");
+    expect(first?.telemetry.selectedMoveDepth).toBe(
+      first?.stats.find((stat) => stat.moveIndex === first.moveIndex)?.maxDepth,
+    );
+  });
+
+  it("caps rollout plies and backs up a non-terminal horizon value", () => {
+    const result = analyzeMctsMove(
+      createGame({ lineLength: 5, linesToWin: 3 }),
+      {
+        simulations: 40,
+        lookaheadDepth: 0,
+        rolloutMaxMoves: 5,
+        minimumSearchDepth: 0,
+        earlyExitVisits: 1_000,
+        tacticalMode: "immediate-only",
+        seed: 211,
+      },
+    );
+
+    expect(result?.simulations).toBe(40);
+    expect(result?.telemetry.maxRolloutMoves).toBeLessThanOrEqual(5);
+    expect(result?.telemetry.rolloutMoves).toBeLessThanOrEqual(200);
+    expect(result?.stats.some((stat) => stat.value > 0)).toBe(true);
   });
 
   it("runs seeded search on larger boards with legal move indices", () => {
@@ -881,7 +935,12 @@ describe("AI evaluation harness", () => {
 
     expect(result.games).toBe(4);
     expect(result.illegalMoves).toBe(0);
-    expect(result.playerOneWins + result.playerTwoWins + result.draws).toBe(4);
+    expect(
+      result.playerOneWins +
+        result.playerTwoWins +
+        result.draws +
+        result.truncations,
+    ).toBe(4);
   });
 
   it("evaluates custom rules, dimensions, and starting players", () => {
@@ -904,6 +963,23 @@ describe("AI evaluation harness", () => {
     });
     expect(result.finalGame.dimensions).toEqual(LARGE_TEST_DIMENSIONS);
     expect(result.finalGame.moveHistory[0]?.player).toBe(2);
+    expect(["win", "draw", "truncated"]).toContain(result.outcome);
+    expect(result.terminal).toBe(result.outcome !== "truncated");
+  });
+
+  it("distinguishes a move-cap truncation from a terminal draw", () => {
+    const result = playAiMatch({
+      seed: 37,
+      maxMoves: 1,
+      players: {
+        1: (game, random) => chooseRandomMove(game, random),
+        2: (game, random) => chooseRandomMove(game, random),
+      },
+    });
+
+    expect(result.winner).toBe(0);
+    expect(result.outcome).toBe("truncated");
+    expect(result.terminal).toBe(false);
   });
 
   it("keeps returned moves compatible with the canonical core", () => {

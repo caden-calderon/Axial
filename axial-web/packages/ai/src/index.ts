@@ -25,6 +25,17 @@ export {
 } from "./classic/geometry";
 export { ClassicSearchState } from "./classic/state";
 export {
+  CLASSIC_CHALLENGE_FORMAT_VERSION,
+  isExpectedChallengeMove,
+  observeClassicChallenge,
+  replayClassicChallenge,
+  type ClassicChallengeExpectation,
+  type ClassicChallengeObservation,
+  type ClassicChallengePosition,
+  type ClassicChallengeProperty,
+  type ClassicChallengeSource,
+} from "./classic/challenges";
+export {
   classicAiSearchOptionsForGame,
   type ClassicAiDifficulty,
 } from "./classic/presets";
@@ -50,12 +61,20 @@ export {
   type TacticalMoveMode,
 } from "./classic/heuristic";
 export {
+  evaluateFastPosition,
+  fastMoveScore,
+  rankFastMoves,
+  type FastMoveScore,
+} from "./classic/fastEvaluation";
+export {
   analyzeMctsMove,
   chooseMctsMove,
   type MctsMoveResult,
   type MctsMoveStat,
   type MctsOptions,
+  type MctsPhaseTimings,
   type MctsStopReason,
+  type MctsTelemetry,
 } from "./classic/mcts";
 export {
   evaluateLookaheadPosition,
@@ -69,8 +88,8 @@ export {
   runEvaluation,
   type AiPlayer,
   type EvaluationResult,
-  type MatchPlayerConfig,
   type MatchResult,
+  type MatchPlayerConfig,
 } from "./evaluation";
 
 export function chooseRandomMove(

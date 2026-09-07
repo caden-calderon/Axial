@@ -72,9 +72,12 @@ export function createClassicAiClient(
 			maxDepth: response.maxDepth ?? 0,
 			rootChildren: response.rootChildren ?? 0,
 			lookaheadDepth: response.lookaheadDepth ?? 0,
+			lookaheadCompletedDepth: response.lookaheadCompletedDepth ?? 0,
+			lookaheadPartialDepth: response.lookaheadPartialDepth ?? 0,
 			lookaheadComplete: response.lookaheadComplete ?? true,
 			stopReason: response.stopReason ?? 'simulations',
-			stats: response.stats
+			stats: response.stats,
+			telemetry: response.telemetry ?? emptyTelemetry(response.elapsedMs)
 		});
 	}
 
@@ -130,6 +133,26 @@ export function createClassicAiClient(
 export function requestTimeoutMs(options: MctsOptions): number {
 	const searchBudgetMs = options.maxTimeMs ?? 2_500;
 	return Math.min(20_000, Math.max(4_000, Math.ceil(searchBudgetMs * 1.75 + 1_000)));
+}
+
+function emptyTelemetry(totalMs: number): MctsMoveResult['telemetry'] {
+	return {
+		phaseMs: {
+			stateConversionMs: 0,
+			tacticalMs: 0,
+			heuristicMs: 0,
+			lookaheadMs: 0,
+			treeSearchMs: totalMs,
+			totalMs
+		},
+		lookaheadNodes: 0,
+		lookaheadCandidates: 0,
+		lookaheadCompletedCandidates: 0,
+		treeNodes: 0,
+		rolloutMoves: 0,
+		maxRolloutMoves: 0,
+		selectedMoveDepth: 0
+	};
 }
 
 function createClassicAiWorker(): WorkerLike {

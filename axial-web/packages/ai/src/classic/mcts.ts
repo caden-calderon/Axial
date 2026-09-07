@@ -8,8 +8,6 @@ import {
 import { createSeededRandom, randomIndex, type RandomSource } from "../random";
 import {
   compareMoveIndicesByShape,
-  countLineCompletionsForMove,
-  findLineCompletionMoves,
   findWinningMoves,
   selectHeuristicMove,
   selectTacticalMove,
@@ -18,6 +16,7 @@ import {
 import { moveFromIndex, type MoveIndex } from "./geometry";
 import { selectLookaheadMove, type LookaheadMoveResult } from "./lookahead";
 import { ClassicSearchState } from "./state";
+import { evaluateFastPosition, fastMoveScore } from "./fastEvaluation";
 
 export type MctsOptions = {
   simulations?: number;
@@ -33,6 +32,8 @@ export type MctsOptions = {
   lookaheadTimeFraction?: number;
   seed?: number;
   smartRolloutRate?: number;
+  rolloutMaxMoves?: number;
+  rolloutEvaluationScale?: number;
   earlyExitVisits?: number;
   earlyExitRatio?: number;
   useRave?: boolean;
@@ -51,6 +52,27 @@ export type MctsMoveStat = {
   visits: number;
   winRate: number;
   value: number;
+  maxDepth: number;
+};
+
+export type MctsPhaseTimings = {
+  stateConversionMs: number;
+  tacticalMs: number;
+  heuristicMs: number;
+  lookaheadMs: number;
+  treeSearchMs: number;
+  totalMs: number;
+};
+
+export type MctsTelemetry = {
+  phaseMs: MctsPhaseTimings;
+  lookaheadNodes: number;
+  lookaheadCandidates: number;
+  lookaheadCompletedCandidates: number;
+  treeNodes: number;
+  rolloutMoves: number;
+  maxRolloutMoves: number;
+  selectedMoveDepth: number;
 };
 
 export type MctsMoveResult = {
@@ -61,10 +83,13 @@ export type MctsMoveResult = {
   maxDepth: number;
   rootChildren: number;
   lookaheadDepth: number;
+  lookaheadCompletedDepth: number;
+  lookaheadPartialDepth: number;
   lookaheadComplete: boolean;
   stopReason: MctsStopReason;
   reason: "tactical" | "lookahead" | "search" | "heuristic";
   stats: MctsMoveStat[];
+  telemetry: MctsTelemetry;
 };
 
 type RaveStat = {
@@ -74,12 +99,15 @@ type RaveStat = {
 
 type RolloutResult = {
   winner: Player | 0;
+  terminal: boolean;
+  valueForPlayerOne: number;
   moves: PlayedMove[];
 };
 
 type PlayedMove = {
   player: Player;
   moveIndex: MoveIndex;
+  cellIndex: number;
 };
 
 type RankedMove = {
@@ -94,6 +122,8 @@ const DEFAULT_PROGRESSIVE_BIAS = 0.18;
 const DEFAULT_LOOKAHEAD_WEIGHT = 0.32;
 const LOOKAHEAD_PRIOR_SCALE = 160_000;
 const DEFAULT_SMART_ROLLOUT_RATE = 0.72;
+const DEFAULT_ROLLOUT_MAX_MOVES = 48;
+const DEFAULT_ROLLOUT_EVALUATION_SCALE = 220_000;
 const DEFAULT_EARLY_EXIT_VISITS = 160;
 const DEFAULT_EARLY_EXIT_RATIO = 0.86;
 const DEFAULT_PROGRESSIVE_WIDENING_BASE = 6;
@@ -114,15 +144,20 @@ export function analyzeMctsMove(
   if (game.status.state !== "playing") return null;
   const decisionStart = performanceNow();
 
+  const stateStart = performanceNow();
   const rootState = ClassicSearchState.fromGame(game);
+  const stateConversionMs = performanceNow() - stateStart;
   if (rootState.winner !== null) return null;
 
+  const tacticalStart = performanceNow();
   const criticalTactical = selectTacticalMove(
     rootState,
     game.currentPlayer,
     options.tacticalMode ?? "forced-only",
   );
+  const tacticalMs = performanceNow() - tacticalStart;
   if (criticalTactical) {
+    const totalMs = performanceNow() - decisionStart;
     return {
       move: publicMoveFromIndex(
         criticalTactical.moveIndex,
@@ -130,10 +165,12 @@ export function analyzeMctsMove(
       ),
       moveIndex: criticalTactical.moveIndex,
       simulations: 0,
-      elapsedMs: performanceNow() - decisionStart,
+      elapsedMs: totalMs,
       maxDepth: 0,
       rootChildren: 0,
       lookaheadDepth: 0,
+      lookaheadCompletedDepth: 0,
+      lookaheadPartialDepth: 0,
       lookaheadComplete: true,
       stopReason: "tactical",
       reason: "tactical",
@@ -143,39 +180,20 @@ export function analyzeMctsMove(
         visits: 0,
         winRate: 0,
         value: candidate.score,
+        maxDepth: 0,
       })),
+      telemetry: emptyTelemetry({
+        stateConversionMs,
+        tacticalMs,
+        totalMs,
+      }),
     };
   }
 
+  const heuristicStart = performanceNow();
   const tactical = selectHeuristicMove(rootState, game.currentPlayer);
+  const heuristicMs = performanceNow() - heuristicStart;
   if (!tactical) return null;
-  if (
-    isDirectCumulativeLineMove(
-      rootState,
-      game.currentPlayer,
-      tactical.moveIndex,
-    )
-  ) {
-    return {
-      move: publicMoveFromIndex(tactical.moveIndex, rootState.dimensions),
-      moveIndex: tactical.moveIndex,
-      simulations: 0,
-      elapsedMs: performanceNow() - decisionStart,
-      maxDepth: 0,
-      rootChildren: 0,
-      lookaheadDepth: 0,
-      lookaheadComplete: true,
-      stopReason: "tactical",
-      reason: "tactical",
-      stats: tactical.candidates.map((candidate) => ({
-        move: publicMoveFromIndex(candidate.moveIndex, rootState.dimensions),
-        moveIndex: candidate.moveIndex,
-        visits: 0,
-        winRate: 0,
-        value: candidate.score,
-      })),
-    };
-  }
 
   const remainingDecisionTime =
     options.maxTimeMs === undefined
@@ -185,11 +203,13 @@ export function analyzeMctsMove(
     ...options,
     maxTimeMs: remainingDecisionTime,
   };
+  const lookaheadStart = performanceNow();
   const lookahead = selectRootLookahead(
     rootState,
     game.currentPlayer,
     boundedOptions,
   );
+  const lookaheadMs = performanceNow() - lookaheadStart;
   const remainingSearchTime =
     options.maxTimeMs === undefined
       ? undefined
@@ -206,9 +226,26 @@ export function analyzeMctsMove(
     lookahead?.moveIndex ?? tactical.moveIndex,
     tactical.moveIndex,
   );
+  const totalMs = performanceNow() - decisionStart;
   return {
     ...result,
-    elapsedMs: performanceNow() - decisionStart,
+    elapsedMs: totalMs,
+    telemetry: {
+      ...result.telemetry,
+      phaseMs: {
+        stateConversionMs,
+        tacticalMs,
+        heuristicMs,
+        lookaheadMs,
+        treeSearchMs: result.telemetry.phaseMs.treeSearchMs,
+        totalMs,
+      },
+      lookaheadNodes: lookahead?.nodes ?? 0,
+      lookaheadCandidates: lookahead?.candidates.length ?? 0,
+      lookaheadCompletedCandidates:
+        lookahead?.candidates.filter((candidate) => candidate.complete)
+          .length ?? 0,
+    },
   };
 }
 
@@ -219,14 +256,17 @@ class MctsNode {
   readonly untriedMoves: MoveIndex[];
   visits = 0;
   value = 0;
+  maxDescendantDepth: number;
 
   constructor(
     readonly parent: MctsNode | null,
     readonly moveIndex: MoveIndex | null,
+    readonly cellIndex: number | null,
     readonly playerJustMoved: Player,
     readonly depth: number,
     rankedMoves: readonly RankedMove[],
   ) {
+    this.maxDescendantDepth = depth;
     this.untriedMoves = rankedMoves.map((move) => move.moveIndex);
     for (const move of rankedMoves) {
       this.movePriors.set(move.moveIndex, move.prior);
@@ -238,6 +278,9 @@ class MctsSearch {
   private readonly root: MctsNode;
   private simulations = 0;
   private maxDepth = 0;
+  private nodesCreated = 1;
+  private rolloutMoves = 0;
+  private maxRolloutMoves = 0;
 
   constructor(
     private readonly rootState: ClassicSearchState,
@@ -247,6 +290,7 @@ class MctsSearch {
     private readonly rootLookahead: LookaheadMoveResult | null,
   ) {
     this.root = new MctsNode(
+      null,
       null,
       null,
       otherPlayer(rootPlayer),
@@ -286,28 +330,6 @@ class MctsSearch {
 
     const elapsedMs = performanceNow() - start;
     const stats = this.rootStats();
-    const minimumSearchDepth = Math.max(
-      0,
-      this.options.minimumSearchDepth ?? 0,
-    );
-    if (this.maxDepth < minimumSearchDepth) {
-      return {
-        move: publicMoveFromIndex(
-          strategicAnchorMoveIndex,
-          this.rootState.dimensions,
-        ),
-        moveIndex: strategicAnchorMoveIndex,
-        simulations: this.simulations,
-        elapsedMs,
-        maxDepth: this.maxDepth,
-        rootChildren: this.root.children.size,
-        lookaheadDepth: this.rootLookahead?.depth ?? 0,
-        lookaheadComplete: this.rootLookahead?.complete ?? true,
-        stopReason,
-        reason: "heuristic",
-        stats,
-      };
-    }
     const selected = this.selectRootMove(stats);
 
     if (!selected) {
@@ -319,10 +341,43 @@ class MctsSearch {
         maxDepth: this.maxDepth,
         rootChildren: this.root.children.size,
         lookaheadDepth: this.rootLookahead?.depth ?? 0,
+        lookaheadCompletedDepth: this.rootLookahead?.completedDepth ?? 0,
+        lookaheadPartialDepth: this.rootLookahead?.partialDepth ?? 0,
         lookaheadComplete: this.rootLookahead?.complete ?? true,
         stopReason,
         reason: this.rootLookahead ? "lookahead" : "heuristic",
         stats,
+        telemetry: this.telemetry(elapsedMs, fallbackMoveIndex),
+      };
+    }
+
+    const minimumSearchDepth = Math.max(
+      0,
+      this.options.minimumSearchDepth ?? 0,
+    );
+    if (selected.stat.maxDepth < minimumSearchDepth) {
+      return {
+        move: publicMoveFromIndex(
+          strategicAnchorMoveIndex,
+          this.rootState.dimensions,
+        ),
+        moveIndex: strategicAnchorMoveIndex,
+        simulations: this.simulations,
+        elapsedMs,
+        maxDepth: this.maxDepth,
+        rootChildren: this.root.children.size,
+        lookaheadDepth: this.rootLookahead?.depth ?? 0,
+        lookaheadCompletedDepth: this.rootLookahead?.completedDepth ?? 0,
+        lookaheadPartialDepth: this.rootLookahead?.partialDepth ?? 0,
+        lookaheadComplete: this.rootLookahead?.complete ?? true,
+        stopReason,
+        reason: "heuristic",
+        stats,
+        telemetry: this.telemetry(
+          elapsedMs,
+          strategicAnchorMoveIndex,
+          selected.stat.maxDepth,
+        ),
       };
     }
 
@@ -334,10 +389,13 @@ class MctsSearch {
       maxDepth: this.maxDepth,
       rootChildren: this.root.children.size,
       lookaheadDepth: this.rootLookahead?.depth ?? 0,
+      lookaheadCompletedDepth: this.rootLookahead?.completedDepth ?? 0,
+      lookaheadPartialDepth: this.rootLookahead?.partialDepth ?? 0,
       lookaheadComplete: this.rootLookahead?.complete ?? true,
       stopReason,
       reason: selected.reason,
       stats,
+      telemetry: this.telemetry(elapsedMs, selected.stat.moveIndex),
     };
   }
 
@@ -350,12 +408,13 @@ class MctsSearch {
       if (this.canExpand(node)) {
         const moveIndex = node.untriedMoves.shift()!;
         const player = otherPlayer(node.playerJustMoved);
-        state.makeMove(moveIndex, player);
-        playedMoves.push({ player, moveIndex });
+        const entry = state.makeMove(moveIndex, player);
+        playedMoves.push({ player, moveIndex, cellIndex: entry.cellIndex });
 
         const child = new MctsNode(
           node,
           moveIndex,
+          entry.cellIndex,
           player,
           node.depth + 1,
           state.winner === null && !state.isDraw()
@@ -363,6 +422,7 @@ class MctsSearch {
             : [],
         );
         node.children.set(moveIndex, child);
+        this.nodesCreated += 1;
         node = child;
         this.maxDepth = Math.max(this.maxDepth, node.depth);
         break;
@@ -371,10 +431,11 @@ class MctsSearch {
       if (node.children.size === 0) break;
 
       node = this.selectChild(node);
-      state.makeMove(node.moveIndex!, node.playerJustMoved);
+      const entry = state.makeMove(node.moveIndex!, node.playerJustMoved);
       playedMoves.push({
         player: node.playerJustMoved,
         moveIndex: node.moveIndex!,
+        cellIndex: entry.cellIndex,
       });
       this.maxDepth = Math.max(this.maxDepth, node.depth);
     }
@@ -384,9 +445,13 @@ class MctsSearch {
       node.playerJustMoved,
       this.random,
       this.options.smartRolloutRate ?? DEFAULT_SMART_ROLLOUT_RATE,
+      this.options.rolloutMaxMoves ?? DEFAULT_ROLLOUT_MAX_MOVES,
+      this.options.rolloutEvaluationScale ?? DEFAULT_ROLLOUT_EVALUATION_SCALE,
     );
+    this.rolloutMoves += rollout.moves.length;
+    this.maxRolloutMoves = Math.max(this.maxRolloutMoves, rollout.moves.length);
     playedMoves.push(...rollout.moves);
-    this.backpropagate(node, rollout.winner, playedMoves);
+    this.backpropagate(node, rollout, playedMoves);
   }
 
   private selectChild(node: MctsNode): MctsNode {
@@ -406,8 +471,8 @@ class MctsSearch {
       const progressiveBias =
         this.options.progressiveBias ?? DEFAULT_PROGRESSIVE_BIAS;
 
-      if (useRave && child.moveIndex !== null) {
-        const rave = node.rave.get(child.moveIndex);
+      if (useRave && child.cellIndex !== null) {
+        const rave = node.rave.get(child.cellIndex);
         if (rave && rave.visits > 0) {
           const beta =
             rave.visits /
@@ -470,30 +535,35 @@ class MctsSearch {
 
   private backpropagate(
     node: MctsNode | null,
-    winner: Player | 0,
+    rollout: RolloutResult,
     playedMoves: readonly PlayedMove[],
   ): void {
+    const treeDepth = node?.depth ?? 0;
     while (node) {
       node.visits += 1;
+      node.maxDescendantDepth = Math.max(node.maxDescendantDepth, treeDepth);
       const distanceToResult = Math.max(1, playedMoves.length - node.depth);
-      node.value += resultValue(winner, node.playerJustMoved, distanceToResult);
+      node.value += rolloutValue(
+        rollout,
+        node.playerJustMoved,
+        distanceToResult,
+      );
 
       const playerToMove = otherPlayer(node.playerJustMoved);
-      const raveValue = resultValue(winner, playerToMove, distanceToResult);
-      const futureSeen = new Set<MoveIndex>();
+      const raveValue = rolloutValue(rollout, playerToMove, distanceToResult);
+      const futureSeen = new Set<number>();
 
       for (let index = node.depth; index < playedMoves.length; index += 1) {
         const move = playedMoves[index]!;
-        if (move.player !== playerToMove || futureSeen.has(move.moveIndex)) {
+        if (move.player !== playerToMove || futureSeen.has(move.cellIndex)) {
           continue;
         }
-        futureSeen.add(move.moveIndex);
+        futureSeen.add(move.cellIndex);
 
-        const moveIndex = move.moveIndex;
-        const stat = node.rave.get(moveIndex) ?? { visits: 0, value: 0 };
+        const stat = node.rave.get(move.cellIndex) ?? { visits: 0, value: 0 };
         stat.visits += 1;
         stat.value += raveValue;
-        node.rave.set(moveIndex, stat);
+        node.rave.set(move.cellIndex, stat);
       }
 
       node = node.parent;
@@ -555,6 +625,7 @@ class MctsSearch {
         visits: child.visits,
         winRate: child.visits > 0 ? child.value / child.visits : 0,
         value: child.value,
+        maxDepth: child.maxDescendantDepth,
       }))
       .sort((first, second) => {
         if (first.visits !== second.visits) return second.visits - first.visits;
@@ -566,6 +637,35 @@ class MctsSearch {
           this.rootState.dimensions,
         );
       });
+  }
+
+  private telemetry(
+    elapsedMs: number,
+    selectedMoveIndex: MoveIndex,
+    searchSelectedDepth?: number,
+  ) {
+    return {
+      phaseMs: {
+        stateConversionMs: 0,
+        tacticalMs: 0,
+        heuristicMs: 0,
+        lookaheadMs: 0,
+        treeSearchMs: elapsedMs,
+        totalMs: elapsedMs,
+      },
+      lookaheadNodes: this.rootLookahead?.nodes ?? 0,
+      lookaheadCandidates: this.rootLookahead?.candidates.length ?? 0,
+      lookaheadCompletedCandidates:
+        this.rootLookahead?.candidates.filter((candidate) => candidate.complete)
+          .length ?? 0,
+      treeNodes: this.nodesCreated,
+      rolloutMoves: this.rolloutMoves,
+      maxRolloutMoves: this.maxRolloutMoves,
+      selectedMoveDepth:
+        searchSelectedDepth ??
+        this.root.children.get(selectedMoveIndex)?.maxDescendantDepth ??
+        0,
+    } satisfies MctsTelemetry;
   }
 }
 
@@ -679,11 +779,14 @@ function rolloutFrom(
   previousPlayer: Player,
   random: RandomSource,
   smartRolloutRate: number,
+  maxMoves: number,
+  evaluationScale: number,
 ): RolloutResult {
   const moves: PlayedMove[] = [];
   let player = otherPlayer(previousPlayer);
+  const moveLimit = Math.max(0, Math.floor(maxMoves));
 
-  while (state.winner === null && !state.isDraw()) {
+  while (state.winner === null && !state.isDraw() && moves.length < moveLimit) {
     const moveIndex = chooseRolloutMove(
       state,
       player,
@@ -692,13 +795,24 @@ function rolloutFrom(
     );
     if (moveIndex === null) break;
 
-    state.makeMove(moveIndex, player);
-    moves.push({ player, moveIndex });
+    const entry = state.makeMove(moveIndex, player);
+    moves.push({ player, moveIndex, cellIndex: entry.cellIndex });
     player = otherPlayer(player);
   }
 
+  const terminal = state.winner !== null || state.isDraw();
+  const valueForPlayerOne = terminal
+    ? state.winner === 1
+      ? 1
+      : state.winner === 2
+        ? 0
+        : 0.5
+    : normalizedPositionValue(state, player, evaluationScale);
+
   return {
     winner: state.winner ?? 0,
+    terminal,
+    valueForPlayerOne,
     moves,
   };
 }
@@ -718,14 +832,6 @@ function chooseRolloutMove(
   const blocks = findWinningMoves(state, otherPlayer(player));
   if (blocks.length > 0) return blocks[0];
 
-  if (state.winCondition.linesToWin > 1) {
-    const lineProgress = bestLineCompletionMove(state, player);
-    if (lineProgress !== null) return lineProgress;
-
-    const lineBlock = bestLineCompletionMove(state, otherPlayer(player));
-    if (lineBlock !== null) return lineBlock;
-  }
-
   if (random() < smartRolloutRate) {
     const scored = legalMoves
       .map((moveIndex) => ({
@@ -740,25 +846,95 @@ function chooseRolloutMove(
           state.dimensions,
         );
       });
-    const topCount = Math.min(4, scored.length);
-    const topIndex = randomIndex(topCount, random);
-    return (
-      scored[Math.max(0, topIndex)]?.moveIndex ?? scored[0]?.moveIndex ?? null
-    );
+    if (state.winCondition.linesToWin === 1) {
+      const topCount = Math.min(4, scored.length);
+      return scored[randomIndex(topCount, random)]?.moveIndex ?? null;
+    }
+
+    const topCount = Math.min(6, scored.length);
+    return selectWeightedRolloutMove(scored.slice(0, topCount), random);
   }
 
   return legalMoves[randomIndex(legalMoves.length, random)] ?? null;
 }
 
-function resultValue(
-  winner: Player | 0,
+function selectWeightedRolloutMove(
+  moves: readonly { moveIndex: MoveIndex; score: number }[],
+  random: RandomSource,
+): MoveIndex | null {
+  const bestScore = moves[0]?.score;
+  const worstScore = moves.at(-1)?.score;
+  if (bestScore === undefined || worstScore === undefined) return null;
+
+  const scoreSpan = Math.max(1, bestScore - worstScore);
+  const temperature = Math.max(1_500, scoreSpan * 0.2);
+  const weights = moves.map((move) =>
+    Math.exp((move.score - bestScore) / temperature),
+  );
+  const totalWeight = weights.reduce((total, weight) => total + weight, 0);
+  let target = random() * totalWeight;
+
+  for (let index = 0; index < moves.length; index += 1) {
+    target -= weights[index]!;
+    if (target <= 0) return moves[index]!.moveIndex;
+  }
+
+  return moves.at(-1)?.moveIndex ?? null;
+}
+
+function rolloutValue(
+  result: RolloutResult,
   player: Player,
   distanceToResult: number,
 ): number {
-  if (winner === 0) return 0.5;
+  if (!result.terminal || result.winner === 0) {
+    return player === 1
+      ? result.valueForPlayerOne
+      : 1 - result.valueForPlayerOne;
+  }
 
   const urgency = 0.5 * Math.exp(-Math.max(0, distanceToResult) / 80);
-  return winner === player ? 0.5 + urgency : 0.5 - urgency;
+  return result.winner === player ? 0.5 + urgency : 0.5 - urgency;
+}
+
+function normalizedPositionValue(
+  state: ClassicSearchState,
+  playerToMove: Player,
+  evaluationScale: number,
+): number {
+  const scale = Math.max(1, evaluationScale);
+  const score = evaluateFastPosition(state, 1, playerToMove);
+  return 0.5 + Math.tanh(score / scale) * 0.49;
+}
+
+function emptyTelemetry({
+  stateConversionMs,
+  tacticalMs,
+  heuristicMs = 0,
+  totalMs,
+}: {
+  stateConversionMs: number;
+  tacticalMs: number;
+  heuristicMs?: number;
+  totalMs: number;
+}): MctsTelemetry {
+  return {
+    phaseMs: {
+      stateConversionMs,
+      tacticalMs,
+      heuristicMs,
+      lookaheadMs: 0,
+      treeSearchMs: 0,
+      totalMs,
+    },
+    lookaheadNodes: 0,
+    lookaheadCandidates: 0,
+    lookaheadCompletedCandidates: 0,
+    treeNodes: 0,
+    rolloutMoves: 0,
+    maxRolloutMoves: 0,
+    selectedMoveDepth: 0,
+  };
 }
 
 function performanceNow(): number {
@@ -771,113 +947,4 @@ function publicMoveFromIndex(
 ): Move {
   const move = moveFromIndex(moveIndex, dimensions);
   return { row: move.row, col: move.col };
-}
-
-function fastMoveScore(
-  state: ClassicSearchState,
-  moveIndex: MoveIndex,
-  player: Player,
-): number {
-  const playerCounts =
-    player === 1 ? state.playerOneCounts : state.playerTwoCounts;
-  const opponentCounts =
-    player === 1 ? state.playerTwoCounts : state.playerOneCounts;
-  const cellIndex = state.dropCellIndex(moveIndex);
-  const opponent = otherPlayer(player);
-  const ownLineCompletions = countLineCompletionsForMove(
-    state,
-    moveIndex,
-    player,
-  );
-  const opponentLineCompletions = countLineCompletionsForMove(
-    state,
-    moveIndex,
-    opponent,
-  );
-  const remainingOwnLines = Math.max(
-    1,
-    state.winCondition.linesToWin - state.completedLineCount(player),
-  );
-  const remainingOpponentLines = Math.max(
-    1,
-    state.winCondition.linesToWin - state.completedLineCount(opponent),
-  );
-  let score =
-    centerMoveScore(state, moveIndex) +
-    state.completedLineCount(player) * 18_000 -
-    state.completedLineCount(opponent) * 24_000 +
-    ownLineCompletions * (remainingOwnLines <= 1 ? 220_000 : 130_000) +
-    opponentLineCompletions * (remainingOpponentLines <= 1 ? 260_000 : 155_000);
-  let ownCompletionBonuses = ownLineCompletions;
-  let opponentCompletionBonuses = opponentLineCompletions;
-
-  for (const segmentId of state.segmentTable.cellSegments[cellIndex]) {
-    if (state.blockedCounts[segmentId] > 0) continue;
-
-    const own = playerCounts[segmentId];
-    const opp = opponentCounts[segmentId];
-    const lineLength = state.winCondition.lineLength;
-
-    if (opp === 0) {
-      if (own === lineLength) {
-        continue;
-      } else if (own === lineLength - 1) {
-        score += ownCompletionBonuses > 0 ? 100_000 : 280;
-        ownCompletionBonuses = Math.max(0, ownCompletionBonuses - 1);
-      } else if (own === lineLength - 2) {
-        score += 1_200;
-      } else if (own > 0) {
-        score += 80 * own;
-      } else {
-        score += 8;
-      }
-    }
-
-    if (own === 0) {
-      if (opp === lineLength) {
-        continue;
-      } else if (opp === lineLength - 1) {
-        score += opponentCompletionBonuses > 0 ? 70_000 : 320;
-        opponentCompletionBonuses = Math.max(0, opponentCompletionBonuses - 1);
-      } else if (opp === lineLength - 2) {
-        score += 1_000;
-      } else if (opp > 0) {
-        score += 70 * opp;
-      }
-    }
-  }
-
-  return score;
-}
-
-function bestLineCompletionMove(
-  state: ClassicSearchState,
-  player: Player,
-): MoveIndex | null {
-  return findLineCompletionMoves(state, player)[0]?.moveIndex ?? null;
-}
-
-function isDirectCumulativeLineMove(
-  state: ClassicSearchState,
-  player: Player,
-  moveIndex: MoveIndex,
-): boolean {
-  if (state.winCondition.linesToWin < 3) return false;
-
-  return [
-    ...findLineCompletionMoves(state, player),
-    ...findLineCompletionMoves(state, otherPlayer(player)),
-  ].some((move) => move.moveIndex === moveIndex);
-}
-
-function centerMoveScore(
-  state: ClassicSearchState,
-  moveIndex: MoveIndex,
-): number {
-  const move = moveFromIndex(moveIndex, state.dimensions);
-  const centerRow = (state.dimensions.rows - 1) / 2;
-  const centerCol = (state.dimensions.columns - 1) / 2;
-  const distance =
-    Math.abs(move.row - centerRow) * 1.3 + Math.abs(move.col - centerCol);
-  return Math.max(0, 100 - distance * 16);
 }
