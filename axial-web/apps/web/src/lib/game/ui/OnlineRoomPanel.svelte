@@ -45,7 +45,7 @@
 	});
 </script>
 
-<section class="panel-section online-section">
+<section class="online-section" aria-label="Online room">
 	<div class="section-heading">
 		<Wifi size={15} strokeWidth={2} />
 		<span>Online</span>
@@ -62,7 +62,7 @@
 				<button
 					type="button"
 					class="mini-icon-button"
-					title="Copy invite"
+					data-tooltip="Copy invite"
 					onclick={online.copyInvite}
 				>
 					<Copy size={14} strokeWidth={2} />
@@ -72,7 +72,7 @@
 					type="button"
 					class="mini-icon-button"
 					class:active={online.showQr}
-					title="Show QR code"
+					data-tooltip="Show QR code"
 					aria-pressed={online.showQr}
 					onclick={online.toggleQr}
 				>
@@ -168,7 +168,7 @@
 					placeholder="ABCD-EFGH"
 				/>
 			</label>
-			<button type="button" title="Join room" onclick={online.joinPrivateRoom}>
+			<button type="button" data-tooltip="Join room" onclick={online.joinPrivateRoom}>
 				<DoorOpen size={15} strokeWidth={2.1} />
 				<span>Join</span>
 			</button>
@@ -179,3 +179,10 @@
 		<p class="move-error" role="alert">{online.error}</p>
 	{/if}
 </section>
+
+<style>
+	.online-section {
+		display: grid;
+		padding-block: 0.25rem;
+	}
+</style>

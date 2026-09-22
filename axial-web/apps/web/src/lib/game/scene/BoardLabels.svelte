@@ -53,7 +53,7 @@
 		sideZ: Side;
 	};
 
-	const { camera } = useThrelte();
+	const { camera, invalidate } = useThrelte();
 	const initialDimensions = untrack(() => dimensions);
 	const labelOffset = CELL_SPACING * 0.68;
 	const lowerOffset = CELL_SPACING * 0.5;
@@ -106,6 +106,7 @@
 
 	let cameraLocalX = $state(initialCameraDirection[0]);
 	let cameraLocalZ = $state(initialCameraDirection[1]);
+	let directionInitialized = false;
 	const labelColor = $derived(
 		uiTheme === 'dark' ? '#dcecff' : mixHexColor(palette.grid, '#3f3656', compact ? 0.44 : 0.28)
 	);
@@ -125,13 +126,31 @@
 	const axisOutlineWidth = $derived(uiTheme === 'dark' ? 0.1 : 0.07);
 	const axisOutlineGlow = $derived(uiTheme === 'dark' ? 0.09 : 0.042);
 	const axisFillGlow = $derived(uiTheme === 'dark' ? 0.02 : 0.006);
-	useTask((delta) => {
-		const [nextLocalX, nextLocalZ] = cameraDirectionInBoardSpace();
-		const blend = Math.min(1, delta * 8);
-
-		cameraLocalX += (nextLocalX - cameraLocalX) * blend;
-		cameraLocalZ += (nextLocalZ - cameraLocalZ) * blend;
-	});
+	useTask(
+		(delta) => {
+			if (!visible) {
+				directionInitialized = false;
+				return;
+			}
+			const [nextLocalX, nextLocalZ] = cameraDirectionInBoardSpace();
+			if (!directionInitialized) {
+				// The scene camera may replace Threlte's default during mount.
+				cameraLocalX = nextLocalX;
+				cameraLocalZ = nextLocalZ;
+				directionInitialized = true;
+				invalidate();
+				return;
+			}
+			const differenceX = nextLocalX - cameraLocalX;
+			const differenceZ = nextLocalZ - cameraLocalZ;
+			if (Math.max(Math.abs(differenceX), Math.abs(differenceZ)) <= 0.0001) return;
+			const blend = Math.min(1, delta * 8);
+			cameraLocalX += differenceX * blend;
+			cameraLocalZ += differenceZ * blend;
+			invalidate();
+		},
+		{ autoInvalidate: false }
+	);
 
 	function createPerimeterLabels(): PerimeterLabel[] {
 		return perimeterRails.flatMap((rail) =>

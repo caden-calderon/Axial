@@ -423,7 +423,12 @@ function forcingQuiescenceScore(
     return { score: standPat, complete: true, cacheable: false };
   }
 
-  const defensiveCandidates = uniqueMoves([...opponentForks]);
+  const defensiveCandidates = uniqueMoves([
+    ...opponentForks,
+    ...rankFastMoves(state, playerToMove)
+      .slice(0, context.maxMoves)
+      .map((move) => move.moveIndex),
+  ]);
   const neutralizingMoves: MoveIndex[] = [];
   for (const moveIndex of defensiveCandidates) {
     if (searchBudgetExhausted(context)) {
@@ -431,17 +436,18 @@ function forcingQuiescenceScore(
     }
 
     state.makeMove(moveIndex, playerToMove);
-    const remainingForks = findFastForkMoves(state, opponent);
+    const neutralizesForks =
+      findFastWinningMoves(state, opponent).length === 0 &&
+      findFastForkMoves(state, opponent).length === 0;
     state.unmakeMove();
-    if (remainingForks.length === 0) neutralizingMoves.push(moveIndex);
+    if (neutralizesForks) neutralizingMoves.push(moveIndex);
   }
 
   if (neutralizingMoves.length === 0) {
+    // This is a selective threat search. Missing a defense among the bounded
+    // candidates is not a proof of mate; keep the static value at the horizon.
     return {
-      score:
-        opponent === context.rootPlayer
-          ? TERMINAL_SCORE - (ply + 3) * 30_000
-          : -TERMINAL_SCORE + (ply + 3) * 30_000,
+      score: standPat,
       complete: true,
       cacheable: false,
     };
@@ -522,7 +528,9 @@ function findFastForkMoves(
   for (const moveIndex of candidates) {
     state.makeMove(moveIndex, player);
     const createsFork =
-      state.winner === null && findFastWinningMoves(state, player).length >= 2;
+      state.winner === null &&
+      findFastWinningMoves(state, player).length >= 2 &&
+      findFastWinningMoves(state, otherPlayer(player)).length === 0;
     state.unmakeMove();
     if (createsFork) forks.push(moveIndex);
   }

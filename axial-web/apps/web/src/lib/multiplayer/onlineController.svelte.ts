@@ -18,6 +18,7 @@ import {
 	type MultiplayerRules,
 	type PlayerIdentity,
 	type PrivateRoomSnapshot,
+	type RoomErrorPayload,
 	type RoomSnapshot,
 	type SerializableGameSnapshot
 } from '@axial/multiplayer-protocol';
@@ -91,9 +92,14 @@ export function createOnlineController() {
 	);
 	const rules = $derived(snapshot?.rules ?? rulesDraft);
 	const game = $derived(snapshot ? toGameSnapshot(snapshot.game) : createGameForRules(rulesDraft));
-	const canEditRules = $derived(Boolean(snapshot?.you.isHost && snapshot.phase === 'waiting'));
+	const sessionEnded = $derived(connectionState === 'expired' || connectionState === 'fatal-error');
+	const canEditRules = $derived(
+		Boolean(!sessionEnded && snapshot?.you.isHost && snapshot.phase === 'waiting')
+	);
 	const canReady = $derived(
-		Boolean(snapshot && snapshot.phase === 'waiting' && snapshot.players.length === 2)
+		Boolean(
+			!sessionEnded && snapshot && snapshot.phase === 'waiting' && snapshot.players.length === 2
+		)
 	);
 	const allPlayersReady = $derived(
 		Boolean(
@@ -102,9 +108,11 @@ export function createOnlineController() {
 			snapshot.players.every((player) => player.ready)
 		)
 	);
-	const canStart = $derived(Boolean(snapshot?.you.isHost && allPlayersReady));
+	const canStart = $derived(Boolean(!sessionEnded && snapshot?.you.isHost && allPlayersReady));
 	const startRemainingMs = $derived(Math.max(0, (snapshot?.match.playableAt ?? 0) - now));
-	const isStarting = $derived(Boolean(snapshot?.phase === 'playing' && startRemainingMs > 0));
+	const isStarting = $derived(
+		Boolean(!sessionEnded && snapshot?.phase === 'playing' && startRemainingMs > 0)
+	);
 	const startSeconds = $derived(Math.max(1, Math.ceil(startRemainingMs / 1000)));
 	const rematchRemainingMs = $derived(Math.max(0, (snapshot?.rematch.deadlineAt ?? 0) - now));
 	const rematchSeconds = $derived(Math.ceil(rematchRemainingMs / 1000));
@@ -113,6 +121,8 @@ export function createOnlineController() {
 	);
 	const yourTurn = $derived(
 		Boolean(
+			!sessionEnded &&
+			connectionState !== 'resyncing' &&
 			snapshot?.phase === 'playing' &&
 			!isStarting &&
 			snapshot.game.status.state === 'playing' &&
@@ -138,7 +148,7 @@ export function createOnlineController() {
 	);
 	const showStartOverlay = $derived(Boolean(snapshot && isStarting));
 	const showResultOverlay = $derived(
-		Boolean(snapshot?.phase === 'ended' && !resultOverlayDismissed)
+		Boolean(!sessionEnded && snapshot?.phase === 'ended' && !resultOverlayDismissed)
 	);
 	const opponentRematchReady = $derived(Boolean(opponent?.rematchReady));
 
@@ -259,7 +269,7 @@ export function createOnlineController() {
 	}
 
 	function startHttpFallback(): void {
-		if (!credentials || fallbackTimer) return;
+		if (!credentials || manualClose || sessionEnded || fallbackTimer) return;
 		void syncFallback();
 		fallbackTimer = setInterval(() => {
 			void syncFallback();
@@ -307,7 +317,7 @@ export function createOnlineController() {
 		} catch (reason) {
 			if (!isCurrentSession(requestEpoch, activeCredentials)) return;
 			failRequest(reason, 'Room command failed.', { transportOnly: true });
-			startHttpFallback();
+			if (socket?.readyState !== WebSocket.OPEN) startHttpFallback();
 		}
 	}
 
@@ -317,20 +327,56 @@ export function createOnlineController() {
 		if (incoming) applySnapshot(incoming, { networkHealthy: true });
 
 		const roomError = eventError(event);
-		if (roomError) {
-			error = roomError.message;
-			if (roomError.code === 'duplicate-connection') {
-				connectionState = 'fatal-error';
-				manualClose = true;
-				socket?.close();
-				return;
-			}
-		}
+		if (roomError && handleRoomError(roomError)) return;
 
 		if (snapshot?.phase === 'expired') {
-			connectionState = 'expired';
+			endRoomTransport('expired', true);
 		} else if (snapshot) {
 			connectionState = derivedConnectionState(snapshot, opponent);
+		}
+	}
+
+	function handleRoomError(roomError: RoomErrorPayload): boolean {
+		error = roomError.message;
+		if (roomError.code === 'room-expired' || roomError.code === 'room-not-found') {
+			endRoomTransport('expired', true);
+			return true;
+		}
+		if (
+			roomError.code === 'auth-failed' ||
+			roomError.code === 'duplicate-connection' ||
+			roomError.code === 'unsupported-version'
+		) {
+			endRoomTransport('fatal-error', roomError.code === 'auth-failed');
+			return true;
+		}
+		if (roomError.code === 'stale-revision') {
+			resync();
+			return true;
+		}
+		return false;
+	}
+
+	function endRoomTransport(state: 'expired' | 'fatal-error', forgetCredentials: boolean): void {
+		manualClose = true;
+		advanceSessionEpoch();
+		if (reconnectTimer) clearTimeout(reconnectTimer);
+		reconnectTimer = null;
+		stopHttpFallback();
+		const previousSocket = socket;
+		socket = null;
+		previousSocket?.close();
+		connectionState = state;
+		lastHealthyAt = 0;
+		lockedMove = null;
+		hoveredMove = null;
+		if (state === 'expired' && snapshot) {
+			snapshot = { ...snapshot, phase: 'expired' };
+			saveRoomSnapshot(snapshot);
+		}
+		if (forgetCredentials && credentials) {
+			clearCredentials(credentials.roomCode);
+			if (state !== 'expired') clearRoomSnapshot(credentials.roomCode);
 		}
 	}
 
@@ -374,6 +420,7 @@ export function createOnlineController() {
 	}
 
 	function updateDisplayName(): void {
+		if (sessionEnded) return;
 		const name = normalizedDisplayName();
 		if (!name || !snapshot) return;
 		send(command('room:set-name', { displayName: name }));
@@ -419,6 +466,7 @@ export function createOnlineController() {
 	}
 
 	function setRules(nextRules: MultiplayerRules): void {
+		if (snapshot && sessionEnded) return;
 		error = '';
 		const normalized = cloneRules(nextRules);
 		rulesDraft = normalized;
@@ -442,12 +490,12 @@ export function createOnlineController() {
 	}
 
 	function toggleReady(): void {
-		if (!snapshot) return;
+		if (!snapshot || sessionEnded) return;
 		send(command('room:ready', { ready: !self?.ready }));
 	}
 
 	function startGame(): void {
-		if (!snapshot) return;
+		if (!snapshot || sessionEnded) return;
 		if (!canStart) {
 			error = snapshot.you.isHost ? 'Both players need to ready up.' : 'The host starts the match.';
 			return;
@@ -456,7 +504,7 @@ export function createOnlineController() {
 	}
 
 	function rematch(): void {
-		if (!snapshot) return;
+		if (!snapshot || sessionEnded) return;
 		if (rematchExpired) {
 			error = 'The rematch window closed.';
 			return;
@@ -492,6 +540,7 @@ export function createOnlineController() {
 	}
 
 	function playMove(move: Move): void {
+		if (sessionEnded) return;
 		if (isStarting) {
 			error = 'Match starting.';
 			return;
@@ -531,7 +580,7 @@ export function createOnlineController() {
 	}
 
 	function resync(): void {
-		if (!credentials) return;
+		if (!credentials || sessionEnded) return;
 		if (socket?.readyState === WebSocket.OPEN && snapshot) {
 			send(command('room:resync', { lastSeenRevision: snapshot.revision }));
 			connectionState = 'resyncing';
@@ -596,6 +645,7 @@ export function createOnlineController() {
 	}
 
 	function send(commandToSend: ClientCommand): boolean {
+		if (sessionEnded) return false;
 		error = '';
 		if (!sendRoomCommand(socket, commandToSend)) {
 			if (!credentials) {
@@ -625,6 +675,7 @@ export function createOnlineController() {
 		fallbackMessage: string,
 		options: { transportOnly?: boolean } = {}
 	): void {
+		if (reason instanceof MultiplayerRequestError && handleRoomError(reason.error)) return;
 		if (
 			options.transportOnly &&
 			!(reason instanceof MultiplayerRequestError) &&
@@ -748,7 +799,9 @@ export function createOnlineController() {
 			return currentLabel;
 		},
 		get currentPlayer() {
-			return game.status.state === 'playing' && !isStarting ? game.currentPlayer : null;
+			return !sessionEnded && game.status.state === 'playing' && !isStarting
+				? game.currentPlayer
+				: null;
 		},
 		get displayName() {
 			return displayName;
@@ -984,13 +1037,14 @@ function roomStatusLabel(
 	nextOpponent: PrivateRoomSnapshot['players'][number] | null,
 	isMatchStarting: boolean
 ): string {
+	if (state === 'expired' || nextSnapshot?.phase === 'expired') return 'Room expired';
+	if (state === 'fatal-error') return 'Connection failed';
 	if (!nextSnapshot) {
 		if (state === 'creating') return 'Creating room';
 		if (state === 'joining') return 'Joining room';
 		if (state === 'connecting') return 'Connecting';
 		if (state === 'reconnecting') return 'Reconnecting';
 		if (state === 'resyncing') return 'Resyncing';
-		if (state === 'fatal-error') return 'Connection failed';
 		return 'Online room';
 	}
 	if (state === 'reconnecting') return 'Reconnecting';

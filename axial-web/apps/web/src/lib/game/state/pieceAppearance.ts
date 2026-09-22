@@ -1,4 +1,4 @@
-export type PieceShape = 'cube' | 'orb' | 'crystal';
+export type PieceShape = 'cube' | 'orb';
 
 export type PieceColors = {
 	playerOne: string;
@@ -12,8 +12,7 @@ export type PieceShapeOption = {
 
 export const PIECE_SHAPE_OPTIONS: PieceShapeOption[] = [
 	{ value: 'cube', label: 'Cube' },
-	{ value: 'orb', label: 'Orb' },
-	{ value: 'crystal', label: 'Crystal' }
+	{ value: 'orb', label: 'Orb' }
 ];
 
 export const DEFAULT_PIECE_COLORS: PieceColors = {
@@ -26,6 +25,9 @@ export function normalizePieceColor(value: string | null, fallback: string): str
 }
 
 export function parsePieceShape(value: string | null): PieceShape | null {
+	// Preserve saved preferences from before Crystal was retired.
+	if (value === 'crystal') return 'cube';
+
 	return PIECE_SHAPE_OPTIONS.some((option) => option.value === value)
 		? (value as PieceShape)
 		: null;

@@ -15,13 +15,12 @@ test('welcome tour shows once, opens the menu, and persists dismissal', async ({
 
 	await page.getByRole('button', { name: 'Try it' }).click();
 	await expect(page.getByRole('dialog')).toHaveCount(0);
-	await expect(page.getByText('Explore the board')).toBeVisible();
+	await expect(page.getByText('Place the winning piece')).toBeVisible();
 
 	await page.locator('.scene-shell').focus();
-	await page.keyboard.press('ArrowRight');
 	await page.keyboard.press('Enter');
-	await expect(page.getByText('Drop staged')).toBeVisible();
-	await expect(page.getByText('0 moves', { exact: true }).first()).toBeVisible();
+	await expect(page.locator('#practice-title')).toBeVisible();
+	await expect(page.locator('#practice-title')).toHaveText('Four in a row!');
 	await page.getByRole('button', { name: 'Continue' }).click();
 
 	await expect(page.locator('[data-tour-step="menu-toggle"]')).toBeVisible();
@@ -56,7 +55,6 @@ test('welcome tour remains within a phone viewport', async ({ page }) => {
 	await page.getByRole('button', { name: 'Try it' }).click();
 	await expectElementWithinViewport(page, '.practice-banner');
 	await page.locator('.scene-shell').focus();
-	await page.keyboard.press('ArrowRight');
 	await page.keyboard.press('Enter');
 	await page.getByRole('button', { name: 'Continue' }).click();
 	await expect(page.locator('[data-tour-step="menu-toggle"]')).toBeVisible();
@@ -82,6 +80,102 @@ test('welcome tour remains within a phone viewport', async ({ page }) => {
 	await expect(page.locator('[data-tour-step="finish"]')).toBeVisible();
 	await expectTourCardWithinViewport(page);
 	await expectPortraitPanelStepLayout(page, '[data-tour-target="control-panel"]');
+});
+
+for (const viewport of [
+	{ width: 320, height: 568 },
+	{ width: 390, height: 844 },
+	{ width: 1024, height: 600 },
+	{ width: 1280, height: 720 },
+	{ width: 844, height: 390 }
+]) {
+	test(`complete tutorial layout at ${viewport.width}x${viewport.height}`, async ({
+		page
+	}, testInfo) => {
+		const pageErrors = collectPageErrors(page);
+		await page.setViewportSize(viewport);
+		await page.goto('/?tour=1');
+		for (const step of [
+			'welcome',
+			'board',
+			'menu-toggle',
+			'play-mode',
+			'rules',
+			'appearance',
+			'finish'
+		]) {
+			await expect(page.locator('.tour-card')).toHaveAttribute('data-tour-step', step);
+			await expect(page.locator('#welcome-tour-body')).toHaveClass(/visible/);
+			await expect(page.locator('#welcome-tour-body')).toHaveCSS('opacity', '1');
+			await expectTourCardWithinViewport(page);
+			await expectElementWithinViewport(page, '.tour-actions');
+			if (!['welcome', 'board'].includes(step)) {
+				await expect
+					.poll(async () => {
+						const card = await page.locator('.tour-card').boundingBox();
+						const spotlight = await page.locator('.tour-spotlight').boundingBox();
+						return card !== null && spotlight !== null && !rectanglesOverlap(card, spotlight);
+					})
+					.toBe(true);
+			}
+			await expect(page.locator('#welcome-tour-body')).toHaveCSS('user-select', 'none');
+			await expect
+				.poll(() =>
+					page
+						.locator('.tour-copy')
+						.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)
+				)
+				.toBe(true);
+			if (viewport.width <= 760 || viewport.height <= 500) {
+				for (const button of await page.locator('.tour-actions button').all()) {
+					const bounds = await button.boundingBox();
+					expect(bounds?.width).toBeGreaterThanOrEqual(44);
+					expect(bounds?.height).toBeGreaterThanOrEqual(44);
+				}
+			}
+			await expect
+				.poll(() =>
+					page
+						.locator('.tour-card-inner')
+						.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)
+				)
+				.toBe(true);
+			await page.screenshot({ path: testInfo.outputPath(`${step}.png`) });
+			if (step === 'board') {
+				await page.getByRole('button', { name: 'Try it' }).click();
+				await expectElementWithinViewport(page, '.practice-banner');
+				await expect(page.locator('#practice-title')).toHaveText('Place the winning piece');
+				await page.locator('.scene-shell').focus();
+				await page.keyboard.press('Enter');
+				await expect(page.locator('#practice-title')).toHaveText('Four in a row!');
+				await page.screenshot({ path: testInfo.outputPath('practice.png') });
+				await page.getByRole('button', { name: 'Continue tutorial' }).click();
+			} else {
+				await page
+					.getByRole('button', { name: step === 'finish' ? 'Finish' : 'Next', exact: true })
+					.click();
+			}
+		}
+		expect(pageErrors).toEqual([]);
+	});
+}
+
+test('tutorial typing does not flash native scrollbars', async ({ page }) => {
+	await page.setViewportSize({ width: 1024, height: 600 });
+	await page.addInitScript(() => localStorage.setItem('axial-theme', 'light'));
+	await page.goto('/?tour=1');
+	await page.getByRole('button', { name: 'Next', exact: true }).click();
+	await expect(page.locator('[data-tour-step="board"] .typed-cursor')).not.toHaveClass(/settled/);
+	for (const selector of ['.tour-copy', '.tour-card-inner']) {
+		const scroller = page.locator(selector);
+		await expect(scroller).toHaveCSS('scrollbar-width', 'none');
+		expect(
+			await scroller.evaluate((element) => getComputedStyle(element, '::-webkit-scrollbar').display)
+		).toBe('none');
+	}
+	await page.screenshot({ path: '/tmp/axial-tutorial-typing.png' });
+	await expect(page.locator('#welcome-tour-body')).toHaveCSS('opacity', '1');
+	await expectTourCardWithinViewport(page);
 });
 
 test('welcome tour traps focus and returns it to the Help action', async ({ page }) => {
@@ -148,7 +242,7 @@ async function expectPortraitPanelStepLayout(page: Page, targetSelector: string)
 				page.locator('.tour-spotlight').boundingBox(),
 				page.locator('.control-panel').boundingBox(),
 				page.locator(targetSelector).boundingBox(),
-				page.locator('.panel-body-clip').boundingBox()
+				page.locator('.panel-scroll').boundingBox()
 			]);
 			if (!card || !spotlight || !panel || !target || !scroller) return false;
 

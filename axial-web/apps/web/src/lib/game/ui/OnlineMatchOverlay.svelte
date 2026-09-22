@@ -5,7 +5,8 @@
 	import type { OnlineController } from '$lib/multiplayer/onlineController.svelte';
 	import DialogShell from './DialogShell.svelte';
 
-	let { online }: { online: OnlineController } = $props();
+	let { online, resultReady = true }: { online: OnlineController; resultReady?: boolean } =
+		$props();
 
 	const snapshot = $derived(online.snapshot);
 	const players = $derived(snapshot?.players ?? []);
@@ -66,7 +67,7 @@
 			</div>
 		</section>
 	</div>
-{:else if online.showResultOverlay && snapshot}
+{:else if online.showResultOverlay && resultReady && snapshot}
 	<DialogShell
 		labelledby="online-result-title"
 		describedby="online-result-detail"
@@ -174,7 +175,7 @@
 	.overlay-detail {
 		margin: 0;
 		color: var(--muted);
-		font-weight: 780;
+		font-weight: 700;
 	}
 
 	.overlay-kicker {
@@ -185,7 +186,7 @@
 	.online-match-dialog h2 {
 		margin: 0.12rem 0 0.8rem;
 		font-size: 1.55rem;
-		font-weight: 820;
+		font-weight: 700;
 		letter-spacing: 0;
 	}
 
@@ -222,7 +223,7 @@
 	.rematch-player small {
 		color: var(--muted);
 		font-size: 0.68rem;
-		font-weight: 800;
+		font-weight: 700;
 		text-transform: uppercase;
 	}
 
@@ -232,7 +233,7 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		font-size: 1rem;
-		font-weight: 850;
+		font-weight: 700;
 	}
 
 	.versus-mark {
@@ -268,7 +269,7 @@
 
 	.countdown-orb span {
 		font-size: 2.3rem;
-		font-weight: 880;
+		font-weight: 700;
 		line-height: 1;
 	}
 
@@ -278,7 +279,7 @@
 		gap: 0.18rem;
 		color: var(--muted);
 		font-size: 0.78rem;
-		font-weight: 760;
+		font-weight: 700;
 	}
 
 	.overlay-facts strong {
@@ -345,7 +346,7 @@
 		color: var(--text);
 		cursor: pointer;
 		font-size: 0.82rem;
-		font-weight: 820;
+		font-weight: 700;
 		transition:
 			transform 160ms ease,
 			background 160ms ease,

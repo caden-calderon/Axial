@@ -183,7 +183,15 @@ function fastThreatProfile(
     const playableCell = segment.cells.find((cellIndex) =>
       state.isPlayableCell(cellIndex),
     );
-    if (playableCell === undefined) continue;
+    if (
+      playableCell === undefined ||
+      countLineCompletionsForMove(
+        state,
+        cellToMoveIndex(playableCell, state.dimensions),
+        player,
+      ) === 0
+    )
+      continue;
 
     cells.add(playableCell);
     segments += 1;

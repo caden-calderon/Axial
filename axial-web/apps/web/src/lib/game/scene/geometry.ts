@@ -28,7 +28,7 @@ export function boardSize(dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS
 }
 
 export function dropStartY(dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS): number {
-	return (dimensions.height / 2 + 5.4) * CELL_SPACING;
+	return (dimensions.height / 2 + 0.65) * CELL_SPACING;
 }
 
 export function cellPosition(

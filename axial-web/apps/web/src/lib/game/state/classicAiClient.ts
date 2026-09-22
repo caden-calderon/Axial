@@ -115,7 +115,13 @@ export function createClassicAiClient(
 					fallbackColumns: game.dimensions.columns,
 					timeout
 				});
-				getWorker().postMessage({ id, game, options });
+				try {
+					getWorker().postMessage({ id, game, options });
+				} catch (error) {
+					// postMessage can fail synchronously before any worker response exists.
+					rejectAll(error);
+					resetWorker();
+				}
 			});
 		},
 		cancelPending() {

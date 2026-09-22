@@ -16,6 +16,7 @@
 	let {
 		game,
 		hoveredMove,
+		guidedMove = null,
 		previewLocked,
 		labelsVisible,
 		gridLayersVisible,
@@ -25,15 +26,20 @@
 		pieceColors,
 		placementMode,
 		doubleAdjacentAnchor,
-		controlsExpanded,
 		viewResetKey,
 		onHover,
 		onPlay,
 		onCancelSelection,
-		onRecoverableError
+		onRecoverableError,
+		onLand,
+		onSettle,
+		onWinReveal,
+		interactionLabel,
+		inputEnabled = true
 	}: {
 		game: GameSnapshot;
 		hoveredMove: Move | null;
+		guidedMove?: Move | null;
 		previewLocked: boolean;
 		labelsVisible: boolean;
 		gridLayersVisible: boolean;
@@ -43,19 +49,61 @@
 		pieceColors: PieceColors;
 		placementMode: PlacementMode;
 		doubleAdjacentAnchor: PlacedMove | null;
-		controlsExpanded: boolean;
 		viewResetKey: number;
 		onHover: (move: Move | null) => void;
 		onPlay: (move: Move) => void;
 		onCancelSelection: () => void;
 		onRecoverableError?: (error: unknown) => void;
+		onLand?: (move: PlacedMove) => void;
+		onSettle?: (move: PlacedMove) => void;
+		onWinReveal?: () => void;
+		interactionLabel: string;
+		inputEnabled?: boolean;
 	} = $props();
 
 	let sceneShell: HTMLButtonElement | null = null;
 	let keyboardMove = $state<Move | null>(null);
-	let keyboardStatus = $state(
-		'Use the arrow keys to choose a row and column, Enter to select, and Escape to cancel.'
+	let keyboardActive = $state(false);
+	let keyboardNotice = $state('');
+	let noticeHistory: GameSnapshot['moveHistory'] | null = null;
+	$effect(() => {
+		if (noticeHistory !== game.moveHistory) {
+			keyboardNotice = '';
+			noticeHistory = game.moveHistory;
+		}
+	});
+	const selectedHeight = $derived(
+		keyboardMove ? getDropHeight(game.board, keyboardMove, game.dimensions) : -1
 	);
+	const selectedPosition = $derived(
+		keyboardMove ? `Row ${keyboardMove.row + 1} · Col ${keyboardMove.col + 1}` : ''
+	);
+	const selectedDetail = $derived(
+		!inputEnabled
+			? interactionLabel
+			: selectedHeight < 0
+				? 'Column full'
+				: `Layer ${selectedHeight + 1} · Enter to ${previewLocked ? 'confirm' : 'drop'}`
+	);
+	const lastMoveDescription = $derived(
+		game.lastMove
+			? `Player ${game.lastMove.player} placed at row ${game.lastMove.row + 1}, column ${game.lastMove.col + 1}, layer ${game.lastMove.height + 1}.`
+			: 'Empty board.'
+	);
+	const keyboardStatus = $derived(
+		`${lastMoveDescription} ${interactionLabel}. ${keyboardNotice || (keyboardMove ? `${selectedPosition}. ${selectedDetail}.` : 'Arrow keys choose a column. Enter selects. Escape cancels.')}`
+	);
+
+	$effect(() => {
+		// A new board size or restored position must never leave an out-of-bounds cursor.
+		if (
+			keyboardMove &&
+			(keyboardMove.row >= game.dimensions.rows || keyboardMove.col >= game.dimensions.columns)
+		) {
+			keyboardMove = null;
+			onHover(null);
+		}
+	});
 
 	onMount(() => {
 		let frameId = 0;
@@ -78,6 +126,7 @@
 	});
 
 	function handleBoardKeydown(event: KeyboardEvent): void {
+		keyboardActive = true;
 		if (game.status.state !== 'playing') return;
 
 		if (event.key === 'Escape') {
@@ -85,13 +134,14 @@
 			keyboardMove = null;
 			onHover(null);
 			onCancelSelection();
-			keyboardStatus = 'Selection cancelled.';
+			keyboardNotice = 'Selection cancelled.';
 			return;
 		}
 
 		const isArrow = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key);
 		if (isArrow) {
 			event.preventDefault();
+			if (previewLocked) onCancelSelection();
 			const current = keyboardMove ?? {
 				row: Math.floor(game.dimensions.rows / 2),
 				col: Math.floor(game.dimensions.columns / 2)
@@ -107,6 +157,7 @@
 
 		if (event.key === 'Enter' || event.key === ' ') {
 			event.preventDefault();
+			if (event.repeat || !inputEnabled) return;
 			const move = keyboardMove ?? {
 				row: Math.floor(game.dimensions.rows / 2),
 				col: Math.floor(game.dimensions.columns / 2)
@@ -118,20 +169,20 @@
 
 	function setKeyboardMove(move: Move): void {
 		keyboardMove = move;
+		keyboardNotice = '';
 		const landingHeight = getDropHeight(game.board, move, game.dimensions);
 		if (landingHeight < 0) {
 			onHover(null);
-			keyboardStatus = `Row ${move.row + 1}, column ${move.col + 1} is full.`;
+			keyboardNotice = `Row ${move.row + 1}, column ${move.col + 1} is full.`;
 			return;
 		}
 		if (!isKeyboardMovePlayable(move)) {
 			onHover(null);
-			keyboardStatus = `Row ${move.row + 1}, column ${move.col + 1} is not valid for this action.`;
+			keyboardNotice = `Row ${move.row + 1}, column ${move.col + 1} is not valid for this action.`;
 			return;
 		}
 
 		onHover(move);
-		keyboardStatus = `Row ${move.row + 1}, column ${move.col + 1}, landing layer ${landingHeight + 1}. Press Enter to select.`;
 	}
 
 	function isKeyboardMovePlayable(move: Move): boolean {
@@ -156,11 +207,18 @@
 	aria-describedby="board-keyboard-instructions"
 	data-tour-target="board"
 	onkeydown={handleBoardKeydown}
+	onpointerdown={() => {
+		keyboardActive = false;
+	}}
+	onblur={() => {
+		keyboardActive = false;
+	}}
 >
 	<Canvas dpr={[1, 2]} shadows={false}>
 		<AxialWorld
 			{game}
 			{hoveredMove}
+			{guidedMove}
 			{previewLocked}
 			{labelsVisible}
 			{gridLayersVisible}
@@ -170,8 +228,10 @@
 			{pieceColors}
 			{placementMode}
 			{doubleAdjacentAnchor}
-			{controlsExpanded}
 			{viewResetKey}
+			{onLand}
+			{onSettle}
+			{onWinReveal}
 			{onHover}
 			{onPlay}
 		/>
@@ -181,9 +241,43 @@
 	Use arrow keys to choose a row and column. Press Enter or Space to select or confirm a move. Press
 	Escape to cancel a selection.
 </p>
-<p class="sr-only" aria-live="polite">{keyboardStatus}</p>
+<p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{keyboardStatus}</p>
+{#if keyboardActive && keyboardMove && !previewLocked && game.status.state === 'playing'}
+	<div class="keyboard-readout" aria-hidden="true">
+		<strong>{selectedPosition}</strong>
+		<span>{selectedDetail}</span>
+		<small>↑ ↓ ← → move · Esc clear</small>
+	</div>
+{/if}
 
 <style>
+	.keyboard-readout {
+		position: absolute;
+		left: max(1rem, env(safe-area-inset-left));
+		bottom: max(1rem, env(safe-area-inset-bottom));
+		z-index: var(--z-contextual);
+		display: grid;
+		gap: 0.2rem;
+		padding: 0.7rem 0.9rem;
+		border-left: 2px solid var(--accent);
+		border-radius: 0 0.5rem 0.5rem 0;
+		background: color-mix(in oklab, var(--surface) 88%, transparent);
+		backdrop-filter: blur(16px);
+		color: var(--text);
+		pointer-events: none;
+		font-variant-numeric: tabular-nums;
+	}
+	.keyboard-readout strong {
+		font-size: 0.82rem;
+	}
+	.keyboard-readout span {
+		font-size: 0.76rem;
+	}
+	.keyboard-readout small {
+		color: var(--muted);
+		font-size: 0.66rem;
+	}
+
 	.scene-shell {
 		position: absolute;
 		inset: 0;

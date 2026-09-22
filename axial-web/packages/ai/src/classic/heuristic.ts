@@ -308,6 +308,12 @@ export function findForcingMoves(
       state.unmakeMove();
       continue;
     }
+    // A fork is forcing only if the opponent cannot win before replying to it.
+    // Dropping a piece can expose a winning cell immediately above it.
+    if (findWinningMoves(state, otherPlayer(player)).length > 0) {
+      state.unmakeMove();
+      continue;
+    }
     const immediateThreats = countImmediateThreats(state, player);
     const lineThreats = countLineCompletionThreats(state, player);
     const linesNeeded = Math.max(
@@ -371,9 +377,10 @@ function neutralizingForkBlocks(
   for (const moveIndex of candidates) {
     if (!state.isLegalMove(moveIndex)) continue;
     state.makeMove(moveIndex, player);
-    const remainingForks = findForcingMoves(state, opponent).some(
-      (move) => move.kind === "fork",
-    );
+    const allowsImmediateLoss = findWinningMoves(state, opponent).length > 0;
+    const remainingForks =
+      allowsImmediateLoss ||
+      findForcingMoves(state, opponent).some((move) => move.kind === "fork");
     state.unmakeMove();
     if (!remainingForks) neutralizing.push(moveIndex);
   }

@@ -1,10 +1,13 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import { getDropHeight, type MatchMode, type Move } from '@axial/core';
+	import { applyMove, getDropHeight, type MatchMode, type Move } from '@axial/core';
+	import { createGameAudio } from '$lib/game/audio/gameAudio';
+	import { hasSameMoveHistory, isSingleMoveAppend, sceneMoveKey } from '$lib/game/animation';
 	import { createAxialBridgeController } from '$lib/game/bridge/bridgeController';
 	import AxialScene from '$lib/game/scene/AxialScene.svelte';
 	import WelcomeTourOverlay from '$lib/game/onboarding/WelcomeTourOverlay.svelte';
 	import TourPracticeBanner from '$lib/game/onboarding/TourPracticeBanner.svelte';
+	import { createPracticeGame, PRACTICE_WINNING_MOVE } from '$lib/game/onboarding/practiceGame';
 	import {
 		clearWelcomeTourSeen,
 		hasSeenWelcomeTour,
@@ -13,6 +16,7 @@
 	} from '$lib/game/onboarding/welcomeTour';
 	import { createGameController, type PlayMode } from '$lib/game/state/gameController.svelte';
 	import GameOverModal from '$lib/game/ui/GameOverModal.svelte';
+	import ControlTooltip from '$lib/game/ui/ControlTooltip.svelte';
 	import GameHud from '$lib/game/ui/GameHud.svelte';
 	import OnlineMatchOverlay from '$lib/game/ui/OnlineMatchOverlay.svelte';
 	import GameStatusPanel from '$lib/game/ui/GameStatusPanel.svelte';
@@ -22,10 +26,40 @@
 		type BoardDimensionKey
 	} from '$lib/multiplayer/onlineController.svelte';
 
+	const gameAudio = createGameAudio();
+	let soundEnabled = $state(false);
 	const controller = createGameController();
 	const online = createOnlineController();
 	const bridge = createAxialBridgeController(controller);
 	let playMode = $state<PlayMode>('local');
+	let hydrated = $state(false);
+	let presentationPending = $state(false);
+	let presentationTimer: ReturnType<typeof setTimeout> | null = null;
+	let presentationFrame: number | null = null;
+	let presentationVersion = 0;
+	let previousPresentationHistory: typeof controller.game.moveHistory = [];
+
+	function finishPresentation(): void {
+		presentationVersion += 1;
+		presentationPending = false;
+		if (presentationTimer !== null) clearTimeout(presentationTimer);
+		presentationTimer = null;
+		if (presentationFrame !== null) cancelAnimationFrame(presentationFrame);
+		presentationFrame = null;
+	}
+
+	async function finishRenderedPresentation(): Promise<void> {
+		const version = presentationVersion;
+		await tick();
+		if (version !== presentationVersion || !presentationPending) return;
+		// Scene tasks settle before Svelte updates Three objects. Allow that frame to paint.
+		presentationFrame = requestAnimationFrame(() => {
+			presentationFrame = requestAnimationFrame(() => {
+				if (version === presentationVersion) finishPresentation();
+			});
+		});
+	}
+
 	let embedMode = $state(false);
 	let bridgeEnabled = $state(false);
 	let fullscreenAvailable = $state(false);
@@ -33,19 +67,22 @@
 	let welcomeTourActive = $state(false);
 	let welcomeTourStartStep = $state(0);
 	let welcomePracticeActive = $state(false);
-	let welcomePracticeMove = $state<Move | null>(null);
+	let practiceGame = $state(createPracticeGame());
+	let practiceHint = $state('');
 	let welcomePracticeHover = $state<Move | null>(null);
 	let welcomeTourPanelExpanded = $state<boolean | null>(null);
 	let welcomeTourRestorePanelExpanded = $state(false);
 	let controlsExpanded = $state(true);
 	let viewResetKey = $state(0);
-	let welcomeTourPanelResetTimeout: number | null = null;
 	let sceneEpoch = $state(0);
 	let recoveryMessage = $state('');
 	let sceneBoundaryRecoveries = 0;
 	let lastRecoveryAt = 0;
 	let recoveryMessageTimeout: number | null = null;
 	const activeGame = $derived(playMode === 'online' ? online.game : controller.game);
+	const sceneGame = $derived(welcomePracticeActive ? practiceGame : activeGame);
+	const practiceCompleted = $derived(practiceGame.status.state === 'won');
+	const practiceLabel = $derived(practiceCompleted ? 'Four in a row!' : 'Complete the row');
 	const activeStatusTitle = $derived(
 		playMode === 'online' ? online.statusTitle : controller.statusTitle
 	);
@@ -68,7 +105,7 @@
 	const activeMoveError = $derived(playMode === 'online' ? online.moveError : controller.moveError);
 	const activePreviewMove = $derived(
 		welcomePracticeActive
-			? (welcomePracticeMove ?? welcomePracticeHover)
+			? (welcomePracticeHover ?? PRACTICE_WINNING_MOVE)
 			: playMode === 'online'
 				? online.previewMove
 				: controller.previewMove
@@ -79,14 +116,25 @@
 	const activeLandingHeight = $derived(
 		activeLockedMove ? getDropHeight(activeGame.board, activeLockedMove, activeBoardDimensions) : -1
 	);
-	const welcomePracticeLandingHeight = $derived(
-		welcomePracticeMove
-			? getDropHeight(activeGame.board, welcomePracticeMove, activeBoardDimensions)
-			: -1
-	);
+
+	$effect.pre(() => {
+		const history = activeGame.moveHistory;
+		if (hasSameMoveHistory(previousPresentationHistory, history)) return;
+		finishPresentation();
+		if (
+			activeGame.status.state !== 'playing' &&
+			isSingleMoveAppend(previousPresentationHistory, history)
+		) {
+			presentationPending = true;
+			// A lost graphics context must never leave the result inaccessible.
+			presentationTimer = setTimeout(finishPresentation, 5000);
+		}
+		previousPresentationHistory = history;
+	});
 
 	onMount(() => {
 		controller.hydrateFromStorage();
+		soundEnabled = gameAudio.hydrate();
 		const url = new URL(window.location.href);
 		const searchParams = url.searchParams;
 		embedMode = searchParams.get('embed') === '1';
@@ -117,6 +165,7 @@
 			welcomeTourActive = true;
 			welcomeTourPanelExpanded = false;
 		}
+		hydrated = true;
 		bridgeEnabled = bridge.start();
 
 		const updateFullscreenState = () => {
@@ -135,17 +184,43 @@
 			document.removeEventListener('webkitfullscreenchange', updateFullscreenState);
 			window.removeEventListener('error', handleGlobalError);
 			window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+			finishPresentation();
+			gameAudio.destroy();
 			controller.destroy();
 			online.destroy();
 			bridge.stop();
 			if (recoveryMessageTimeout) clearTimeout(recoveryMessageTimeout);
-			if (welcomeTourPanelResetTimeout) clearTimeout(welcomeTourPanelResetTimeout);
 		};
 	});
 
 	$effect(() => {
 		if (!bridgeEnabled) return;
 		bridge.publishState();
+	});
+
+	function unlockSound(): void {
+		void gameAudio.unlock();
+	}
+	function toggleSound(): void {
+		soundEnabled = gameAudio.toggle();
+		if (soundEnabled) unlockSound();
+	}
+
+	let previousAudioHistory: typeof activeGame.moveHistory = [];
+	let previousAudioScope = '';
+	$effect(() => {
+		const history = activeGame.moveHistory;
+		if (
+			playMode !== previousAudioScope ||
+			(!hasSameMoveHistory(previousAudioHistory, history) &&
+				!isSingleMoveAppend(previousAudioHistory, history))
+		)
+			gameAudio.cancel();
+		previousAudioHistory = history;
+		previousAudioScope = playMode;
+	});
+	$effect(() => {
+		if (activeMoveError) gameAudio.playInvalid();
 	});
 
 	async function toggleFullscreen(): Promise<void> {
@@ -281,8 +356,14 @@
 
 	function playSceneMove(move: Move): void {
 		if (welcomePracticeActive) {
-			welcomePracticeMove = { ...move };
-			welcomePracticeHover = { ...move };
+			if (practiceCompleted) return;
+			if (move.row !== PRACTICE_WINNING_MOVE.row || move.col !== PRACTICE_WINNING_MOVE.col) {
+				practiceHint = 'Choose the glowing tile at row 4, column 4.';
+				return;
+			}
+			practiceGame = applyMove(practiceGame, move);
+			practiceHint = '';
+			welcomePracticeHover = null;
 			return;
 		}
 		if (playMode === 'online') {
@@ -302,7 +383,7 @@
 
 	function cancelSceneMove(): void {
 		if (welcomePracticeActive) {
-			welcomePracticeMove = null;
+			practiceHint = '';
 			welcomePracticeHover = null;
 			return;
 		}
@@ -346,10 +427,6 @@
 	}
 
 	function setWelcomeTourPanelExpanded(expanded: boolean | null): void {
-		if (welcomeTourPanelResetTimeout) {
-			clearTimeout(welcomeTourPanelResetTimeout);
-			welcomeTourPanelResetTimeout = null;
-		}
 		welcomeTourPanelExpanded = expanded;
 	}
 
@@ -358,7 +435,7 @@
 		welcomeTourStartStep = 0;
 		welcomeTourActive = true;
 		welcomePracticeActive = false;
-		welcomePracticeMove = null;
+		practiceHint = '';
 		welcomePracticeHover = null;
 		welcomeTourPanelExpanded = false;
 	}
@@ -366,8 +443,10 @@
 	function beginWelcomePractice(resumeStepIndex: number): void {
 		welcomeTourStartStep = resumeStepIndex;
 		welcomeTourActive = false;
+		practiceGame = createPracticeGame();
+		gameAudio.cancel();
 		welcomePracticeActive = true;
-		welcomePracticeMove = null;
+		practiceHint = '';
 		welcomePracticeHover = null;
 		welcomeTourPanelExpanded = false;
 		void tick().then(() => document.querySelector<HTMLElement>('.scene-shell')?.focus());
@@ -375,7 +454,7 @@
 
 	function resumeWelcomeTour(): void {
 		welcomePracticeActive = false;
-		welcomePracticeMove = null;
+		practiceHint = '';
 		welcomePracticeHover = null;
 		welcomeTourActive = true;
 	}
@@ -383,7 +462,7 @@
 	function exitWelcomePractice(): void {
 		markWelcomeTourSeen(localStorage);
 		welcomePracticeActive = false;
-		welcomePracticeMove = null;
+		practiceHint = '';
 		welcomePracticeHover = null;
 		closeWelcomeTour();
 	}
@@ -405,13 +484,13 @@
 	function closeWelcomeTour(): void {
 		welcomeTourActive = false;
 		welcomePracticeActive = false;
-		welcomePracticeMove = null;
+		practiceHint = '';
 		welcomePracticeHover = null;
 		welcomeTourPanelExpanded = welcomeTourRestorePanelExpanded;
-		welcomeTourPanelResetTimeout = window.setTimeout(() => {
-			welcomeTourPanelExpanded = null;
-			welcomeTourPanelResetTimeout = null;
-		}, 320);
+		// Let the panel retain the restored state, then immediately return control to the user.
+		void tick().then(() => {
+			if (!welcomeTourActive && !welcomePracticeActive) welcomeTourPanelExpanded = null;
+		});
 	}
 
 	type WebkitFullscreenDocument = Document & {
@@ -423,6 +502,8 @@
 		webkitRequestFullscreen?: () => Promise<void> | void;
 	};
 </script>
+
+<svelte:window onpointerdown={unlockSound} onkeydown={unlockSound} />
 
 <svelte:head>
 	<title>Axial</title>
@@ -439,28 +520,60 @@
 	data-embed={embedMode ? 'true' : undefined}
 	style:--accent={controller.boardColor}
 >
+	<ControlTooltip />
 	<div class="aurora"></div>
 	<svelte:boundary onerror={handleSceneBoundaryError}>
-		{#key sceneEpoch}
-			<AxialScene
-				game={activeGame}
-				hoveredMove={activePreviewMove}
-				previewLocked={welcomePracticeMove !== null || activeLockedMove !== null}
-				labelsVisible={controller.labelsVisible}
-				gridLayersVisible={controller.gridLayersVisible}
-				uiTheme={controller.uiTheme}
-				boardColor={controller.boardColor}
-				pieceShape={controller.pieceShape}
-				pieceColors={controller.pieceColors}
-				placementMode={playMode === 'online' ? 'piece' : controller.placementMode}
-				doubleAdjacentAnchor={playMode === 'online' ? null : controller.pendingDoubleAdjacentOrigin}
-				{controlsExpanded}
-				{viewResetKey}
-				onHover={setSceneHover}
-				onPlay={playSceneMove}
-				onCancelSelection={cancelSceneMove}
-				onRecoverableError={handleRecoverableSceneError}
-			/>
+		{#key `${sceneEpoch}:${welcomePracticeActive}`}
+			{#if hydrated}
+				<AxialScene
+					game={sceneGame}
+					hoveredMove={activePreviewMove}
+					guidedMove={welcomePracticeActive && !practiceCompleted ? PRACTICE_WINNING_MOVE : null}
+					previewLocked={!welcomePracticeActive && activeLockedMove !== null}
+					labelsVisible={welcomePracticeActive || controller.labelsVisible}
+					gridLayersVisible={controller.gridLayersVisible}
+					uiTheme={controller.uiTheme}
+					boardColor={controller.boardColor}
+					pieceShape={controller.pieceShape}
+					pieceColors={controller.pieceColors}
+					placementMode={welcomePracticeActive || playMode === 'online'
+						? 'piece'
+						: controller.placementMode}
+					doubleAdjacentAnchor={welcomePracticeActive || playMode === 'online'
+						? null
+						: controller.pendingDoubleAdjacentOrigin}
+					{viewResetKey}
+					onHover={setSceneHover}
+					onPlay={playSceneMove}
+					onCancelSelection={cancelSceneMove}
+					onRecoverableError={handleRecoverableSceneError}
+					onLand={(move) => gameAudio.playImpact(move.player, move.height)}
+					onSettle={(move) => {
+						if (
+							!welcomePracticeActive &&
+							activeGame.status.state === 'draw' &&
+							activeGame.lastMove &&
+							sceneMoveKey(move, 0) === sceneMoveKey(activeGame.lastMove, 0)
+						)
+							void finishRenderedPresentation();
+					}}
+					onWinReveal={() => {
+						if (welcomePracticeActive) {
+							if (practiceGame.status.state === 'won')
+								gameAudio.playWin(practiceGame.status.winner);
+							return;
+						}
+						if (activeGame.status.state === 'won') {
+							gameAudio.playWin(activeGame.status.winner);
+							void finishRenderedPresentation();
+						}
+					}}
+					interactionLabel={welcomePracticeActive ? practiceLabel : activeCurrentLabel}
+					inputEnabled={welcomePracticeActive
+						? !practiceCompleted
+						: !welcomeTourActive && (playMode === 'online' ? online.yourTurn : controller.canPlay)}
+				/>
+			{/if}
 		{/key}
 
 		{#snippet failed(error, reset)}
@@ -477,73 +590,80 @@
 	</svelte:boundary>
 
 	<GameHud
-		currentLabel={activeCurrentLabel}
-		currentPlayer={activeCurrentPlayer}
-		boardDimensions={activeBoardDimensions}
+		currentLabel={welcomePracticeActive ? practiceLabel : activeCurrentLabel}
+		currentPlayer={welcomePracticeActive ? (practiceCompleted ? null : 1) : activeCurrentPlayer}
+		boardDimensions={sceneGame.dimensions}
 	/>
 
-	<GameStatusPanel
-		statusTitle={activeStatusTitle}
-		moveCount={activeGame.moveHistory.length}
-		boardColor={controller.boardColor}
-		uiTheme={controller.uiTheme}
-		labelsVisible={controller.labelsVisible}
-		gridLayersVisible={controller.gridLayersVisible}
-		confirmDropEnabled={controller.confirmDropEnabled}
-		{playMode}
-		{online}
-		opponentMode={controller.opponentMode}
-		aiDifficulty={controller.aiDifficulty}
-		matchMode={activeMatchMode}
-		boardDimensions={activeBoardDimensions}
-		winCondition={activeWinCondition}
-		aiThinking={controller.aiThinking}
-		pieceShape={controller.pieceShape}
-		pieceColors={controller.pieceColors}
-		setupLocked={activeSetupLocked}
-		playModeLocked={(playMode !== 'online' && controller.setupLocked) ||
-			(playMode === 'online' && online.hasRoom)}
-		appearanceLocked={controller.appearanceLocked}
-		activeSpecialCharges={controller.activeSpecialCharges}
-		activeSpecialCounts={controller.activeSpecialCounts}
-		specialLoadoutSlots={controller.specialLoadoutSlots}
-		selectedSpecial={controller.selectedSpecial}
-		canUseBlockerCombo={controller.canUseBlockerCombo}
-		canUseDoubleAdjacent={controller.canUseDoubleAdjacent}
-		mustCompleteBlockerCombo={controller.mustCompleteBlockerCombo}
-		mustCompleteDoubleAdjacent={controller.mustCompleteDoubleAdjacent}
-		sessionRecord={controller.sessionRecord}
-		moveError={activeMoveError}
-		canUndo={playMode === 'online' ? false : controller.canUndo}
-		canRedo={playMode === 'online' ? false : controller.canRedo}
-		{fullscreenAvailable}
-		{fullscreenActive}
-		forcedExpanded={welcomeTourPanelExpanded}
-		onReset={playMode === 'online' ? online.resync : controller.resetGame}
-		onUndo={controller.undoMove}
-		onRedo={controller.redoMove}
-		onToggleFullscreen={toggleFullscreen}
-		onPlayModeChange={setPlayMode}
-		onAiDifficultyChange={controller.setAiDifficulty}
-		onMatchModeChange={setActiveMatchMode}
-		onBoardDimensionChange={setActiveBoardDimension}
-		onWinLineLengthChange={setActiveWinLineLength}
-		onLinesToWinChange={setActiveLinesToWin}
-		onToggleBlockerCombo={controller.toggleBlockerCombo}
-		onToggleDoubleAdjacent={controller.toggleDoubleAdjacent}
-		onPieceShapeChange={controller.setPieceShape}
-		onPieceColorChange={controller.setPieceColor}
-		onBoardColorChange={controller.setBoardColor}
-		onToggleConfirmDrop={controller.toggleConfirmDrop}
-		onToggleGridLayers={controller.toggleGridLayers}
-		onToggleLabels={controller.toggleLabels}
-		onToggleTheme={controller.toggleTheme}
-		onExpandedChange={(expanded) => (controlsExpanded = expanded)}
-		onResetView={resetView}
-		onShowHelp={startWelcomeTour}
-	/>
+	<div inert={welcomePracticeActive}>
+		<GameStatusPanel
+			aiError={playMode === 'ai' ? controller.aiError : ''}
+			onRetryAi={controller.retryAiMove}
+			game={activeGame}
+			{soundEnabled}
+			onToggleSound={toggleSound}
+			statusTitle={activeStatusTitle}
+			moveCount={activeGame.moveHistory.length}
+			boardColor={controller.boardColor}
+			uiTheme={controller.uiTheme}
+			labelsVisible={controller.labelsVisible}
+			gridLayersVisible={controller.gridLayersVisible}
+			confirmDropEnabled={controller.confirmDropEnabled}
+			{playMode}
+			{online}
+			opponentMode={controller.opponentMode}
+			aiDifficulty={controller.aiDifficulty}
+			matchMode={activeMatchMode}
+			boardDimensions={activeBoardDimensions}
+			winCondition={activeWinCondition}
+			aiThinking={controller.aiThinking}
+			pieceShape={controller.pieceShape}
+			pieceColors={controller.pieceColors}
+			setupLocked={activeSetupLocked}
+			playModeLocked={(playMode !== 'online' && controller.setupLocked) ||
+				(playMode === 'online' && online.hasRoom)}
+			appearanceLocked={controller.appearanceLocked}
+			activeSpecialCharges={controller.activeSpecialCharges}
+			activeSpecialCounts={controller.activeSpecialCounts}
+			specialLoadoutSlots={controller.specialLoadoutSlots}
+			selectedSpecial={controller.selectedSpecial}
+			canUseBlockerCombo={controller.canUseBlockerCombo}
+			canUseDoubleAdjacent={controller.canUseDoubleAdjacent}
+			mustCompleteBlockerCombo={controller.mustCompleteBlockerCombo}
+			mustCompleteDoubleAdjacent={controller.mustCompleteDoubleAdjacent}
+			sessionRecord={controller.sessionRecord}
+			moveError={activeMoveError}
+			canUndo={playMode === 'online' ? false : controller.canUndo}
+			canRedo={playMode === 'online' ? false : controller.canRedo}
+			{fullscreenAvailable}
+			{fullscreenActive}
+			forcedExpanded={welcomeTourPanelExpanded}
+			onReset={playMode === 'online' ? online.resync : controller.resetGame}
+			onUndo={controller.undoMove}
+			onRedo={controller.redoMove}
+			onToggleFullscreen={toggleFullscreen}
+			onPlayModeChange={setPlayMode}
+			onAiDifficultyChange={controller.setAiDifficulty}
+			onMatchModeChange={setActiveMatchMode}
+			onBoardDimensionChange={setActiveBoardDimension}
+			onWinLineLengthChange={setActiveWinLineLength}
+			onLinesToWinChange={setActiveLinesToWin}
+			onToggleBlockerCombo={controller.toggleBlockerCombo}
+			onToggleDoubleAdjacent={controller.toggleDoubleAdjacent}
+			onPieceShapeChange={controller.setPieceShape}
+			onPieceColorChange={controller.setPieceColor}
+			onBoardColorChange={controller.setBoardColor}
+			onToggleConfirmDrop={controller.toggleConfirmDrop}
+			onToggleGridLayers={controller.toggleGridLayers}
+			onToggleLabels={controller.toggleLabels}
+			onToggleTheme={controller.toggleTheme}
+			onExpandedChange={(expanded) => (controlsExpanded = expanded)}
+			onResetView={resetView}
+			onShowHelp={startWelcomeTour}
+		/>
+	</div>
 
-	{#if activeLockedMove && activeLandingHeight >= 0}
+	{#if !welcomePracticeActive && !welcomeTourActive && activeLockedMove && activeLandingHeight >= 0}
 		<MoveConfirmBar
 			move={activeLockedMove}
 			landingHeight={activeLandingHeight}
@@ -555,17 +675,18 @@
 
 	{#if welcomePracticeActive}
 		<TourPracticeBanner
-			move={welcomePracticeMove}
-			landingHeight={welcomePracticeLandingHeight}
+			completed={practiceCompleted}
+			hint={practiceHint}
 			onContinue={resumeWelcomeTour}
 			onExit={exitWelcomePractice}
 		/>
 	{/if}
 
-	{#if playMode !== 'online' && controller.showGameOverModal}
+	{#if !welcomePracticeActive && !welcomeTourActive && playMode !== 'online' && controller.showGameOverModal && !presentationPending}
 		<GameOverModal
 			status={controller.game.status}
 			moveCount={controller.game.moveHistory.length}
+			matchDurationMs={controller.matchDurationMs}
 			winnerLabel={controller.winnerLabel}
 			onNewMatch={controller.resetGame}
 			onReviewFromStart={controller.rewindGame}
@@ -573,8 +694,8 @@
 		/>
 	{/if}
 
-	{#if playMode === 'online'}
-		<OnlineMatchOverlay {online} />
+	{#if !welcomePracticeActive && !welcomeTourActive && playMode === 'online'}
+		<OnlineMatchOverlay {online} resultReady={!presentationPending} />
 	{/if}
 
 	{#if recoveryMessage}
@@ -616,7 +737,7 @@
 
 	.scene-recovery strong {
 		font-size: 0.82rem;
-		font-weight: 820;
+		font-weight: 700;
 		white-space: nowrap;
 	}
 
@@ -628,7 +749,7 @@
 		color: var(--text);
 		cursor: pointer;
 		font-size: 0.72rem;
-		font-weight: 800;
+		font-weight: 700;
 		padding: 0 0.72rem;
 	}
 
@@ -639,7 +760,7 @@
 		padding: 0.62rem 0.78rem;
 		border-radius: 999px;
 		font-size: 0.76rem;
-		font-weight: 760;
+		font-weight: 700;
 		text-align: center;
 		transform: translateX(-50%);
 	}

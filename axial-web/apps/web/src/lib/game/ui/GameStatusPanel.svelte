@@ -17,7 +17,13 @@
 		Sun,
 		Undo2
 	} from '@lucide/svelte';
-	import type { BoardDimensions, MatchMode, TacticalSpecialId, WinCondition } from '@axial/core';
+	import type {
+		GameSnapshot,
+		BoardDimensions,
+		MatchMode,
+		TacticalSpecialId,
+		WinCondition
+	} from '@axial/core';
 	import type { PieceColors, PieceShape } from '../state/pieceAppearance';
 	import type {
 		AiDifficulty,
@@ -37,6 +43,9 @@
 	import TacticalLoadoutPanel from './TacticalLoadoutPanel.svelte';
 
 	let {
+		game,
+		soundEnabled,
+		onToggleSound,
 		statusTitle,
 		moveCount,
 		boardColor,
@@ -52,6 +61,8 @@
 		boardDimensions,
 		winCondition,
 		aiThinking,
+		aiError,
+		onRetryAi,
 		pieceShape,
 		pieceColors,
 		setupLocked,
@@ -95,6 +106,9 @@
 		onResetView,
 		onShowHelp
 	}: {
+		game: GameSnapshot;
+		soundEnabled: boolean;
+		onToggleSound: () => void;
 		statusTitle: string;
 		moveCount: number;
 		boardColor: string;
@@ -110,6 +124,8 @@
 		boardDimensions: BoardDimensions;
 		winCondition: WinCondition;
 		aiThinking: boolean;
+		aiError: string;
+		onRetryAi: () => void;
 		pieceShape: PieceShape;
 		pieceColors: PieceColors;
 		setupLocked: boolean;
@@ -212,227 +228,239 @@
 	data-sheet-state={panelExpanded ? (sheetFull ? 'full' : 'half') : 'collapsed'}
 	data-tour-target="control-panel"
 >
-	<div
-		class="panel-toolbar"
-		class:pieces-mode={piecesMode && matchMode === 'tactical'}
-		class:tactical-toolbar={matchMode === 'tactical'}
-	>
-		{#if matchMode === 'tactical'}
-			<button
-				class="icon-button pieces-toggle"
-				class:active={piecesMode}
-				type="button"
-				aria-label={piecesMode ? 'Show match controls' : 'Show pieces'}
-				aria-pressed={piecesMode}
-				title="Pieces"
-				onclick={togglePiecesMode}
-			>
-				<Boxes size={18} strokeWidth={1.9} />
-			</button>
-		{/if}
-		{#if piecesMode && matchMode === 'tactical'}
-			<button
-				class="toolbar-piece-button"
-				class:armed={selectedSpecial === 'blocker-combo' || mustCompleteBlockerCombo}
-				type="button"
-				disabled={!canUseBlockerCombo && selectedSpecial !== 'blocker-combo'}
-				aria-label="Use blocker"
-				title={selectedSpecial === 'blocker-combo'
-					? 'Cancel blocker placement'
-					: mustCompleteBlockerCombo
-						? 'Place your regular piece to finish the combo'
-						: 'Place a blocker, then your regular piece'}
-				onclick={onToggleBlockerCombo}
-			>
-				<Shield size={15} strokeWidth={2.1} />
-				<span>Blocker</span>
-				<small>{mustCompleteBlockerCombo ? '!' : activeSpecialCounts['blocker-combo']}</small>
-			</button>
-			<button
-				class="toolbar-piece-button"
-				class:armed={selectedSpecial === 'double-adjacent' || mustCompleteDoubleAdjacent}
-				type="button"
-				disabled={!canUseDoubleAdjacent && selectedSpecial !== 'double-adjacent'}
-				aria-label="Use double adjacent"
-				title={selectedSpecial === 'double-adjacent'
-					? 'Cancel double placement'
-					: mustCompleteDoubleAdjacent
-						? 'Place the second piece next to the first'
-						: 'Place two adjacent pieces in one turn'}
-				onclick={onToggleDoubleAdjacent}
-			>
-				<CopyPlus size={15} strokeWidth={2.1} />
-				<span>Double</span>
-				<small>{mustCompleteDoubleAdjacent ? '!' : activeSpecialCounts['double-adjacent']}</small>
-			</button>
-		{:else}
-			<button
-				class="icon-button toolbar-history-action"
-				type="button"
-				aria-label="Undo move"
-				title="Undo move"
-				disabled={!canUndo}
-				onclick={onUndo}
-			>
-				<Undo2 size={18} strokeWidth={1.9} />
-			</button>
-			<button
-				class="icon-button toolbar-history-action"
-				type="button"
-				aria-label="Redo move"
-				title="Redo move"
-				disabled={!canRedo}
-				onclick={onRedo}
-			>
-				<Redo2 size={18} strokeWidth={1.9} />
-			</button>
-			{#if fullscreenAvailable}
+	<div class="panel-scroll">
+		<div
+			class="panel-toolbar"
+			class:pieces-mode={piecesMode && matchMode === 'tactical'}
+			class:tactical-toolbar={matchMode === 'tactical'}
+		>
+			{#if matchMode === 'tactical'}
 				<button
-					class="icon-button toolbar-fullscreen-action"
+					class="icon-button pieces-toggle"
+					class:active={piecesMode}
 					type="button"
-					aria-label={fullscreenActive ? 'Exit fullscreen' : 'Enter fullscreen'}
-					aria-pressed={fullscreenActive}
-					title={fullscreenActive ? 'Exit fullscreen' : 'Fullscreen'}
-					onclick={onToggleFullscreen}
+					aria-label={piecesMode ? 'Show match controls' : 'Show pieces'}
+					aria-pressed={piecesMode}
+					data-tooltip="Pieces"
+					onclick={togglePiecesMode}
 				>
-					{#if fullscreenActive}
-						<Minimize2 size={18} strokeWidth={1.9} />
+					<Boxes size={18} strokeWidth={1.9} />
+				</button>
+			{/if}
+			{#if piecesMode && matchMode === 'tactical'}
+				<button
+					class="toolbar-piece-button"
+					class:armed={selectedSpecial === 'blocker-combo' || mustCompleteBlockerCombo}
+					type="button"
+					disabled={!canUseBlockerCombo && selectedSpecial !== 'blocker-combo'}
+					aria-label="Use blocker"
+					data-tooltip={selectedSpecial === 'blocker-combo'
+						? 'Cancel blocker placement'
+						: mustCompleteBlockerCombo
+							? 'Place your regular piece to finish the combo'
+							: 'Place a blocker, then your regular piece'}
+					onclick={onToggleBlockerCombo}
+				>
+					<Shield size={15} strokeWidth={2.1} />
+					<span>Blocker</span>
+					<small>{mustCompleteBlockerCombo ? '!' : activeSpecialCounts['blocker-combo']}</small>
+				</button>
+				<button
+					class="toolbar-piece-button"
+					class:armed={selectedSpecial === 'double-adjacent' || mustCompleteDoubleAdjacent}
+					type="button"
+					disabled={!canUseDoubleAdjacent && selectedSpecial !== 'double-adjacent'}
+					aria-label="Use double adjacent"
+					data-tooltip={selectedSpecial === 'double-adjacent'
+						? 'Cancel double placement'
+						: mustCompleteDoubleAdjacent
+							? 'Place the second piece next to the first'
+							: 'Place two adjacent pieces in one turn'}
+					onclick={onToggleDoubleAdjacent}
+				>
+					<CopyPlus size={15} strokeWidth={2.1} />
+					<span>Double</span>
+					<small>{mustCompleteDoubleAdjacent ? '!' : activeSpecialCounts['double-adjacent']}</small>
+				</button>
+			{:else}
+				<button
+					class="icon-button toolbar-history-action"
+					type="button"
+					aria-label="Undo move"
+					data-tooltip="Undo move"
+					disabled={!canUndo}
+					onclick={onUndo}
+				>
+					<Undo2 size={18} strokeWidth={1.9} />
+				</button>
+				<button
+					class="icon-button toolbar-history-action"
+					type="button"
+					aria-label="Redo move"
+					data-tooltip="Redo move"
+					disabled={!canRedo}
+					onclick={onRedo}
+				>
+					<Redo2 size={18} strokeWidth={1.9} />
+				</button>
+				{#if fullscreenAvailable}
+					<button
+						class="icon-button toolbar-fullscreen-action"
+						type="button"
+						aria-label={fullscreenActive ? 'Exit fullscreen' : 'Enter fullscreen'}
+						aria-pressed={fullscreenActive}
+						data-tooltip={fullscreenActive ? 'Exit fullscreen' : 'Fullscreen'}
+						onclick={onToggleFullscreen}
+					>
+						{#if fullscreenActive}
+							<Minimize2 size={18} strokeWidth={1.9} />
+						{:else}
+							<Maximize2 size={18} strokeWidth={1.9} />
+						{/if}
+					</button>
+				{/if}
+				<button
+					class="icon-button toolbar-reset-action"
+					type="button"
+					aria-label="Reset game"
+					data-tooltip="Reset game"
+					onclick={onReset}
+				>
+					<RotateCcw size={18} strokeWidth={1.9} />
+				</button>
+				<button
+					class="icon-button toolbar-theme-action"
+					type="button"
+					aria-label={uiTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+					data-tooltip={uiTheme === 'dark' ? 'Light mode' : 'Dark mode'}
+					onclick={onToggleTheme}
+				>
+					{#if uiTheme === 'dark'}
+						<Sun size={18} strokeWidth={1.9} />
 					{:else}
-						<Maximize2 size={18} strokeWidth={1.9} />
+						<Moon size={18} strokeWidth={1.9} />
 					{/if}
 				</button>
 			{/if}
 			<button
-				class="icon-button toolbar-reset-action"
+				class="icon-button collapse-button"
 				type="button"
-				aria-label="Reset game"
-				title="Reset game"
-				onclick={onReset}
+				data-tour-target="panel-toggle"
+				aria-label={panelExpanded
+					? 'Collapse settings'
+					: piecesMode
+						? 'Expand piece details'
+						: 'Expand settings'}
+				aria-expanded={panelExpanded}
+				data-tooltip={panelExpanded ? 'Collapse' : piecesMode ? 'Piece details' : 'Expand'}
+				onclick={toggleExpanded}
 			>
-				<RotateCcw size={18} strokeWidth={1.9} />
+				<ChevronUp size={18} strokeWidth={1.9} />
 			</button>
-			<button
-				class="icon-button toolbar-theme-action"
-				type="button"
-				aria-label={uiTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-				title={uiTheme === 'dark' ? 'Light mode' : 'Dark mode'}
-				onclick={onToggleTheme}
-			>
-				{#if uiTheme === 'dark'}
-					<Sun size={18} strokeWidth={1.9} />
-				{:else}
-					<Moon size={18} strokeWidth={1.9} />
-				{/if}
-			</button>
-		{/if}
-		<button
-			class="icon-button collapse-button"
-			type="button"
-			data-tour-target="panel-toggle"
-			aria-label={panelExpanded
-				? 'Collapse settings'
-				: piecesMode
-					? 'Expand piece details'
-					: 'Expand settings'}
-			aria-expanded={panelExpanded}
-			title={panelExpanded ? 'Collapse' : piecesMode ? 'Piece details' : 'Expand'}
-			onclick={toggleExpanded}
-		>
-			<ChevronUp size={18} strokeWidth={1.9} />
-		</button>
-	</div>
+		</div>
 
-	<div class="panel-body-shell" aria-hidden={!panelExpanded} inert={!panelExpanded}>
-		<div class="panel-body-clip">
-			<div class="panel-body">
-				{#if piecesMode && matchMode === 'tactical'}
-					<TacticalLoadoutPanel
-						{statusTitle}
-						{specialStatus}
-						{activeSpecialCounts}
-						{selectedSpecial}
-						{canUseBlockerCombo}
-						{canUseDoubleAdjacent}
-						{mustCompleteBlockerCombo}
-						{mustCompleteDoubleAdjacent}
-						{onToggleBlockerCombo}
-						{onToggleDoubleAdjacent}
-					/>
-				{:else}
-					<PanelLiveStrip label="Now" title={statusTitle} meta={moveLabel} />
+		<div class="panel-body-shell" aria-hidden={!panelExpanded} inert={!panelExpanded}>
+			<div class="panel-body-clip">
+				<div class="panel-body">
+					{#if piecesMode && matchMode === 'tactical'}
+						<TacticalLoadoutPanel
+							{statusTitle}
+							{specialStatus}
+							{activeSpecialCounts}
+							{selectedSpecial}
+							{canUseBlockerCombo}
+							{canUseDoubleAdjacent}
+							{mustCompleteBlockerCombo}
+							{mustCompleteDoubleAdjacent}
+							{onToggleBlockerCombo}
+							{onToggleDoubleAdjacent}
+						/>
+					{:else}
+						<PanelLiveStrip label="Now" title={statusTitle} meta={moveLabel} />
+						{#if aiError}
+							<div class="ai-recovery" role="alert">
+								<span>{aiError}</span>
+								<button type="button" onclick={onRetryAi}>Retry AI turn</button>
+							</div>
+						{/if}
 
-					<div class="panel-quick-actions" aria-label="Board help">
-						<button type="button" onclick={onShowHelp}>
-							<HelpCircle size={15} strokeWidth={2} />
-							<span>How to play</span>
-						</button>
-						<button type="button" onclick={onResetView}>
-							<Focus size={15} strokeWidth={2} />
-							<span>Reset view</span>
-						</button>
-						<button
-							class="sheet-size-button"
-							type="button"
-							aria-pressed={sheetFull}
-							onclick={toggleSheetSize}
+						<div class="panel-quick-actions" aria-label="Board help">
+							<button type="button" onclick={onShowHelp}>
+								<HelpCircle size={15} strokeWidth={2} />
+								<span>How to play</span>
+							</button>
+							<button type="button" onclick={onResetView}>
+								<Focus size={15} strokeWidth={2} />
+								<span>Reset view</span>
+							</button>
+							<button
+								class="sheet-size-button"
+								type="button"
+								aria-pressed={sheetFull}
+								onclick={toggleSheetSize}
+							>
+								{#if sheetFull}
+									<ChevronsDownUp size={15} strokeWidth={2} />
+									<span>Half sheet</span>
+								{:else}
+									<ChevronsUpDown size={15} strokeWidth={2} />
+									<span>Full sheet</span>
+								{/if}
+							</button>
+						</div>
+
+						<MatchSettingsPanel
+							{game}
+							{pieceColors}
+							{playMode}
+							{aiDifficulty}
+							{matchMode}
+							{boardDimensions}
+							{winCondition}
+							{aiThinking}
+							{setupLocked}
+							{playModeLocked}
+							{onPlayModeChange}
+							{onAiDifficultyChange}
+							{onMatchModeChange}
+							{onBoardDimensionChange}
+							{onWinLineLengthChange}
+							{onLinesToWinChange}
 						>
-							{#if sheetFull}
-								<ChevronsDownUp size={15} strokeWidth={2} />
-								<span>Half sheet</span>
-							{:else}
-								<ChevronsUpDown size={15} strokeWidth={2} />
-								<span>Full sheet</span>
-							{/if}
-						</button>
-					</div>
+							{#snippet onlineControls()}
+								<OnlineRoomPanel {online} />
+							{/snippet}
+						</MatchSettingsPanel>
 
-					{#if playMode === 'online'}
-						<OnlineRoomPanel {online} />
+						<AppearancePanel
+							{soundEnabled}
+							{onToggleSound}
+							{boardColor}
+							{uiTheme}
+							{labelsVisible}
+							{gridLayersVisible}
+							{confirmDropEnabled}
+							{pieceShape}
+							{pieceColors}
+							{appearanceLocked}
+							{onPieceShapeChange}
+							{onPieceColorChange}
+							{onBoardColorChange}
+							{onToggleConfirmDrop}
+							{onToggleGridLayers}
+							{onToggleLabels}
+							{onToggleTheme}
+						/>
+
+						{#if playMode !== 'online'}
+							<SessionRecordPanel {sessionRecord} {opponentMode} />
+						{/if}
 					{/if}
 
-					<MatchSettingsPanel
-						{playMode}
-						{aiDifficulty}
-						{matchMode}
-						{boardDimensions}
-						{winCondition}
-						{aiThinking}
-						{setupLocked}
-						{playModeLocked}
-						{onPlayModeChange}
-						{onAiDifficultyChange}
-						{onMatchModeChange}
-						{onBoardDimensionChange}
-						{onWinLineLengthChange}
-						{onLinesToWinChange}
-					/>
-
-					<AppearancePanel
-						{boardColor}
-						{uiTheme}
-						{labelsVisible}
-						{gridLayersVisible}
-						{confirmDropEnabled}
-						{pieceShape}
-						{pieceColors}
-						{appearanceLocked}
-						{onPieceShapeChange}
-						{onPieceColorChange}
-						{onBoardColorChange}
-						{onToggleConfirmDrop}
-						{onToggleGridLayers}
-						{onToggleLabels}
-						{onToggleTheme}
-					/>
-
-					{#if playMode !== 'online'}
-						<SessionRecordPanel {sessionRecord} {opponentMode} />
+					{#if moveError}
+						<p class="move-error">{moveError}</p>
 					{/if}
-				{/if}
-
-				{#if moveError}
-					<p class="move-error">{moveError}</p>
-				{/if}
+				</div>
 			</div>
 		</div>
 	</div>

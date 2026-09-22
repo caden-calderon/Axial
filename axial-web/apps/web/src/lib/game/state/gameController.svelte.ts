@@ -35,7 +35,11 @@ import {
 	type PieceColors,
 	type PieceShape
 } from './pieceAppearance';
-import { GAME_OVER_MODAL_DELAY_MS } from '../animation';
+import {
+	GAME_OVER_MODAL_DELAY_MS,
+	pieceDropDuration,
+	PIECE_IMPACT_DURATION_SECONDS
+} from '../animation';
 import { createClassicAiClient, type ClassicAiClient } from './classicAiClient';
 import { createSessionRecord, recordCompletedGame, type SessionRecord } from './sessionRecord';
 
@@ -131,7 +135,11 @@ type PersistedActiveMatch = {
 	moveHistory: ReplayMove[];
 	redoMoves: ReplayMove[];
 	gameOverDismissed: boolean;
+	matchStartedAt: number | null;
+	matchEndedAt: number | null;
 };
+
+export const MIN_AI_TURN_MS = 650;
 
 export const TACTICAL_SPECIAL_LOADOUT: TacticalSpecialCounts = {
 	'blocker-combo': 2,
@@ -172,11 +180,16 @@ export function createGameController() {
 	let gameOverModalTimeout: ReturnType<typeof setTimeout> | null = null;
 	let selectedSpecial = $state<TacticalSpecialId | null>(null);
 	let aiThinking = $state(false);
+	let aiError = $state('');
 	let aiSearchRequestId = 0;
 	let classicAiClient: ClassicAiClient | null = null;
 	let aiSeriesActive = false;
 	let matchId = 0;
 	let recordedMatchId: number | null = null;
+	let matchStartedAt = $state<number | null>(null);
+	let matchEndedAt = $state<number | null>(null);
+	let aiPlacementTimeout: ReturnType<typeof setTimeout> | null = null;
+	let resolveAiPlacementDelay: (() => void) | null = null;
 
 	const turnLabels = $derived(opponentMode === 'ai' ? AI_TURN_LABELS : LOCAL_TURN_LABELS);
 	const resultLabels = $derived(opponentMode === 'ai' ? AI_RESULT_LABELS : LOCAL_RESULT_LABELS);
@@ -353,6 +366,8 @@ export function createGameController() {
 			aiSeriesActive = saved.opponentMode === 'ai';
 			aiDifficulty = saved.aiDifficulty;
 			game = restoredGame;
+			matchStartedAt = saved.matchStartedAt;
+			matchEndedAt = saved.matchEndedAt;
 			redoMoves = saved.redoMoves;
 			hoveredMove = null;
 			lockedMove = null;
@@ -386,7 +401,9 @@ export function createGameController() {
 			startingPlayer,
 			moveHistory: game.moveHistory.map(toMove),
 			redoMoves: redoMoves.map((move) => ({ ...move, special: cloneSpecial(move.special) })),
-			gameOverDismissed
+			gameOverDismissed,
+			matchStartedAt,
+			matchEndedAt
 		};
 
 		localStorage.setItem(STORAGE_KEYS.activeMatch, JSON.stringify(payload));
@@ -508,6 +525,8 @@ export function createGameController() {
 		clearGameOverModalDelay();
 		matchId += 1;
 		recordedMatchId = null;
+		matchStartedAt = null;
+		matchEndedAt = null;
 		if (shouldAlternateStarter) startingPlayer = otherPlayer(startingPlayer);
 		game = createGame(winCondition, boardDimensions, startingPlayer);
 		hoveredMove = null;
@@ -848,6 +867,9 @@ export function createGameController() {
 	}
 
 	function finishPlacement(source: MoveSource, movingPlayer: Player): void {
+		const now = Date.now();
+		if (game.moveHistory.length === 1) matchStartedAt = now;
+		matchEndedAt = game.status.state === 'playing' ? null : now;
 		hoveredMove = null;
 		lockedMove = null;
 		redoMoves = [];
@@ -870,6 +892,7 @@ export function createGameController() {
 		if (
 			!browser ||
 			opponentMode !== 'ai' ||
+			redoMoves.length > 0 ||
 			game.status.state !== 'playing' ||
 			game.currentPlayer !== 2
 		) {
@@ -888,31 +911,38 @@ export function createGameController() {
 			return;
 		}
 
-		const requestGame = cloneGame(game);
+		const turnStartedAt = performance.now();
 		const requestMode = matchMode;
 		const requestMatchId = matchId;
 		const requestDifficulty = aiDifficulty;
 
 		try {
 			const move = await chooseAiMove(
-				requestGame,
+				cloneGame(game),
 				requestMode,
 				requestMatchId,
 				requestDifficulty,
 				getClassicAiClient
 			);
 			if (move && isCurrentAiTurn(requestId) && matchId === requestMatchId) {
+				const remainingDelay = MIN_AI_TURN_MS - (performance.now() - turnStartedAt);
+				if (remainingDelay > 0) {
+					await new Promise<void>((resolve) => {
+						resolveAiPlacementDelay = resolve;
+						aiPlacementTimeout = setTimeout(() => {
+							aiPlacementTimeout = null;
+							resolveAiPlacementDelay = null;
+							resolve();
+						}, remainingDelay);
+					});
+				}
 				if (!isCurrentAiTurn(requestId) || matchId !== requestMatchId) return;
 				playMove(move, 'ai');
 			}
 		} catch (error) {
 			if (!isAbortError(error) && isCurrentAiTurn(requestId)) {
-				const move = chooseRandomMove(game);
-				if (move) {
-					if (isCurrentAiTurn(requestId) && matchId === requestMatchId) {
-						playMove(move, 'ai');
-					}
-				}
+				console.warn('[Axial AI] Search failed', error);
+				aiError = 'The AI couldn’t finish its turn.';
 			}
 		} finally {
 			if (requestId === aiSearchRequestId) {
@@ -923,6 +953,11 @@ export function createGameController() {
 
 	function clearQueuedAiMove(): void {
 		aiSearchRequestId += 1;
+		aiError = '';
+		if (aiPlacementTimeout !== null) clearTimeout(aiPlacementTimeout);
+		aiPlacementTimeout = null;
+		resolveAiPlacementDelay?.();
+		resolveAiPlacementDelay = null;
 
 		classicAiClient?.cancelPending();
 		aiThinking = false;
@@ -934,15 +969,24 @@ export function createGameController() {
 
 		if (game.status.state === 'playing' || gameOverDismissed) return;
 
-		if (game.status.state === 'draw') {
+		if (browser && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
 			gameOverModalReady = true;
 			return;
 		}
 
-		gameOverModalTimeout = setTimeout(() => {
-			gameOverModalTimeout = null;
-			gameOverModalReady = true;
-		}, GAME_OVER_MODAL_DELAY_MS);
+		gameOverModalTimeout = setTimeout(
+			() => {
+				gameOverModalTimeout = null;
+				gameOverModalReady = true;
+			},
+			game.status.state === 'draw' && game.lastMove
+				? Math.round(
+						(pieceDropDuration(boardDimensions, game.lastMove.height) +
+							PIECE_IMPACT_DURATION_SECONDS) *
+							1000
+					)
+				: GAME_OVER_MODAL_DELAY_MS
+		);
 	}
 
 	function clearGameOverModalDelay(): void {
@@ -953,8 +997,7 @@ export function createGameController() {
 	}
 
 	function destroy(): void {
-		aiSearchRequestId += 1;
-		aiThinking = false;
+		clearQueuedAiMove();
 		clearGameOverModalDelay();
 		classicAiClient?.terminate();
 		classicAiClient = null;
@@ -975,6 +1018,14 @@ export function createGameController() {
 	}
 
 	return {
+		get matchDurationMs() {
+			return matchStartedAt !== null && matchEndedAt !== null
+				? Math.max(0, matchEndedAt - matchStartedAt)
+				: null;
+		},
+		get aiError() {
+			return aiError;
+		},
 		get aiThinking() {
 			return aiThinking;
 		},
@@ -995,6 +1046,9 @@ export function createGameController() {
 		},
 		get boardDimensions() {
 			return boardDimensions;
+		},
+		get canPlay() {
+			return canAcceptHumanMove();
 		},
 		get canRedo() {
 			return canRedo;
@@ -1107,6 +1161,9 @@ export function createGameController() {
 		selectOrPlayMove,
 		redoMove,
 		resetGame,
+		retryAiMove() {
+			if (!aiThinking && aiError) queueAiMove();
+		},
 		rewindGame,
 		setHover,
 		setAiDifficulty,
@@ -1156,6 +1213,10 @@ function parsePersistedActiveMatch(serialized: string | null): PersistedActiveMa
 		const redoMoves = parseReplayMoveList(value.redoMoves);
 		const gameOverDismissed =
 			typeof value.gameOverDismissed === 'boolean' && value.gameOverDismissed;
+		const matchStartedAt = parseMatchTimestamp(value.matchStartedAt);
+		const savedEnd = parseMatchTimestamp(value.matchEndedAt);
+		const matchEndedAt =
+			matchStartedAt !== null && savedEnd !== null && savedEnd >= matchStartedAt ? savedEnd : null;
 
 		if (
 			!matchMode ||
@@ -1179,11 +1240,17 @@ function parsePersistedActiveMatch(serialized: string | null): PersistedActiveMa
 			startingPlayer,
 			moveHistory,
 			redoMoves,
-			gameOverDismissed
+			gameOverDismissed,
+			matchStartedAt,
+			matchEndedAt
 		};
 	} catch {
 		return null;
 	}
+}
+
+function parseMatchTimestamp(value: unknown): number | null {
+	return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 function parseSavedWinCondition(value: unknown): WinCondition | null {
@@ -1391,6 +1458,7 @@ export async function chooseAiMove(
 	aiDifficulty: AiDifficulty,
 	getClassicAiClient: () => ClassicAiClient
 ): Promise<Move | null> {
+	if (game.status.state !== 'playing') return null;
 	if (matchMode !== 'classic') {
 		return chooseRandomMove(game);
 	}
@@ -1400,12 +1468,14 @@ export async function chooseAiMove(
 		seed: aiSeedForGame(game, matchId)
 	};
 
-	try {
-		return (await getClassicAiClient().requestMove(game, options))?.move ?? chooseRandomMove(game);
-	} catch (error) {
-		if (isAbortError(error)) throw error;
-		return chooseRandomMove(game);
+	const result = await getClassicAiClient().requestMove(game, options);
+	if (
+		!result?.move ||
+		!legalMoves(game.board, game.dimensions).some((move) => sameMove(move, result.move))
+	) {
+		throw new Error('The AI returned no legal move for an active match');
 	}
+	return result.move;
 }
 
 function aiSeedForGame(game: GameSnapshot, matchId: number): number {

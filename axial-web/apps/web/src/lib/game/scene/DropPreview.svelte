@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { prefersReducedMotion } from 'svelte/motion';
 	import { T, useTask } from '@threlte/core';
 	import { AdditiveBlending, NormalBlending } from 'three';
 	import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
@@ -42,16 +43,26 @@
 	const beamHeight = $derived(beamTop - beamBottom);
 	const beamCenterY = $derived((beamBottom + beamTop) / 2 - target[1]);
 
-	useTask((delta) => {
-		phase += delta * 4.2;
-		const pulseWave = Math.sin(phase);
-
-		pulse = 1 + pulseWave * 0.08;
-		lockPulse = 0.5 + pulseWave * 0.5;
+	$effect(() => {
+		if (prefersReducedMotion.current) {
+			pulse = 1;
+			lockPulse = 0.5;
+		}
 	});
+
+	useTask(
+		(delta) => {
+			phase += Math.min(delta, 0.1) * 3;
+			const pulseWave = Math.sin(phase);
+
+			pulse = 1 + pulseWave * 0.08;
+			lockPulse = 0.5 + pulseWave * 0.5;
+		},
+		{ running: () => !prefersReducedMotion.current }
+	);
 </script>
 
-<T.Group position={target}>
+<T.Group name="drop-preview" position={target}>
 	{#if locked}
 		<T.Mesh position={[0, beamCenterY, 0]} renderOrder={1}>
 			<T.CylinderGeometry args={[PIECE_SIZE * 0.045, PIECE_SIZE * 0.18, beamHeight, 32, 1, true]} />
@@ -84,10 +95,8 @@
 	<T.Mesh scale={pulse * 0.98} renderOrder={9}>
 		{#if previewShape === 'cube'}
 			<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 4, 0.07]} />
-		{:else if previewShape === 'orb'}
-			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 28, 18]} />
 		{:else}
-			<T.OctahedronGeometry args={[PIECE_SIZE * 0.78, 1]} />
+			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 28, 18]} />
 		{/if}
 		<T.MeshBasicMaterial
 			color="#020807"
@@ -100,10 +109,8 @@
 	<T.Mesh scale={pulse} renderOrder={10}>
 		{#if previewShape === 'cube'}
 			<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 4, 0.07]} />
-		{:else if previewShape === 'orb'}
-			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 28, 18]} />
 		{:else}
-			<T.OctahedronGeometry args={[PIECE_SIZE * 0.78, 1]} />
+			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 28, 18]} />
 		{/if}
 		<T.MeshBasicMaterial
 			{color}
@@ -116,10 +123,8 @@
 	<T.Mesh scale={pulse * 1.02} renderOrder={11}>
 		{#if previewShape === 'cube'}
 			<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 4, 0.07]} />
-		{:else if previewShape === 'orb'}
-			<T.SphereGeometry args={[PIECE_SIZE * 0.59, 28, 18]} />
 		{:else}
-			<T.OctahedronGeometry args={[PIECE_SIZE * 0.79, 1]} />
+			<T.SphereGeometry args={[PIECE_SIZE * 0.59, 28, 18]} />
 		{/if}
 		<T.MeshBasicMaterial
 			color="#ffffff"

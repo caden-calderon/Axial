@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
-	import { T } from '@threlte/core';
+	import { onDestroy, onMount } from 'svelte';
+	import { T, useThrelte } from '@threlte/core';
 	import { CanvasTexture, LinearFilter, Sprite, SpriteMaterial, SRGBColorSpace } from 'three';
 	import type { Vec3 } from './geometry';
 
@@ -32,6 +32,7 @@
 		renderOrder?: number;
 	} = $props();
 
+	const { invalidate } = useThrelte();
 	const material = new SpriteMaterial({
 		depthTest: false,
 		depthWrite: false,
@@ -40,9 +41,22 @@
 	});
 
 	let texture: CanvasTexture | null = null;
+	let fontsReady = $state(false);
+
+	onMount(() => {
+		let mounted = true;
+		// Canvas textures do not automatically redraw when the UI font finishes loading.
+		void document.fonts.ready.then(() => {
+			if (mounted) fontsReady = true;
+		});
+		return () => {
+			mounted = false;
+		};
+	});
 	const scale = $derived([fontSize * 1.34, fontSize * 1.34, 1] as Vec3);
 
 	$effect(() => {
+		if (!fontsReady) return;
 		const nextTexture = createLabelTexture({
 			text,
 			color,
@@ -58,11 +72,12 @@
 		material.map = nextTexture;
 		material.needsUpdate = true;
 		previousTexture?.dispose();
+		invalidate();
 	});
 
 	$effect(() => {
 		material.opacity = opacity;
-		material.needsUpdate = true;
+		invalidate();
 	});
 
 	onDestroy(() => {
@@ -100,7 +115,7 @@
 
 		const fontPixels = 154;
 		context.clearRect(0, 0, canvas.width, canvas.height);
-		context.font = `640 ${fontPixels}px Inter, ui-sans-serif, system-ui, sans-serif`;
+		context.font = `600 ${fontPixels}px ${getComputedStyle(document.documentElement).getPropertyValue('--font-ui')}`;
 		context.textAlign = 'center';
 		context.textBaseline = 'middle';
 		context.lineJoin = 'round';
@@ -130,4 +145,4 @@
 	}
 </script>
 
-<T is={Sprite} args={[material]} {position} {scale} {renderOrder} />
+<T is={Sprite} args={[material]} {position} {scale} {renderOrder} visible={fontsReady} />

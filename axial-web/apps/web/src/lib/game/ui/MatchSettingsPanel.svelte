@@ -1,12 +1,16 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import {
 		MAX_BOARD_DIMENSIONS,
 		MIN_BOARD_DIMENSIONS,
 		type BoardDimensions,
+		type GameSnapshot,
 		type MatchMode,
 		type WinCondition
 	} from '@axial/core';
 	import { Bot, Boxes, CircleDot, Shield, Sparkles, Trophy, Users, Wifi } from '@lucide/svelte';
+	import MatchLineProgress from './MatchLineProgress.svelte';
+	import type { PieceColors } from '../state/pieceAppearance';
 	import {
 		AI_DIFFICULTY_OPTIONS,
 		LINES_TO_WIN_OPTIONS,
@@ -17,6 +21,8 @@
 	} from '../state/gameController.svelte';
 
 	let {
+		game,
+		pieceColors,
 		playMode,
 		aiDifficulty,
 		matchMode,
@@ -25,6 +31,7 @@
 		aiThinking,
 		setupLocked,
 		playModeLocked,
+		onlineControls,
 		onPlayModeChange,
 		onAiDifficultyChange,
 		onMatchModeChange,
@@ -32,6 +39,8 @@
 		onWinLineLengthChange,
 		onLinesToWinChange
 	}: {
+		game: GameSnapshot;
+		pieceColors: PieceColors;
 		playMode: PlayMode;
 		aiDifficulty: AiDifficulty;
 		matchMode: MatchMode;
@@ -40,6 +49,7 @@
 		aiThinking: boolean;
 		setupLocked: boolean;
 		playModeLocked: boolean;
+		onlineControls: Snippet;
 		onPlayModeChange: (mode: PlayMode) => void;
 		onAiDifficultyChange: (difficulty: AiDifficulty) => void;
 		onMatchModeChange: (mode: MatchMode) => void;
@@ -107,8 +117,11 @@
 				<span>{rulesLabel}</span>
 				<small>{winLabel}</small>
 			</div>
-			<span class="locked-match-badge">Live</span>
+			<span class="locked-match-badge">{game.status.state === 'playing' ? 'Live' : 'Final'}</span>
 		</div>
+		{#if playMode === 'online'}
+			{@render onlineControls()}
+		{/if}
 	{:else}
 		<div
 			class="mode-switch play-mode-switch"
@@ -121,7 +134,7 @@
 				class:selected={playMode === 'local'}
 				aria-pressed={playMode === 'local'}
 				disabled={playModeLocked}
-				title={playModeLocked ? playModeLockTitle : 'Local mode'}
+				data-tooltip={playModeLocked ? playModeLockTitle : 'Local mode'}
 				onclick={() => choosePlayMode('local')}
 			>
 				<Users size={14} strokeWidth={2} />
@@ -133,7 +146,7 @@
 				class:thinking={aiThinking}
 				aria-pressed={playMode === 'ai'}
 				disabled={playModeLocked}
-				title={playModeLocked ? playModeLockTitle : 'AI mode'}
+				data-tooltip={playModeLocked ? playModeLockTitle : 'AI mode'}
 				onclick={() => choosePlayMode('ai')}
 			>
 				<Bot size={14} strokeWidth={2} />
@@ -145,7 +158,7 @@
 				aria-pressed={playMode === 'online'}
 				disabled={playModeLocked}
 				data-tour-target="online-mode"
-				title={playModeLocked ? playModeLockTitle : 'Online room'}
+				data-tooltip={playModeLocked ? playModeLockTitle : 'Online room'}
 				onclick={() => choosePlayMode('online')}
 			>
 				<Wifi size={14} strokeWidth={2} />
@@ -153,13 +166,17 @@
 			</button>
 		</div>
 
+		{#if playMode === 'online'}
+			{@render onlineControls()}
+		{/if}
+
 		<div class="mode-switch rules-switch" role="group" aria-label="Match rules">
 			<button
 				type="button"
 				class:selected={matchMode === 'classic'}
 				aria-pressed={matchMode === 'classic'}
 				disabled={setupLocked}
-				title={setupLocked ? 'Start a new match to change rules' : 'Classic rules'}
+				data-tooltip={setupLocked ? 'Start a new match to change rules' : 'Classic rules'}
 				onclick={() => onMatchModeChange('classic')}
 			>
 				<Sparkles size={14} strokeWidth={2} />
@@ -172,7 +189,7 @@
 				aria-pressed={matchMode === 'tactical'}
 				aria-label="Tactical mode — coming soon"
 				disabled
-				title="Tactical mode is coming soon"
+				data-tooltip="Tactical mode is coming soon"
 			>
 				<Shield size={14} strokeWidth={2} />
 				<span>Tactical</span>
@@ -192,7 +209,9 @@
 							type="button"
 							disabled={setupLocked}
 							aria-label={`Increase board ${dimension.label} dimension`}
-							title={setupLocked ? 'Start a new match to change board size' : 'Click to increase'}
+							data-tooltip={setupLocked
+								? 'Start a new match to change board size'
+								: 'Click to increase'}
 							onclick={() => incrementDimension(dimension.key)}
 						>
 							<strong>{dimension.value}</strong>
@@ -218,7 +237,7 @@
 								class:selected={winCondition.lineLength === option.value}
 								aria-pressed={winCondition.lineLength === option.value}
 								disabled={setupLocked}
-								title={setupLocked ? 'Start a new match to change win rules' : option.label}
+								data-tooltip={setupLocked ? 'Start a new match to change win rules' : option.label}
 								onclick={() => onWinLineLengthChange(option.value)}
 							>
 								<span>{option.shortLabel}</span>
@@ -238,7 +257,7 @@
 								class:selected={winCondition.linesToWin === option.value}
 								aria-pressed={winCondition.linesToWin === option.value}
 								disabled={setupLocked}
-								title={setupLocked ? 'Start a new match to change win rules' : option.label}
+								data-tooltip={setupLocked ? 'Start a new match to change win rules' : option.label}
 								onclick={() => onLinesToWinChange(option.value)}
 							>
 								<span>{option.shortLabel}</span>
@@ -261,7 +280,7 @@
 						class:selected={aiDifficulty === option.value}
 						aria-pressed={aiDifficulty === option.value}
 						disabled={setupLocked}
-						title={setupLocked ? 'Start a new match to change AI strength' : option.label}
+						data-tooltip={setupLocked ? 'Start a new match to change AI strength' : option.label}
 						onclick={() => onAiDifficultyChange(option.value)}
 					>
 						<span>{option.shortLabel}</span>
@@ -274,4 +293,9 @@
 			</p>
 		{/if}
 	{/if}
+	<MatchLineProgress
+		{game}
+		{pieceColors}
+		playerNames={playMode === 'ai' ? { 1: 'You', 2: 'AI' } : { 1: 'P1', 2: 'P2' }}
+	/>
 </section>

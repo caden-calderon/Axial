@@ -14,7 +14,11 @@ describe('piece appearance settings', () => {
 	it('parses supported piece shapes', () => {
 		expect(parsePieceShape('cube')).toBe('cube');
 		expect(parsePieceShape('orb')).toBe('orb');
-		expect(parsePieceShape('crystal')).toBe('crystal');
 		expect(parsePieceShape('swap')).toBeNull();
+		expect(parsePieceShape(null)).toBeNull();
+	});
+
+	it('restores retired Crystal preferences as Cube', () => {
+		expect(parsePieceShape('crystal')).toBe('cube');
 	});
 });

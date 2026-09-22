@@ -1,23 +1,30 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { prefersReducedMotion } from 'svelte/motion';
 	import { T, useTask } from '@threlte/core';
 	import { AdditiveBlending } from 'three';
 	import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 	import type { BoardDimensions, PlacedMove } from '@axial/core';
-	import { PIECE_DROP_DURATION_MAX_SECONDS, PIECE_DROP_DURATION_MIN_SECONDS } from '../animation';
-	import { CELL_SPACING, cellPosition, dropStartY, PIECE_SIZE, type Vec3 } from './geometry';
+	import { pieceDropDuration, samplePieceDrop } from '../animation';
+	import { CELL_SPACING, cellPosition, dropStartY, PIECE_SIZE } from './geometry';
 	import type { PieceColors, PieceShape } from '../state/pieceAppearance';
 
 	let {
 		move,
-		moveIndex,
+		animate = false,
+		delay = 0,
+		onLand,
+		onSettle,
 		pieceShape,
 		pieceColors,
 		highlighted = false,
 		dimensions
 	}: {
 		move: PlacedMove;
-		moveIndex: number;
+		animate?: boolean;
+		delay?: number;
+		onLand?: (move: PlacedMove) => void;
+		onSettle?: (move: PlacedMove) => void;
 		pieceShape: PieceShape;
 		pieceColors: PieceColors;
 		highlighted?: boolean;
@@ -26,15 +33,21 @@
 
 	const target = $derived(cellPosition(move.height, move.row, move.col, dimensions));
 	const dropStart = $derived(dropStartY(dimensions));
-	const dropDuration = $derived(createDropDuration(move, moveIndex));
+	const dropDuration = $derived(pieceDropDuration(dimensions, move.height));
 	const isBlocker = $derived(move.kind === 'blocker');
-	let y = $state(dropStartY(untrack(() => dimensions)));
-	let scale = $state(0.94);
-	let opacity = $state(0);
-	let fallGlow = $state(1);
-	let settled = $state(false);
+	const freshPlacement = untrack(() => animate);
+	let landingEmitted = !freshPlacement;
+	let settleEmitted = !freshPlacement;
+	const shouldAnimate = untrack(() => animate && !prefersReducedMotion.current);
+	let y = $state(shouldAnimate ? dropStartY(untrack(() => dimensions)) : untrack(() => target[1]));
+	let scale = $state<[number, number, number]>([1, 1, 1]);
+	let impact = $state(0);
+	let opacity = $state(shouldAnimate ? 0 : 1);
+	let fallGlow = $state(shouldAnimate ? 1 : 0);
+	let settled = $state(!shouldAnimate);
 	let highlightPhase = $state(0);
-	let elapsed = 0;
+	const startsAt = performance.now() / 1000 + untrack(() => delay);
+	let elapsed = -untrack(() => delay);
 
 	const color = $derived(
 		isBlocker ? '#5f726b' : move.player === 1 ? pieceColors.playerOne : pieceColors.playerTwo
@@ -50,83 +63,85 @@
 	const highlightScale = $derived(1.18 + highlightPulse * 0.16);
 	const highlightOpacity = $derived(opacity * (highlighted ? 0.16 + highlightPulse * 0.22 : 0));
 	const highlightLight = $derived(highlighted ? 0.58 + highlightPulse * 0.52 : 0);
-	const playerBands = $derived<{ position: Vec3; rotation: Vec3 }[]>(
-		move.player === 1
-			? [{ position: [0, 0, 0], rotation: [Math.PI / 2, 0, 0] }]
-			: [
-					{ position: [-PIECE_SIZE * 0.13, 0, 0], rotation: [0, 0, 0] },
-					{ position: [PIECE_SIZE * 0.13, 0, 0], rotation: [0, 0, 0] }
-				]
-	);
 
-	useTask((delta) => {
-		if (highlighted) {
-			highlightPhase += Math.min(delta, 0.05) * 3.4;
-		} else {
-			highlightPhase = 0;
+	$effect(() => {
+		if (!prefersReducedMotion.current) return;
+		if (!landingEmitted) {
+			landingEmitted = true;
+			onLand?.(move);
 		}
-
-		if (settled) return;
-
-		elapsed += Math.min(delta, 0.04);
-		const progress = Math.min(elapsed / dropDuration, 1);
-		const eased = easeOutQuart(progress);
-
-		y = target[1] + (dropStart - target[1]) * (1 - eased);
-		scale = 0.94 + easeOutQuart(Math.min(progress * 2.35, 1)) * 0.06;
-		opacity = easeOutQuart(clamp((progress - 0.02) / 0.3, 0, 1));
-		fallGlow = Math.pow(1 - progress, 1.35);
-
-		if (progress >= 1) {
-			y = target[1];
-			scale = 1;
-			opacity = 1;
-			fallGlow = 0;
-			settled = true;
+		y = target[1];
+		scale = [1, 1, 1];
+		opacity = 1;
+		fallGlow = 0;
+		impact = 0;
+		highlightPhase = 0;
+		settled = true;
+		if (!settleEmitted) {
+			settleEmitted = true;
+			onSettle?.(move);
 		}
 	});
 
-	function createDropDuration(move: PlacedMove, index: number): number {
-		const seed = (index + 1) * 37 + move.row * 101 + move.col * 211 + move.height * 17;
-		return randomRange(seed, 2, PIECE_DROP_DURATION_MIN_SECONDS, PIECE_DROP_DURATION_MAX_SECONDS);
-	}
+	useTask(
+		(delta) => {
+			if (highlighted) highlightPhase += Math.min(delta, 0.1) * 2.2;
+			if (settled) return;
 
-	function randomRange(seed: number, salt: number, min: number, max: number): number {
-		return min + hash01(seed + salt * 97.13) * (max - min);
-	}
-
-	function hash01(value: number): number {
-		return fract(Math.sin(value * 12.9898) * 43758.5453);
-	}
-
-	function fract(value: number): number {
-		return value - Math.floor(value);
-	}
-
-	function clamp(value: number, min: number, max: number): number {
-		return Math.max(min, Math.min(max, value));
-	}
-
-	function easeOutQuart(value: number): number {
-		return 1 - Math.pow(1 - value, 4);
-	}
+			elapsed = performance.now() / 1000 - startsAt;
+			if (!landingEmitted && elapsed >= dropDuration) {
+				landingEmitted = true;
+				onLand?.(move);
+			}
+			const sample = samplePieceDrop(elapsed, dropDuration);
+			y = target[1] + (dropStart - target[1]) * sample.remaining + sample.rebound * CELL_SPACING;
+			scale = [1 + sample.compression / 2, 1 - sample.compression, 1 + sample.compression / 2];
+			opacity = Math.max(0, Math.min(1, elapsed / 0.06));
+			fallGlow = sample.remaining;
+			impact = sample.impact;
+			settled = sample.settled;
+			if (settled && !settleEmitted) {
+				settleEmitted = true;
+				onSettle?.(move);
+			}
+		},
+		{ running: () => !settled || (highlighted && !prefersReducedMotion.current) }
+	);
 </script>
 
-<T.Group position={piecePosition} {scale}>
+<T.Group name={`piece-${move.row}-${move.col}-${move.height}`} position={piecePosition} {scale}>
 	{#if highlighted}
 		<T.PointLight color={glow} intensity={highlightLight} distance={2.3} decay={2} />
 	{/if}
 
-	<T.Mesh position={[0, PIECE_SIZE * 1.25, 0]}>
-		<T.CylinderGeometry args={[PIECE_SIZE * 0.12, PIECE_SIZE * 0.2, PIECE_SIZE * 1.9, 18]} />
-		<T.MeshBasicMaterial
-			color={glow}
-			transparent
-			opacity={opacity * fallGlow * 0.18}
-			depthWrite={false}
-			blending={AdditiveBlending}
-		/>
-	</T.Mesh>
+	{#if !settled}
+		<T.Mesh position={[0, PIECE_SIZE * 1.25, 0]}>
+			<T.CylinderGeometry args={[PIECE_SIZE * 0.12, PIECE_SIZE * 0.2, PIECE_SIZE * 1.9, 18]} />
+			<T.MeshBasicMaterial
+				color={glow}
+				transparent
+				opacity={opacity * fallGlow * 0.18}
+				depthWrite={false}
+				blending={AdditiveBlending}
+			/>
+		</T.Mesh>
+	{/if}
+	{#if impact > 0.001}
+		<T.Mesh
+			position={[0, -PIECE_SIZE * 0.51, 0]}
+			rotation.x={-Math.PI / 2}
+			scale={1 + (1 - impact) * 0.8}
+		>
+			<T.RingGeometry args={[PIECE_SIZE * 0.48, PIECE_SIZE * 0.57, 32]} />
+			<T.MeshBasicMaterial
+				color={glow}
+				transparent
+				opacity={impact * 0.42}
+				depthWrite={false}
+				blending={AdditiveBlending}
+			/>
+		</T.Mesh>
+	{/if}
 
 	{#if highlighted}
 		<T.Mesh scale={highlightScale}>
@@ -135,10 +150,8 @@
 					is={RoundedBoxGeometry}
 					args={[PIECE_SIZE * 1.02, PIECE_SIZE * 1.02, PIECE_SIZE * 1.02, 4, 0.085]}
 				/>
-			{:else if renderShape === 'orb'}
-				<T.SphereGeometry args={[PIECE_SIZE * 0.61, 32, 18]} />
 			{:else}
-				<T.OctahedronGeometry args={[PIECE_SIZE * 0.83, 1]} />
+				<T.SphereGeometry args={[PIECE_SIZE * 0.61, 32, 18]} />
 			{/if}
 			<T.MeshBasicMaterial
 				color={glow}
@@ -153,10 +166,8 @@
 	<T.Mesh>
 		{#if renderShape === 'cube'}
 			<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 4, 0.07]} />
-		{:else if renderShape === 'orb'}
-			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 36, 22]} />
 		{:else}
-			<T.OctahedronGeometry args={[PIECE_SIZE * 0.78, 1]} />
+			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 36, 22]} />
 		{/if}
 		<T.MeshPhysicalMaterial
 			{color}
@@ -178,51 +189,14 @@
 	<T.Mesh scale={0.58}>
 		{#if renderShape === 'cube'}
 			<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 2, 0.04]} />
-		{:else if renderShape === 'orb'}
-			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 24, 16]} />
 		{:else}
-			<T.OctahedronGeometry args={[PIECE_SIZE * 0.8, 0]} />
+			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 24, 16]} />
 		{/if}
 		<T.MeshBasicMaterial
 			color={glow}
 			transparent
 			opacity={opacity * glowOpacity}
 			depthWrite={false}
-			blending={AdditiveBlending}
-		/>
-	</T.Mesh>
-
-	{#if !isBlocker}
-		{#each playerBands as band, bandIndex (`${move.player}-${bandIndex}`)}
-			<T.Mesh position={band.position} rotation={band.rotation}>
-				<T.TorusGeometry args={[PIECE_SIZE * 0.51, PIECE_SIZE * 0.024, 8, 36]} />
-				<T.MeshBasicMaterial
-					color="#ffffff"
-					transparent
-					opacity={opacity * 0.46}
-					depthWrite={false}
-				/>
-			</T.Mesh>
-		{/each}
-	{/if}
-
-	<T.Mesh>
-		{#if renderShape === 'cube'}
-			<T
-				is={RoundedBoxGeometry}
-				args={[PIECE_SIZE * 1.012, PIECE_SIZE * 1.012, PIECE_SIZE * 1.012, 4, 0.075]}
-			/>
-		{:else if renderShape === 'orb'}
-			<T.SphereGeometry args={[PIECE_SIZE * 0.59, 28, 16]} />
-		{:else}
-			<T.OctahedronGeometry args={[PIECE_SIZE * 0.79, 1]} />
-		{/if}
-		<T.MeshBasicMaterial
-			color="#ffffff"
-			transparent
-			opacity={opacity * 0.12}
-			depthWrite={false}
-			wireframe
 			blending={AdditiveBlending}
 		/>
 	</T.Mesh>

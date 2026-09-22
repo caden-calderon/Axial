@@ -53,24 +53,32 @@ describe('game controller AI timing', () => {
 		expect(twoLines.lookaheadNodeLimit).toBeGreaterThan(standard.lookaheadNodeLimit!);
 	});
 
-	it('falls back to a cheap legal move when the AI worker fails', async () => {
+	it('reports worker failure instead of silently choosing a random move', async () => {
 		const requestMove = vi.fn().mockRejectedValue(new Error('Worker unavailable'));
 		const client = {
 			requestMove,
 			cancelPending() {},
 			terminate() {}
 		} satisfies ClassicAiClient;
-		const random = vi.spyOn(Math, 'random').mockReturnValue(0);
-
-		try {
-			const move = await chooseAiMove(createGame(), 'classic', 1, 'hard', () => client);
-
-			expect(requestMove).toHaveBeenCalledOnce();
-			expect(move).toEqual({ row: 0, col: 0 });
-		} finally {
-			random.mockRestore();
-		}
+		await expect(chooseAiMove(createGame(), 'classic', 1, 'hard', () => client)).rejects.toThrow(
+			'Worker unavailable'
+		);
+		expect(requestMove).toHaveBeenCalledOnce();
 	});
+
+	it.each([null, { move: { row: 99, col: 99 } }])(
+		'rejects an empty or illegal worker move',
+		async (result) => {
+			const client = {
+				requestMove: vi.fn().mockResolvedValue(result),
+				cancelPending() {},
+				terminate() {}
+			} satisfies ClassicAiClient;
+			await expect(chooseAiMove(createGame(), 'classic', 1, 'hard', () => client)).rejects.toThrow(
+				'no legal move'
+			);
+		}
+	);
 });
 
 describe('game controller AI decision history', () => {
@@ -127,18 +135,18 @@ describe('game controller appearance lock', () => {
 		expect(controller.pieceShape).toBe('orb');
 		expect(controller.pieceColors.playerOne).toBe('#112233');
 
-		controller.setPieceShape('crystal');
+		controller.setPieceShape('cube');
 		controller.setPieceColor(1, '#445566');
 
 		expect(controller.pieceShape).toBe('orb');
 		expect(controller.pieceColors.playerOne).toBe('#112233');
 
 		controller.resetGame();
-		controller.setPieceShape('crystal');
+		controller.setPieceShape('cube');
 		controller.setPieceColor(1, '#445566');
 
 		expect(controller.appearanceLocked).toBe(false);
-		expect(controller.pieceShape).toBe('crystal');
+		expect(controller.pieceShape).toBe('cube');
 		expect(controller.pieceColors.playerOne).toBe('#445566');
 	});
 

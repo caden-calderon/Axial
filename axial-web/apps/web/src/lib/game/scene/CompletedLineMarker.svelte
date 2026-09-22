@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { prefersReducedMotion } from 'svelte/motion';
 	import { T, useTask } from '@threlte/core';
 	import { AdditiveBlending, Quaternion, Vector3 } from 'three';
 	import { cellFromIndex, type BoardDimensions, type CompletedLine } from '@axial/core';
@@ -11,10 +13,16 @@
 
 	let {
 		line,
+		animate = false,
+		delay = 0,
+		onComplete,
 		pieceColors,
 		dimensions
 	}: {
 		line: CompletedLine;
+		animate?: boolean;
+		delay?: number;
+		onComplete?: () => void;
 		pieceColors: PieceColors;
 		dimensions: BoardDimensions;
 	} = $props();
@@ -27,28 +35,52 @@
 	const length = $derived(Math.max(0.001, vectorLength(delta)));
 	const direction = $derived(normalize(delta));
 	const quaternion = $derived(rotationFromY(direction));
-	const idlePhaseOffset = $derived(hashPhase(line.id));
+	const freshLine = untrack(() => animate);
+	let completionEmitted = !freshLine;
+	const shouldAnimate = untrack(() => animate && !prefersReducedMotion.current);
 
-	let elapsed = $state(0);
+	const startsAt = performance.now() / 1000 + untrack(() => delay);
+	let elapsed = $state(
+		shouldAnimate
+			? -untrack(() => delay)
+			: COMPLETED_LINE_DRAW_DURATION_SECONDS + COMPLETED_LINE_SETTLE_DURATION_SECONDS
+	);
 	const drawDuration = COMPLETED_LINE_DRAW_DURATION_SECONDS;
 	const settleDuration = COMPLETED_LINE_SETTLE_DURATION_SECONDS;
-	const progress = $derived(Math.min(elapsed / drawDuration, 1));
+	const progress = $derived(Math.max(0, Math.min(elapsed / drawDuration, 1)));
 	const easedProgress = $derived(easeInOutCubic(progress));
 	const settleProgress = $derived(
 		Math.min(Math.max((elapsed - drawDuration) / settleDuration, 0), 1)
 	);
-	const idlePulse = $derived(0.62 + Math.sin(elapsed * 2.1 + idlePhaseOffset) * 0.14);
+	const visible = $derived(elapsed >= 0);
 	const finalPulse = $derived(Math.sin(settleProgress * Math.PI) * 0.48);
 	const lineScale = $derived(Math.max(0.001, easedProgress));
 	const linePosition = $derived(pointAlong(start, direction, (length * lineScale) / 2));
 	const frontPosition = $derived(pointAlong(start, direction, length * easedProgress));
-	const haloOpacity = $derived(0.12 + finalPulse * 0.16 + idlePulse * 0.035);
+	const haloOpacity = $derived(0.14 + finalPulse * 0.16);
 	const coreOpacity = $derived(0.5 + finalPulse * 0.14);
-	const frontOpacity = $derived(progress < 1 ? 0.52 : finalPulse * 0.28);
+	const frontOpacity = $derived(visible && progress < 1 ? 0.52 : finalPulse * 0.28);
 
-	useTask((delta) => {
-		elapsed += Math.min(delta, 0.05);
+	$effect(() => {
+		if (prefersReducedMotion.current) {
+			elapsed = drawDuration + settleDuration;
+			if (!completionEmitted) {
+				completionEmitted = true;
+				onComplete?.();
+			}
+		}
 	});
+
+	useTask(
+		() => {
+			elapsed = Math.min(drawDuration + settleDuration, performance.now() / 1000 - startsAt);
+			if (!completionEmitted && elapsed >= drawDuration + settleDuration) {
+				completionEmitted = true;
+				onComplete?.();
+			}
+		},
+		{ running: () => !prefersReducedMotion.current && elapsed < drawDuration + settleDuration }
+	);
 
 	function cellCenter(cellIndex: number): Vec3 {
 		const cell = cellFromIndex(cellIndex, dimensions);
@@ -100,22 +132,12 @@
 		return [quaternion.x, quaternion.y, quaternion.z, quaternion.w];
 	}
 
-	function hashPhase(value: string): number {
-		let hash = 2166136261;
-		for (let index = 0; index < value.length; index += 1) {
-			hash ^= value.charCodeAt(index);
-			hash = Math.imul(hash, 16777619);
-		}
-
-		return ((hash >>> 0) / 4294967296) * Math.PI * 2;
-	}
-
 	function easeInOutCubic(value: number): number {
 		return value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
 	}
 </script>
 
-<T.Group>
+<T.Group name={`completed-line-${line.id}`} {visible}>
 	<T.Mesh position={linePosition} {quaternion} scale={[1, lineScale, 1]} renderOrder={12}>
 		<T.CylinderGeometry args={[PIECE_SIZE * 0.082, PIECE_SIZE * 0.082, length, 18]} />
 		<T.MeshBasicMaterial
@@ -147,8 +169,8 @@
 			intensity={frontOpacity * 0.85}
 			distance={1.45}
 		/>
-		<T.Mesh position={frontPosition} renderOrder={13}>
-			<T.SphereGeometry args={[PIECE_SIZE * 0.18 + finalPulse * 0.03, 20, 12]} />
+		<T.Mesh position={frontPosition} renderOrder={13} scale={PIECE_SIZE * 0.18 + finalPulse * 0.03}>
+			<T.SphereGeometry args={[1, 20, 12]} />
 			<T.MeshBasicMaterial
 				{color}
 				transparent

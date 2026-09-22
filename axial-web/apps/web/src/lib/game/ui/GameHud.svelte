@@ -90,12 +90,14 @@
 	.top-center {
 		position: absolute;
 		top: 1rem;
-		left: 50%;
+		/* Reserve the panel, its outer inset, a gap, and half the status width. */
+		left: min(50%, calc(100% - var(--control-panel-width) - 7.65rem));
 		z-index: 3;
 		transform: translateX(-50%);
 	}
 
 	.brand-lockup {
+		font-family: var(--font-brand);
 		display: grid;
 		justify-items: start;
 		gap: 0.42rem;
@@ -143,7 +145,7 @@
 		backdrop-filter: blur(18px) saturate(1.1);
 		box-shadow: 0 18px 48px var(--shadow);
 		font-size: 0.98rem;
-		font-weight: 820;
+		font-weight: 700;
 		text-align: center;
 		white-space: nowrap;
 	}
