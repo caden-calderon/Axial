@@ -26,16 +26,18 @@
 		maxPolarAngle?: number;
 	} = $props();
 
-	const { camera, dom } = useThrelte();
-	let controls: OrbitControls | null = null;
+	const { camera, dom, invalidate } = useThrelte();
+	let controls = $state.raw<OrbitControls | null>(null);
 
 	onMount(() => {
 		const nextControls = new OrbitControls(camera.current, dom);
+		nextControls.addEventListener('change', invalidate);
 		controls = nextControls;
 		applyControlSettings(nextControls);
 		nextControls.update();
 
 		return () => {
+			nextControls.removeEventListener('change', invalidate);
 			nextControls.dispose();
 			controls = null;
 		};
@@ -48,10 +50,13 @@
 		controls.update();
 	});
 
-	useTask(() => {
-		if (!controls?.enabled) return;
-		controls.update();
-	});
+	useTask(
+		() => {
+			if (!controls?.enabled) return;
+			controls.update();
+		},
+		{ autoInvalidate: false }
+	);
 
 	function applyControlSettings(nextControls: OrbitControls): void {
 		nextControls.enableDamping = enableDamping;

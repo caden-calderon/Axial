@@ -5,7 +5,6 @@ export type SceneViewport = {
 	width: number;
 	height: number;
 	coarsePointer: boolean;
-	controlsExpanded: boolean;
 };
 
 export type CameraFit = {
@@ -22,10 +21,11 @@ export type CameraFit = {
 const DESKTOP_CAMERA: Vec3 = [5.8, 5.7, 9.4];
 const PORTRAIT_CAMERA: Vec3 = [7.7, 7.3, 14.8];
 const LANDSCAPE_CAMERA: Vec3 = [6.35, 6.15, 10.7];
+const ORIGIN_TARGET: Vec3 = [0, 0, 0];
+const PORTRAIT_TARGET: Vec3 = [0, -0.12, 0];
 
 /**
- * Resolves scene framing from the usable UI layout rather than applying one
- * coarse-pointer preset to every phone orientation.
+ * The settings panel overlays the playfield; opening it must not reframe the board.
  */
 export function resolveCameraFit(viewport: SceneViewport, dimensions: BoardDimensions): CameraFit {
 	const width = Math.max(320, viewport.width);
@@ -42,7 +42,7 @@ export function resolveCameraFit(viewport: SceneViewport, dimensions: BoardDimen
 			compact,
 			portrait,
 			position: PORTRAIT_CAMERA,
-			target: [0, -0.12, 0],
+			target: PORTRAIT_TARGET,
 			fov: 47,
 			boardScale: narrowScale * dimensionScale,
 			minDistance: 7.2,
@@ -51,30 +51,25 @@ export function resolveCameraFit(viewport: SceneViewport, dimensions: BoardDimen
 	}
 
 	if (compact) {
-		const railScale = viewport.controlsExpanded ? 0.88 : 1;
-
 		return {
 			compact,
 			portrait,
 			position: LANDSCAPE_CAMERA,
-			target: [viewport.controlsExpanded ? -0.48 : 0, 0, 0],
+			target: ORIGIN_TARGET,
 			fov: 43,
-			boardScale: 0.9 * railScale * dimensionScale,
+			boardScale: 0.9 * dimensionScale,
 			minDistance: 6.6,
 			maxDistance: 18
 		};
 	}
 
-	const constrainedDesktop = width < 1200 || height < 820;
-	const railScale = viewport.controlsExpanded ? (constrainedDesktop ? 0.88 : 0.94) : 1;
-
 	return {
 		compact,
 		portrait,
 		position: DESKTOP_CAMERA,
-		target: [viewport.controlsExpanded ? -0.34 : 0, 0, 0],
+		target: ORIGIN_TARGET,
 		fov: 42,
-		boardScale: 0.84 * railScale * dimensionScale,
+		boardScale: 0.84 * dimensionScale,
 		minDistance: 7.2,
 		maxDistance: 15.5
 	};

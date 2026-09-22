@@ -21,6 +21,8 @@ export type MatchPlayerConfig = Record<Player, AiPlayer>;
 
 export type MatchResult = {
   winner: Player | 0;
+  outcome: "win" | "draw" | "truncated" | "illegal-move";
+  terminal: boolean;
   moves: Move[];
   finalGame: GameSnapshot;
   illegalMoveBy: Player | null;
@@ -31,6 +33,7 @@ export type EvaluationResult = {
   playerOneWins: number;
   playerTwoWins: number;
   draws: number;
+  truncations: number;
   illegalMoves: number;
   results: MatchResult[];
 };
@@ -62,6 +65,8 @@ export function playAiMatch({
     if (!move) {
       return {
         winner: player === 1 ? 2 : 1,
+        outcome: "illegal-move",
+        terminal: false,
         moves,
         finalGame: game,
         illegalMoveBy: player,
@@ -73,6 +78,8 @@ export function playAiMatch({
     } catch {
       return {
         winner: player === 1 ? 2 : 1,
+        outcome: "illegal-move",
+        terminal: false,
         moves,
         finalGame: game,
         illegalMoveBy: player,
@@ -82,13 +89,18 @@ export function playAiMatch({
     moves.push(move);
   }
 
+  const terminal = game.status.state !== "playing";
+  const outcome =
+    game.status.state === "won"
+      ? "win"
+      : game.status.state === "draw"
+        ? "draw"
+        : "truncated";
+
   return {
-    winner:
-      game.status.state === "won"
-        ? game.status.winner
-        : game.status.state === "draw"
-          ? 0
-          : 0,
+    winner: game.status.state === "won" ? game.status.winner : 0,
+    outcome,
+    terminal,
     moves,
     finalGame: game,
     illegalMoveBy: null,
@@ -131,7 +143,9 @@ export function runEvaluation({
     games,
     playerOneWins: results.filter((result) => result.winner === 1).length,
     playerTwoWins: results.filter((result) => result.winner === 2).length,
-    draws: results.filter((result) => result.winner === 0).length,
+    draws: results.filter((result) => result.outcome === "draw").length,
+    truncations: results.filter((result) => result.outcome === "truncated")
+      .length,
     illegalMoves: results.filter((result) => result.illegalMoveBy !== null)
       .length,
     results,

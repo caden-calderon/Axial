@@ -21,9 +21,7 @@
 		place-items: center;
 		background: #070a0d;
 		color: #ecf8f3;
-		font:
-			800 0.95rem Inter,
-			ui-sans-serif,
-			system-ui;
+		font-size: 0.95rem;
+		font-weight: 700;
 	}
 </style>

@@ -19,9 +19,12 @@ worker.onmessage = ({ data }: MessageEvent<ClassicAiWorkerRequest>) => {
 			maxDepth: result?.maxDepth ?? 0,
 			rootChildren: result?.rootChildren ?? 0,
 			lookaheadDepth: result?.lookaheadDepth ?? 0,
+			lookaheadCompletedDepth: result?.lookaheadCompletedDepth ?? 0,
+			lookaheadPartialDepth: result?.lookaheadPartialDepth ?? 0,
 			lookaheadComplete: result?.lookaheadComplete ?? true,
 			stopReason: result?.stopReason ?? 'simulations',
-			stats: result?.stats ?? []
+			stats: result?.stats ?? [],
+			telemetry: result?.telemetry
 		};
 		worker.postMessage(response);
 	} catch (error) {

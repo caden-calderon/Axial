@@ -1,14 +1,18 @@
 @import 'tailwindcss';
 
+@font-face {
+	font-family: 'Axial UI';
+	src: url('/fonts/InterVariable.woff2') format('woff2');
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: swap;
+}
+
 :root {
-	font-family:
-		Inter,
-		ui-sans-serif,
-		system-ui,
-		-apple-system,
-		BlinkMacSystemFont,
-		'Segoe UI',
-		sans-serif;
+	--font-ui: 'Axial UI', ui-sans-serif, system-ui, sans-serif;
+	--font-brand:
+		Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+	font-family: var(--font-ui);
 	color: #edf7f2;
 	background: #070a0d;
 	font-synthesis: none;
@@ -41,7 +45,10 @@ body {
 	overflow: hidden;
 }
 
-button {
+button,
+input,
+select,
+textarea {
 	font: inherit;
 }
 
@@ -147,7 +154,7 @@ button {
 	);
 	flex-direction: column;
 	width: var(--control-panel-width);
-	padding: 0.42rem;
+	padding: calc(0.42rem - 2px) 0.42rem;
 	border: 1px solid var(--border);
 	border-radius: 1.85rem;
 	background: var(--panel);
@@ -161,7 +168,22 @@ button {
 
 .control-panel.collapsed {
 	width: var(--control-panel-width);
-	padding-block: 0.42rem;
+	padding-block: calc(0.42rem - 2px);
+}
+
+.panel-scroll {
+	display: flex;
+	min-height: 0;
+	flex-direction: column;
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding-block: 2px;
+	scrollbar-width: none;
+}
+
+.control-panel.collapsed .panel-scroll {
+	overflow-y: hidden;
 }
 
 .panel-toolbar {
@@ -171,6 +193,10 @@ button {
 	align-items: center;
 	justify-content: center;
 	gap: 0.28rem;
+}
+
+.panel-toolbar .icon-button:focus-visible {
+	outline-offset: -2px;
 }
 
 .panel-toolbar.pieces-mode {
@@ -208,7 +234,7 @@ button {
 	color: var(--text);
 	cursor: pointer;
 	font-size: 0.66rem;
-	font-weight: 800;
+	font-weight: 700;
 	transition:
 		background 160ms ease,
 		border-color 160ms ease,
@@ -238,7 +264,7 @@ button {
 	border-radius: 999px;
 	background: color-mix(in oklab, var(--accent) 22%, var(--surface));
 	font-size: 0.62rem;
-	font-weight: 850;
+	font-weight: 700;
 	line-height: 1;
 }
 
@@ -252,7 +278,7 @@ button {
 
 .panel-body-shell {
 	display: grid;
-	flex: 1 1 auto;
+	flex: 0 0 auto;
 	grid-template-rows: 1fr;
 	min-height: 0;
 	overflow: hidden;
@@ -273,20 +299,11 @@ button {
 
 .panel-body-clip {
 	min-height: 0;
-	overflow-y: auto;
-	scrollbar-color: color-mix(in oklab, var(--accent) 36%, transparent) transparent;
-	scrollbar-width: thin;
-	overscroll-behavior: contain;
+	overflow: hidden;
 }
 
-.panel-body-clip::-webkit-scrollbar {
-	width: 0.34rem;
-	background: transparent;
-}
-
-.panel-body-clip::-webkit-scrollbar-thumb {
-	border-radius: 999px;
-	background: color-mix(in oklab, var(--accent) 36%, transparent);
+.panel-scroll::-webkit-scrollbar {
+	display: none;
 }
 
 .collapse-button svg {
@@ -325,7 +342,7 @@ button {
 .record-grid span {
 	color: var(--muted);
 	font-size: 0.66rem;
-	font-weight: 760;
+	font-weight: 700;
 	text-transform: uppercase;
 }
 
@@ -335,7 +352,7 @@ button {
 	overflow: hidden;
 	color: var(--text);
 	font-size: 0.86rem;
-	font-weight: 820;
+	font-weight: 700;
 	letter-spacing: 0;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -345,7 +362,7 @@ button {
 	flex: 0 0 auto;
 	color: var(--muted);
 	font-size: 0.68rem;
-	font-weight: 760;
+	font-weight: 700;
 	text-transform: uppercase;
 }
 
@@ -354,6 +371,30 @@ button {
 	gap: 0.48rem;
 	padding-top: 0.56rem;
 	border-top: 1px solid color-mix(in oklab, var(--text) 10%, transparent);
+}
+
+.ai-recovery {
+	display: grid;
+	gap: 0.6rem;
+	padding: 0.7rem;
+	border-left: 2px solid var(--accent);
+	color: var(--muted);
+	font-size: 0.75rem;
+}
+
+.ai-recovery button {
+	justify-self: start;
+	padding: 0.5rem 0.7rem;
+	border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
+	border-radius: 0.5rem;
+	background: color-mix(in oklab, var(--accent) 12%, var(--surface));
+	color: var(--text);
+	cursor: pointer;
+}
+
+.ai-recovery button:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
 }
 
 .panel-quick-actions {
@@ -376,7 +417,7 @@ button {
 	color: var(--muted);
 	cursor: pointer;
 	font-size: 0.68rem;
-	font-weight: 780;
+	font-weight: 700;
 	transition:
 		transform var(--motion-fast) ease,
 		border-color var(--motion-fast) ease,
@@ -439,14 +480,14 @@ button {
 
 .locked-match-summary strong {
 	font-size: 0.76rem;
-	font-weight: 820;
+	font-weight: 700;
 }
 
 .locked-match-summary span,
 .locked-match-summary small {
 	color: var(--muted);
 	font-size: 0.64rem;
-	font-weight: 680;
+	font-weight: 600;
 }
 
 .locked-match-summary .locked-match-badge {
@@ -456,7 +497,7 @@ button {
 	background: color-mix(in oklab, var(--accent) 14%, var(--surface));
 	color: var(--text);
 	font-size: 0.58rem;
-	font-weight: 840;
+	font-weight: 700;
 	text-transform: uppercase;
 }
 
@@ -492,7 +533,7 @@ button {
 	background: color-mix(in oklab, var(--surface) 34%, transparent);
 	color: var(--muted);
 	font-size: 0.68rem;
-	font-weight: 660;
+	font-weight: 600;
 	line-height: 1.4;
 }
 
@@ -535,7 +576,7 @@ button {
 	background: transparent;
 	color: var(--muted);
 	cursor: pointer;
-	font-weight: 780;
+	font-weight: 700;
 	letter-spacing: 0;
 	transition:
 		transform 160ms ease,
@@ -571,9 +612,12 @@ button {
 }
 
 .mode-switch button.coming-soon-option {
-	position: relative;
-	justify-content: flex-start;
-	padding-inline: 0.54rem;
+	display: grid;
+	grid-template-columns: auto auto;
+	align-content: center;
+	justify-content: center;
+	gap: 0.14rem 0.28rem;
+	padding: 0.25rem 0.4rem;
 	opacity: 1;
 }
 
@@ -583,14 +627,15 @@ button {
 }
 
 .coming-soon-option small {
-	margin-left: auto;
+	grid-column: 1 / -1;
+	justify-self: center;
 	padding: 0.18rem 0.32rem;
 	border: 1px solid color-mix(in oklab, var(--accent) 24%, transparent);
 	border-radius: 999px;
 	background: color-mix(in oklab, var(--accent) 12%, var(--surface));
 	color: color-mix(in oklab, var(--accent) 62%, var(--text));
 	font-size: 0.52rem;
-	font-weight: 820;
+	font-weight: 700;
 	line-height: 1;
 	white-space: nowrap;
 }
@@ -628,7 +673,7 @@ button {
 	gap: 0.28rem;
 	color: var(--muted);
 	font-size: 0.64rem;
-	font-weight: 790;
+	font-weight: 700;
 	text-transform: uppercase;
 }
 
@@ -680,21 +725,21 @@ button {
 .dimension-buttons strong {
 	margin-top: 0.16rem;
 	font-size: 0.84rem;
-	font-weight: 850;
+	font-weight: 700;
 	line-height: 0.82;
 }
 
 .dimension-buttons small {
 	color: var(--muted);
 	font-size: 0.5rem;
-	font-weight: 780;
+	font-weight: 700;
 	line-height: 1;
 }
 
 .dimension-separator {
 	color: var(--muted);
 	font-size: 0.68rem;
-	font-weight: 780;
+	font-weight: 700;
 }
 
 .rule-customizer {
@@ -721,7 +766,7 @@ button {
 	gap: 0.24rem;
 	color: var(--muted);
 	font-size: 0.62rem;
-	font-weight: 790;
+	font-weight: 700;
 	text-transform: uppercase;
 }
 
@@ -790,7 +835,7 @@ button {
 	overflow: hidden;
 	color: var(--text);
 	font-size: 0.78rem;
-	font-weight: 820;
+	font-weight: 700;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
@@ -839,7 +884,7 @@ button {
 .piece-info-list strong {
 	overflow: hidden;
 	font-size: 0.78rem;
-	font-weight: 840;
+	font-weight: 700;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
@@ -847,7 +892,7 @@ button {
 .piece-info-list small {
 	color: var(--muted);
 	font-size: 0.66rem;
-	font-weight: 650;
+	font-weight: 600;
 	line-height: 1.22;
 }
 
@@ -869,7 +914,7 @@ button {
 	height: 1.42rem;
 	font-size: 0.72rem;
 	font-style: normal;
-	font-weight: 860;
+	font-weight: 700;
 }
 
 .appearance-control {
@@ -896,7 +941,7 @@ button {
 	color: var(--text);
 	cursor: pointer;
 	font-size: 0.7rem;
-	font-weight: 800;
+	font-weight: 700;
 	box-shadow:
 		inset 0 1px 0 color-mix(in oklab, #fff 12%, transparent),
 		0 0 18px color-mix(in oklab, var(--picked-color) 10%, transparent);
@@ -935,22 +980,22 @@ button {
 .locked-piece-title strong {
 	color: var(--text);
 	font-size: 0.72rem;
-	font-weight: 820;
+	font-weight: 700;
 }
 
 .locked-piece-title small {
 	color: var(--muted);
 	font-size: 0.6rem;
-	font-weight: 660;
+	font-weight: 600;
 }
 
-.locked-piece-bands {
+.locked-piece-colors {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 0.28rem;
 }
 
-.locked-piece-bands span {
+.locked-piece-colors span {
 	display: inline-flex;
 	min-width: 0;
 	align-items: center;
@@ -961,10 +1006,10 @@ button {
 	border-radius: 999px;
 	color: var(--muted);
 	font-size: 0.59rem;
-	font-weight: 780;
+	font-weight: 700;
 }
 
-.locked-piece-bands i {
+.locked-piece-colors i {
 	width: 0.5rem;
 	height: 0.5rem;
 	border-radius: 999px;
@@ -973,7 +1018,7 @@ button {
 }
 
 .shape-switch {
-	grid-template-columns: repeat(3, minmax(0, 1fr));
+	grid-template-columns: repeat(2, minmax(0, 1fr));
 	border-radius: 0.95rem;
 }
 
@@ -1000,7 +1045,7 @@ button {
 	background: color-mix(in oklab, #e5bf68 9%, var(--surface));
 	color: color-mix(in oklab, #e5bf68 72%, var(--text));
 	font-size: 0.64rem;
-	font-weight: 680;
+	font-weight: 600;
 	line-height: 1.35;
 }
 
@@ -1021,7 +1066,7 @@ button {
 	color: var(--text);
 	cursor: pointer;
 	font-size: 0.68rem;
-	font-weight: 780;
+	font-weight: 700;
 	box-shadow:
 		inset 0 1px 0 color-mix(in oklab, #fff 12%, transparent),
 		0 0 18px color-mix(in oklab, var(--piece-color) 8%, transparent);
@@ -1092,7 +1137,7 @@ button {
 	gap: 0.75rem;
 	color: var(--text);
 	font-size: 0.78rem;
-	font-weight: 720;
+	font-weight: 600;
 	cursor: pointer;
 }
 
@@ -1176,7 +1221,7 @@ button {
 	margin: 0.08rem 0 0;
 	color: var(--solar);
 	font-size: 0.78rem;
-	font-weight: 650;
+	font-weight: 600;
 }
 
 .online-section {
@@ -1193,7 +1238,7 @@ button {
 	overflow: hidden;
 	color: color-mix(in oklab, var(--muted) 88%, var(--text));
 	font-size: 0.6rem;
-	font-weight: 780;
+	font-weight: 700;
 	text-overflow: ellipsis;
 	text-transform: uppercase;
 	white-space: nowrap;
@@ -1234,14 +1279,14 @@ button {
 .online-field span {
 	color: var(--muted);
 	font-size: 0.62rem;
-	font-weight: 790;
+	font-weight: 700;
 	text-transform: uppercase;
 }
 
 .online-code-row strong {
 	color: var(--text);
 	font-size: 1rem;
-	font-weight: 860;
+	font-weight: 700;
 	line-height: 1.05;
 	white-space: normal;
 	word-break: keep-all;
@@ -1274,7 +1319,7 @@ button {
 	color: var(--text);
 	cursor: pointer;
 	font-size: 0.68rem;
-	font-weight: 790;
+	font-weight: 700;
 	transition:
 		transform 160ms ease,
 		background 160ms ease,
@@ -1331,7 +1376,7 @@ button {
 .qr-card span {
 	color: #10231b;
 	font-size: 0.68rem;
-	font-weight: 820;
+	font-weight: 700;
 }
 
 .online-players {
@@ -1365,14 +1410,14 @@ button {
 	background: color-mix(in oklab, var(--accent) 54%, var(--text));
 	color: var(--field);
 	font-size: 0.62rem;
-	font-weight: 900;
+	font-weight: 700;
 }
 
 .online-player strong {
 	overflow: hidden;
 	color: var(--text);
 	font-size: 0.76rem;
-	font-weight: 820;
+	font-weight: 700;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
@@ -1380,7 +1425,7 @@ button {
 .online-player small {
 	color: var(--muted);
 	font-size: 0.62rem;
-	font-weight: 780;
+	font-weight: 700;
 }
 
 .online-field {
@@ -1398,7 +1443,7 @@ button {
 	color: var(--text);
 	font: inherit;
 	font-size: 0.76rem;
-	font-weight: 720;
+	font-weight: 600;
 	outline: none;
 	padding: 0 0.62rem;
 }
@@ -1594,8 +1639,35 @@ button {
 }
 
 @media (max-width: 720px) and (orientation: portrait) {
+	.control-panel {
+		transition:
+			width 240ms cubic-bezier(0.22, 1, 0.36, 1),
+			height 280ms cubic-bezier(0.22, 1, 0.36, 1),
+			top 240ms ease,
+			right 240ms ease,
+			padding 240ms ease,
+			border-radius 240ms ease,
+			background 220ms ease,
+			box-shadow 220ms ease;
+	}
+
+	.control-panel.collapsed .panel-scroll {
+		padding-block: 0;
+	}
+
+	.panel-body-shell {
+		/* Keep text and controls laid out while the sheet reveals them. */
+		width: calc(
+			100vw - max(0.5rem, env(safe-area-inset-left)) - max(0.5rem, env(safe-area-inset-right)) - 2px
+		);
+	}
+
+	.control-panel.collapsed .icon-button:hover {
+		transform: none;
+	}
+
 	.control-panel:not(.collapsed) {
-		inset: 0 0 auto;
+		inset: 0 0 auto auto;
 		z-index: 5;
 		width: 100%;
 		height: min(50dvh, 30rem);
@@ -1608,11 +1680,12 @@ button {
 
 	.control-panel.collapsed {
 		inset: max(0.5rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) auto auto;
-		width: 8.875rem;
+		width: 9.375rem;
 		max-width: calc(
 			100vw - max(0.5rem, env(safe-area-inset-left)) - max(0.5rem, env(safe-area-inset-right))
 		);
-		max-height: calc(var(--target-coarse) + 0.375rem);
+		height: calc(var(--target-coarse) + 0.375rem);
+		max-height: none;
 		padding: 0.125rem 0.25rem;
 		border-radius: 1.55rem;
 		transform-origin: 100% 0;
@@ -1631,57 +1704,15 @@ button {
 		display: none;
 	}
 
-	.control-panel.collapsed .panel-toolbar {
-		gap: 0;
-	}
-
-	.control-panel:not(.tactical-panel):not(.collapsed) .panel-toolbar:not(.pieces-mode) {
-		align-self: flex-end;
-		width: auto;
-		gap: 0;
-		margin: -1px -1px 0 0;
-		padding: 0.125rem 0.25rem;
-		border: 1px solid var(--border);
-		border-radius: 1.55rem;
-		background: color-mix(in oklab, var(--surface) 18%, transparent);
-	}
-
-	.control-panel.collapsed .icon-button,
-	.control-panel:not(.tactical-panel):not(.collapsed)
-		.panel-toolbar:not(.pieces-mode)
-		.icon-button {
-		position: relative;
-		border-color: transparent;
-		border-radius: 0.75rem;
-		background: transparent;
-	}
-
-	.control-panel:not(.tactical-panel):not(.collapsed)
-		.panel-toolbar:not(.pieces-mode)
-		.icon-button:hover:not(:disabled) {
-		transform: none;
-		border-color: transparent;
-		background: color-mix(in oklab, var(--accent) 12%, transparent);
-	}
-
-	.control-panel.collapsed .toolbar-theme-action::before,
-	.control-panel.collapsed .collapse-button::before,
-	.control-panel.tactical-panel.collapsed .toolbar-reset-action::before,
-	.control-panel:not(.tactical-panel):not(.collapsed)
-		.panel-toolbar:not(.pieces-mode)
-		.icon-button
-		+ .icon-button::before {
-		position: absolute;
-		left: 0;
-		top: 50%;
-		width: 1px;
-		height: 1.5rem;
-		background: color-mix(in oklab, var(--text) 11%, transparent);
-		content: '';
-		transform: translateY(-50%);
+	.panel-toolbar .icon-button {
+		flex-shrink: 0;
 	}
 
 	.control-panel.tour-controlled .panel-body-shell {
+		transition: none;
+	}
+
+	.control-panel.tour-controlled {
 		transition: none;
 	}
 

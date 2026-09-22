@@ -78,14 +78,14 @@
 		gap: 0.24rem;
 		color: var(--muted);
 		font-size: 0.62rem;
-		font-weight: 800;
+		font-weight: 700;
 		text-transform: uppercase;
 	}
 
 	.move-confirm-copy strong {
 		overflow: hidden;
 		font-size: 0.75rem;
-		font-weight: 790;
+		font-weight: 700;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
@@ -108,7 +108,7 @@
 		color: var(--text);
 		cursor: pointer;
 		font-size: 0.7rem;
-		font-weight: 820;
+		font-weight: 700;
 	}
 
 	.move-confirm-actions .confirm {

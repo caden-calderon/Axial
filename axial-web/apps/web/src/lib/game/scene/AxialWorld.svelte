@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { T, useThrelte } from '@threlte/core';
 	import { Color, Fog } from 'three';
 	import {
@@ -9,8 +9,18 @@
 		type Move,
 		type PlacedMove
 	} from '@axial/core';
+	import { prefersReducedMotion } from 'svelte/motion';
+	import {
+		createLandingSequence,
+		hasSameMoveHistory,
+		isSingleMoveAppend,
+		sceneMoveKey,
+		pieceDropDuration,
+		PIECE_IMPACT_DURATION_SECONDS
+	} from '../animation';
 	import GamePiece from './GamePiece.svelte';
 	import DropPreview from './DropPreview.svelte';
+	import TutorialTarget from './TutorialTarget.svelte';
 	import BoardGrid from './BoardGrid.svelte';
 	import BoardLabels from './BoardLabels.svelte';
 	import ColumnPicker from './ColumnPicker.svelte';
@@ -25,6 +35,7 @@
 	let {
 		game,
 		hoveredMove,
+		guidedMove = null,
 		previewLocked,
 		labelsVisible,
 		gridLayersVisible,
@@ -34,13 +45,16 @@
 		pieceColors,
 		placementMode,
 		doubleAdjacentAnchor,
-		controlsExpanded,
 		viewResetKey,
+		onLand,
+		onSettle,
+		onWinReveal,
 		onHover,
 		onPlay
 	}: {
 		game: GameSnapshot;
 		hoveredMove: Move | null;
+		guidedMove?: Move | null;
 		previewLocked: boolean;
 		labelsVisible: boolean;
 		gridLayersVisible: boolean;
@@ -50,8 +64,10 @@
 		pieceColors: PieceColors;
 		placementMode: PlacementMode;
 		doubleAdjacentAnchor: PlacedMove | null;
-		controlsExpanded: boolean;
 		viewResetKey: number;
+		onLand?: (move: PlacedMove) => void;
+		onSettle?: (move: PlacedMove) => void;
+		onWinReveal?: () => void;
 		onHover: (move: Move | null) => void;
 		onPlay: (move: Move) => void;
 	} = $props();
@@ -76,16 +92,60 @@
 	let viewportHeight = $state(800);
 	let coarsePointer = $state(false);
 	const cameraFit = $derived(
-		resolveCameraFit(
-			{ width: viewportWidth, height: viewportHeight, coarsePointer, controlsExpanded },
-			dimensions
-		)
+		resolveCameraFit({ width: viewportWidth, height: viewportHeight, coarsePointer }, dimensions)
 	);
 	const isCompact = $derived(cameraFit.compact);
 	const cameraPosition: Vec3 = $derived(cameraFit.position);
 	const cameraFov = $derived(cameraFit.fov);
 	const boardScale = $derived(cameraFit.boardScale);
 	const lastMoveIndex = $derived(game.moveHistory.length - 1);
+	const landingSequence = createLandingSequence();
+	let previousHistory = untrack(() => game.moveHistory);
+	let previousDimensions = untrack(() => dimensionKey);
+	let moveDelay = $state(0);
+	let previousLines = untrack(() => game.completedLines.map((line) => line.id));
+	let animatedMoveKey = $state<string | null>(null);
+	let animatedLineIds = $state<string[]>([]);
+	let presentationEpoch = $state(0);
+	const lineDelay = $derived(
+		game.lastMove
+			? moveDelay +
+					pieceDropDuration(dimensions, game.lastMove.height) +
+					PIECE_IMPACT_DURATION_SECONDS
+			: 0
+	);
+
+	$effect.pre(() => {
+		const next = game.moveHistory;
+		const nextLines = game.completedLines.map((line) => line.id);
+		// Presence updates and duplicate snapshots must not interrupt an active reveal.
+		if (
+			previousDimensions === dimensionKey &&
+			hasSameMoveHistory(previousHistory, next) &&
+			previousLines.length === nextLines.length &&
+			previousLines.every((id, index) => id === nextLines[index])
+		)
+			return;
+		const appended =
+			previousDimensions === dimensionKey && isSingleMoveAppend(previousHistory, next);
+		if (!appended) {
+			landingSequence.clear();
+			// Undo and replacement snapshots cancel retained pieces' pending landings too.
+			presentationEpoch = untrack(() => presentationEpoch) + 1;
+		}
+		moveDelay = appended
+			? landingSequence.reserve(next[next.length - 1], dimensions, performance.now() / 1000)
+			: 0;
+		previousDimensions = dimensionKey;
+		animatedMoveKey = appended ? sceneMoveKey(next[next.length - 1], next.length - 1) : null;
+		animatedLineIds = appended
+			? game.completedLines
+					.filter((line) => !previousLines.includes(line.id))
+					.map((line) => line.id)
+			: [];
+		previousHistory = next;
+		previousLines = nextLines;
+	});
 
 	const boardRotation = -0.34;
 	const { scene } = useThrelte();
@@ -95,6 +155,10 @@
 	$effect(() => {
 		sceneBackground.set(palette.background);
 		sceneFog.color.set(palette.fog);
+		// Portrait framing places the camera farther away; fixed desktop fog hid phone pieces.
+		const framingDistance = Math.hypot(...cameraPosition);
+		sceneFog.near = framingDistance - 1;
+		sceneFog.far = framingDistance + 12;
 		scene.background = sceneBackground;
 		scene.fog = sceneFog;
 	});
@@ -129,7 +193,7 @@
 {#key viewResetKey}
 	<T.PerspectiveCamera makeDefault position={cameraPosition} fov={cameraFov}>
 		<OrbitCameraControls
-			enableDamping
+			enableDamping={!prefersReducedMotion.current}
 			dampingFactor={0.075}
 			enablePan={false}
 			rotateSpeed={0.52}
@@ -178,6 +242,10 @@
 		/>
 	{/key}
 
+	{#if guidedMove && game.status.state === 'playing'}
+		<TutorialTarget move={guidedMove} {dimensions} color={boardColor} />
+	{/if}
+
 	{#if hoveredMove && previewHeight >= 0 && game.status.state === 'playing'}
 		<DropPreview
 			move={hoveredMove}
@@ -190,18 +258,32 @@
 		/>
 	{/if}
 
-	{#each game.moveHistory as move, index (`${index}-${move.row}-${move.col}-${move.height}`)}
-		<GamePiece
-			{move}
-			moveIndex={index}
-			{pieceShape}
-			{pieceColors}
-			highlighted={index === lastMoveIndex}
-			{dimensions}
-		/>
-	{/each}
+	{#key `${dimensionKey}:${presentationEpoch}`}
+		{#each game.moveHistory as move, index (sceneMoveKey(move, index))}
+			<GamePiece
+				{move}
+				animate={animatedMoveKey === sceneMoveKey(move, index)}
+				delay={moveDelay}
+				{onLand}
+				{onSettle}
+				{pieceShape}
+				{pieceColors}
+				highlighted={index === lastMoveIndex}
+				{dimensions}
+			/>
+		{/each}
 
-	{#each game.completedLines as line (line.id)}
-		<CompletedLineMarker {line} {pieceColors} {dimensions} />
-	{/each}
+		{#each game.completedLines as line (line.id)}
+			<CompletedLineMarker
+				{line}
+				{pieceColors}
+				{dimensions}
+				animate={animatedLineIds.includes(line.id)}
+				delay={lineDelay}
+				onComplete={game.status.state === 'won' && line.id === animatedLineIds[0]
+					? onWinReveal
+					: undefined}
+			/>
+		{/each}
+	{/key}
 </T.Group>

@@ -51,10 +51,9 @@
 	let viewportHeight = $state(initialViewportHeight);
 	let headingSettled = $state(false);
 	let rafId = 0;
-	let sweepToken = 0;
 	let sweepRafId = 0;
-	let sweepTimeouts: ReturnType<typeof setTimeout>[] = [];
 	let cardGlowFrame = 0;
+	let pointerPosition: { x: number; y: number } | null = null;
 	let glowCurrent = { x: 50, y: 0, edge: 0 };
 	let glowTarget = { x: 50, y: 0, edge: 0 };
 	let headingRevealToken = 0;
@@ -79,8 +78,13 @@
 			isPortraitPanelStep(currentStep, viewportWidth, viewportHeight)
 		)
 	);
+	const cardMaxHeight = $derived(
+		isPortraitPanelStep(currentStep, viewportWidth, viewportHeight)
+			? viewportHeight - Math.min(viewportHeight * 0.5, 480) - popoverGap - viewportMargin
+			: viewportHeight - viewportMargin * 2
+	);
 	const cardStyle = $derived(
-		`--tour-card-x: ${cardPlacement.x}px; --tour-card-y: ${cardPlacement.y}px; --tour-card-width: ${effectiveCardWidth(viewportWidth)}px; --tour-card-transform: ${cardPlacement.transform};`
+		`--tour-card-x: ${cardPlacement.x}px; --tour-card-y: ${cardPlacement.y}px; --tour-card-width: ${effectiveCardWidth(viewportWidth, targetRect)}px; --tour-card-max-height: ${cardMaxHeight}px; --tour-card-transform: ${cardPlacement.transform};`
 	);
 
 	onMount(() => {
@@ -91,7 +95,6 @@
 		return () => {
 			stepLayoutToken += 1;
 			if (rafId) cancelAnimationFrame(rafId);
-			if (cardGlowFrame) cancelAnimationFrame(cardGlowFrame);
 			clearCardSweep();
 		};
 	});
@@ -123,7 +126,7 @@
 		const target = document.querySelector(targetSelector);
 		if (!(target instanceof HTMLElement)) return;
 
-		const scroller = target.closest('.panel-body-clip');
+		const scroller = target.closest('.control-panel:not(.collapsed) .panel-scroll');
 		if (!(scroller instanceof HTMLElement) || scroller.clientHeight <= 0) return;
 
 		const targetBounds = target.getBoundingClientRect();
@@ -174,7 +177,7 @@
 			return;
 		}
 
-		const clippingParent = target.closest('.panel-body-clip');
+		const clippingParent = target.closest('.control-panel:not(.collapsed) .panel-scroll');
 		const clippingRect =
 			clippingParent instanceof HTMLElement ? clippingParent.getBoundingClientRect() : null;
 		const clipLeft = Math.max(spotlightViewportMargin, clippingRect?.left ?? 0);
@@ -250,12 +253,15 @@
 	function handleCardPointerMove(event: PointerEvent): void {
 		const card = event.currentTarget;
 		if (!(card instanceof HTMLElement)) return;
+		pointerPosition = { x: event.clientX, y: event.clientY };
+		if (sweepRafId) return;
 		setCardGlowTargetFromClientPoint(card, event.clientX, event.clientY);
 	}
 
 	function handleCardPointerLeave(event: PointerEvent): void {
 		const card = event.currentTarget;
-		if (!(card instanceof HTMLElement) || card.classList.contains('sweep-active')) return;
+		pointerPosition = null;
+		if (!(card instanceof HTMLElement) || sweepRafId) return;
 		glowTarget = { ...glowTarget, edge: 0 };
 		startCardGlowSmoothing(card);
 	}
@@ -299,7 +305,7 @@
 		currentCardHeight: number,
 		portraitPanelStep: boolean
 	): CardPlacement {
-		const usableCardWidth = effectiveCardWidth(width);
+		const usableCardWidth = effectiveCardWidth(width, rect);
 		const usableCardHeight =
 			currentCardHeight > 0 ? currentCardHeight : width <= 760 ? 264 : cardHeightEstimate;
 
@@ -386,7 +392,7 @@
 		height: number,
 		usableCardHeight: number
 	): WelcomeTourPlacement {
-		const usableCardWidth = effectiveCardWidth(width);
+		const usableCardWidth = effectiveCardWidth(width, rect);
 		const leftSpace = rect.x;
 		const rightSpace = width - (rect.x + rect.width);
 		const bottomSpace = height - (rect.y + rect.height);
@@ -407,7 +413,7 @@
 		height: number,
 		usableCardHeight: number
 	): boolean {
-		const usableCardWidth = effectiveCardWidth(width);
+		const usableCardWidth = effectiveCardWidth(width, rect);
 
 		if (side === 'left') return rect.x >= usableCardWidth + popoverGap + viewportMargin;
 		if (side === 'right') {
@@ -425,8 +431,14 @@
 		return Math.max(min, Math.min(max, value));
 	}
 
-	function effectiveCardWidth(currentViewportWidth: number): number {
-		return Math.min(cardWidth, Math.max(0, currentViewportWidth - viewportMargin * 2));
+	function effectiveCardWidth(currentViewportWidth: number, rect: Rect | null = null): number {
+		const viewportWidth = Math.max(0, currentViewportWidth - viewportMargin * 2);
+		// Compact landscape screens need a narrower card beside the highlighted controls.
+		const availableLeft = rect ? rect.x - popoverGap - viewportMargin : 0;
+		if (currentViewportWidth > 720 && availableLeft >= 320) {
+			return Math.min(cardWidth, viewportWidth, availableLeft);
+		}
+		return Math.min(cardWidth, viewportWidth);
 	}
 
 	function isPortraitPanelStep(step: WelcomeTourStep, width: number, height: number): boolean {
@@ -516,57 +528,46 @@
 	function startCardSweep(): void {
 		clearCardSweep();
 		const card = tourCard;
-		if (!card || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		if (!card) return;
 
-		sweepToken += 1;
-		const token = sweepToken;
-		let sweepEdge = 0;
-		let sweepPoint = getPerimeterGlowPoint(0.08);
+		glowCurrent = { ...getPerimeterGlowPoint(0.08), edge: 0 };
+		glowTarget = { ...glowCurrent };
+		setCardGlowVars(card, glowCurrent);
+		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
 		card.classList.add('sweep-active');
-		glowCurrent = { ...sweepPoint, edge: 0 };
-		glowTarget = { ...sweepPoint, edge: 0 };
-		setCardGlowVars(card, glowCurrent);
+		const startTime = performance.now();
+		const animate = (time: number) => {
+			const elapsed = time - startTime;
+			const progress = easeInOutCubic(Math.min(elapsed / 3200, 1));
+			const edge =
+				elapsed < 2550
+					? 100 * easeOutCubic(Math.min(elapsed / 680, 1))
+					: 100 * (1 - easeOutCubic(Math.min((elapsed - 2550) / 1050, 1)));
 
-		animateCardValue({
-			token,
-			duration: 680,
-			onUpdate: (value) => {
-				sweepEdge = value;
-				setCardGlowVars(card, { ...sweepPoint, edge: sweepEdge });
+			// Only the sweep owns the glow until it finishes, even when the pointer moves.
+			glowCurrent = { ...getPerimeterGlowPoint(0.08 + progress), edge };
+			setCardGlowVars(card, glowCurrent);
+			if (elapsed < 3600) {
+				sweepRafId = requestAnimationFrame(animate);
+				return;
 			}
-		});
-		animateCardValue({
-			token,
-			duration: 3200,
-			ease: easeInOutCubic,
-			onUpdate: (value) => {
-				sweepPoint = getPerimeterGlowPoint(0.08 + value / 100);
-				setCardGlowVars(card, { ...sweepPoint, edge: sweepEdge });
+
+			sweepRafId = 0;
+			card.classList.remove('sweep-active');
+			if (pointerPosition && card.matches(':hover')) {
+				setCardGlowTargetFromClientPoint(card, pointerPosition.x, pointerPosition.y);
 			}
-		});
-		animateCardValue({
-			token,
-			delay: 2550,
-			duration: 1050,
-			start: 100,
-			end: 0,
-			ease: easeOutCubic,
-			onUpdate: (value) => {
-				sweepEdge = value;
-				setCardGlowVars(card, { ...sweepPoint, edge: sweepEdge });
-			},
-			onEnd: () => {
-				if (token === sweepToken) card.classList.remove('sweep-active');
-			}
-		});
+		};
+
+		sweepRafId = requestAnimationFrame(animate);
 	}
 
 	function clearCardSweep(): void {
-		sweepToken += 1;
 		if (sweepRafId) cancelAnimationFrame(sweepRafId);
-		for (const timeout of sweepTimeouts) clearTimeout(timeout);
-		sweepTimeouts = [];
+		if (cardGlowFrame) cancelAnimationFrame(cardGlowFrame);
+		sweepRafId = 0;
+		cardGlowFrame = 0;
 		tourCard?.classList.remove('sweep-active');
 	}
 
@@ -579,47 +580,6 @@
 		if (side === 1) return { x: 100, y: sideProgress * 100 };
 		if (side === 2) return { x: 100 - sideProgress * 100, y: 100 };
 		return { x: 0, y: 100 - sideProgress * 100 };
-	}
-
-	function animateCardValue({
-		token,
-		start = 0,
-		end = 100,
-		duration = 1000,
-		delay = 0,
-		ease = easeOutCubic,
-		onUpdate,
-		onEnd
-	}: {
-		token: number;
-		start?: number;
-		end?: number;
-		duration?: number;
-		delay?: number;
-		ease?: (value: number) => number;
-		onUpdate: (value: number) => void;
-		onEnd?: () => void;
-	}): void {
-		const timeout = setTimeout(() => {
-			const startTime = performance.now();
-
-			const tick = (time: number) => {
-				if (token !== sweepToken) return;
-				const progress = Math.min((time - startTime) / duration, 1);
-				onUpdate(start + (end - start) * ease(progress));
-
-				if (progress < 1) {
-					sweepRafId = requestAnimationFrame(tick);
-					return;
-				}
-
-				onEnd?.();
-			};
-
-			sweepRafId = requestAnimationFrame(tick);
-		}, delay);
-
-		sweepTimeouts.push(timeout);
 	}
 
 	function easeOutCubic(value: number): number {
@@ -729,6 +689,8 @@
 		z-index: 12;
 		overflow: hidden;
 		pointer-events: auto;
+		user-select: none;
+		-webkit-user-select: none;
 	}
 
 	.tour-overlay:focus {
@@ -845,7 +807,8 @@
 		position: relative;
 		z-index: 2;
 		display: grid;
-		max-height: min(35rem, calc(100vh - 2.25rem));
+		max-height: min(35rem, var(--tour-card-max-height));
+		grid-template-rows: auto minmax(0, 1fr) auto auto;
 		gap: 1.05rem;
 		overflow: auto;
 		padding: 1.32rem;
@@ -868,7 +831,7 @@
 	.tour-topline small {
 		color: color-mix(in oklab, var(--accent) 72%, var(--text));
 		font-size: 0.76rem;
-		font-weight: 850;
+		font-weight: 700;
 		letter-spacing: 0;
 		text-transform: uppercase;
 	}
@@ -880,7 +843,21 @@
 
 	.tour-copy {
 		display: grid;
+		min-height: 0;
+		align-content: start;
+		overflow: auto;
 		gap: 0.64rem;
+	}
+
+	/* Typing and the copy reveal can briefly overflow. Keep scrolling without a flashing rail. */
+	.tour-card-inner,
+	.tour-copy {
+		scrollbar-width: none;
+	}
+
+	.tour-card-inner::-webkit-scrollbar,
+	.tour-copy::-webkit-scrollbar {
+		display: none;
 	}
 
 	.tour-copy h2,
@@ -890,7 +867,7 @@
 
 	.tour-copy h2 {
 		font-size: 3rem;
-		font-weight: 760;
+		font-weight: 700;
 		line-height: 0.95;
 		letter-spacing: 0;
 	}
@@ -902,7 +879,7 @@
 	.tour-copy p {
 		color: color-mix(in oklab, var(--text) 78%, var(--muted));
 		font-size: 1.08rem;
-		font-weight: 600;
+		font-weight: 500;
 		line-height: 1.48;
 		opacity: 0;
 		transform: translateY(0.32rem);
@@ -955,7 +932,7 @@
 		color: var(--text);
 		cursor: pointer;
 		font-size: 0.8rem;
-		font-weight: 850;
+		font-weight: 700;
 		padding: 0 0.9rem;
 		transition:
 			transform 160ms ease,
@@ -989,15 +966,15 @@
 		box-shadow: inset 0 1px 0 color-mix(in oklab, #fff 14%, transparent);
 	}
 
-	@media (max-width: 760px), (hover: none) and (pointer: coarse) {
+	@media (max-width: 760px), (max-height: 500px), (hover: none) and (pointer: coarse) {
 		.tour-card {
-			max-height: min(34rem, calc(100vh - 1rem));
+			max-height: min(34rem, var(--tour-card-max-height));
 			--glow-padding: 0.2rem;
 			border-radius: 1.18rem;
 		}
 
 		.tour-card-inner {
-			max-height: min(34rem, calc(100vh - 1rem));
+			max-height: min(34rem, var(--tour-card-max-height));
 			padding: 0.98rem;
 			gap: 0.86rem;
 		}
@@ -1020,8 +997,34 @@
 		}
 
 		.tour-actions button {
-			min-height: 2.18rem;
+			min-height: 2.75rem;
+			min-width: 2.75rem;
 			padding-inline: 0.62rem;
+		}
+	}
+
+	@media (max-width: 360px) and (max-height: 650px) {
+		.tour-card-inner {
+			gap: 0.46rem;
+			padding: 0.75rem;
+		}
+
+		.tour-copy {
+			gap: 0.4rem;
+		}
+
+		.tour-copy h2 {
+			font-size: 1.4rem;
+			line-height: 1;
+		}
+
+		.tour-copy h2.tour-welcome-title {
+			font-size: 1.85rem;
+		}
+
+		.tour-copy p {
+			font-size: 0.84rem;
+			line-height: 1.4;
 		}
 	}
 

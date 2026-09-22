@@ -258,7 +258,7 @@ export function cellFromIndex(
   col: number;
 } {
   const cells = cellCount(dimensions);
-  if (index < 0 || index >= cells) {
+  if (!Number.isInteger(index) || index < 0 || index >= cells) {
     throw new RangeError(`Cell index ${index} is outside the board`);
   }
 
@@ -747,7 +747,7 @@ function cloneCompletedLine(line: CompletedLine): CompletedLine {
     id: line.id,
     player: line.player,
     cells: [...line.cells],
-    direction: line.direction,
+    direction: [...line.direction],
     lineLength: line.lineLength,
   };
 }
@@ -812,6 +812,8 @@ function assertColumn(
   dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
 ): void {
   if (
+    !Number.isInteger(move.row) ||
+    !Number.isInteger(move.col) ||
     move.row < 0 ||
     move.row >= dimensions.rows ||
     move.col < 0 ||
@@ -829,7 +831,12 @@ function assertBounds(
   col: number,
   dimensions: BoardDimensions = DEFAULT_BOARD_DIMENSIONS,
 ): void {
-  if (!isInBounds(height, row, col, dimensions)) {
+  if (
+    !Number.isInteger(height) ||
+    !Number.isInteger(row) ||
+    !Number.isInteger(col) ||
+    !isInBounds(height, row, col, dimensions)
+  ) {
     throw new RangeError(
       `Cell h=${height}, row=${row}, col=${col} is outside the board`,
     );

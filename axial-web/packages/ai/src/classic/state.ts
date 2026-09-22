@@ -50,6 +50,8 @@ export class ClassicSearchState {
   winningLines: readonly (readonly number[])[] | null;
   playerOneLineCount: number;
   playerTwoLineCount: number;
+  hashA: number;
+  hashB: number;
 
   constructor(
     board?: Uint8Array,
@@ -79,6 +81,8 @@ export class ClassicSearchState {
     this.winningLines = null;
     this.playerOneLineCount = 0;
     this.playerTwoLineCount = 0;
+    this.hashA = 0;
+    this.hashB = 0;
 
     this.rebuildDerivedState();
   }
@@ -109,6 +113,8 @@ export class ClassicSearchState {
     next.winningLines = this.winningLines;
     next.playerOneLineCount = this.playerOneLineCount;
     next.playerTwoLineCount = this.playerTwoLineCount;
+    next.hashA = this.hashA;
+    next.hashB = this.hashB;
     return next;
   }
 
@@ -171,6 +177,7 @@ export class ClassicSearchState {
     };
 
     this.board[cellIndex] = player;
+    this.toggleCellHash(cellIndex, player);
     this.heights[moveIndex] += 1;
     this.occupiedCells += 1;
     this.moveStack.push(entry);
@@ -184,6 +191,7 @@ export class ClassicSearchState {
     if (!entry) throw new Error("Cannot unmake a move from an empty stack");
 
     this.removeCellFromSegments(entry.cellIndex, entry.player);
+    this.toggleCellHash(entry.cellIndex, entry.player);
     this.board[entry.cellIndex] = 0;
     this.heights[entry.moveIndex] -= 1;
     this.occupiedCells -= 1;
@@ -206,6 +214,10 @@ export class ClassicSearchState {
       : otherPlayer(rootPlayer);
   }
 
+  positionKey(playerToMove: Player): string {
+    return `${this.hashA.toString(16)}:${this.hashB.toString(16)}:${playerToMove}`;
+  }
+
   get cellCount(): number {
     return cellCount(this.dimensions);
   }
@@ -225,6 +237,8 @@ export class ClassicSearchState {
     this.winningLines = null;
     this.playerOneLineCount = 0;
     this.playerTwoLineCount = 0;
+    this.hashA = 0;
+    this.hashB = 0;
 
     for (let moveIndex = 0; moveIndex < this.moveCount; moveIndex += 1) {
       const move = moveFromIndex(moveIndex, this.dimensions);
@@ -240,6 +254,7 @@ export class ClassicSearchState {
 
         if (cell !== 0) {
           this.occupiedCells += 1;
+          this.toggleCellHash(cellIndex, cell);
           this.addCellToSegments(cellIndex, cell);
         }
       }
@@ -264,6 +279,11 @@ export class ClassicSearchState {
         this.blockedCounts[segmentId] += 1;
       }
     }
+  }
+
+  private toggleCellHash(cellIndex: number, cell: Cell): void {
+    this.hashA = (this.hashA ^ hashCell(cellIndex, cell, 0x9e3779b9)) >>> 0;
+    this.hashB = (this.hashB ^ hashCell(cellIndex, cell, 0x85ebca6b)) >>> 0;
   }
 
   private removeCellFromSegments(cellIndex: number, player: Player): void {
@@ -347,4 +367,17 @@ function mergeLineCells(lines: readonly (readonly number[])[]): number[] {
 
 function compareCellsAlongMemory(first: number, second: number): number {
   return first - second;
+}
+
+function hashCell(cellIndex: number, cell: Cell, seed: number): number {
+  let value =
+    (Math.imul(cellIndex + 1, 0x27d4eb2d) ^
+      Math.imul(cell + 1, 0x165667b1) ^
+      seed) >>>
+    0;
+  value ^= value >>> 15;
+  value = Math.imul(value, 0x2c1b3c6d) >>> 0;
+  value ^= value >>> 12;
+  value = Math.imul(value, 0x297a2d39) >>> 0;
+  return (value ^ (value >>> 15)) >>> 0;
 }

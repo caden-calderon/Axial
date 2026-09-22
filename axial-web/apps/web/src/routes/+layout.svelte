@@ -6,6 +6,13 @@
 </script>
 
 <svelte:head>
+	<link
+		rel="preload"
+		href="/fonts/InterVariable.woff2"
+		as="font"
+		type="font/woff2"
+		crossorigin="anonymous"
+	/>
 	<link rel="icon" href={favicon} />
 	<link rel="manifest" href="/manifest.webmanifest" />
 	<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />

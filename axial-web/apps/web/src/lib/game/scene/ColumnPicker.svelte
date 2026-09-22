@@ -5,6 +5,7 @@
 	import { Plane, Raycaster, Vector2, Vector3 } from 'three';
 	import { CELL_SPACING } from './geometry';
 	import { moveFromBoardLocalPoint, type BoardLocalPoint } from './picking';
+	import { createPlacementGesture } from './placementGesture';
 
 	let {
 		game,
@@ -29,41 +30,38 @@
 	const hitPoint = new Vector3();
 	const hitPlaneNormal = new Vector3(0, 1, 0);
 
-	let pointerDown: { x: number; y: number; time: number } | null = null;
+	const placementGesture = createPlacementGesture();
 	let hoverKey = '';
 
 	onMount(() => {
 		dom.addEventListener('pointerdown', handlePointerDown);
 		dom.addEventListener('pointermove', handlePointerMove);
-		dom.addEventListener('pointerleave', clearHover);
+		dom.addEventListener('pointerleave', cancelPointer);
+		dom.addEventListener('pointercancel', cancelPointer);
 		dom.addEventListener('pointerup', handlePointerUp);
 
 		return () => {
 			dom.removeEventListener('pointerdown', handlePointerDown);
 			dom.removeEventListener('pointermove', handlePointerMove);
-			dom.removeEventListener('pointerleave', clearHover);
+			dom.removeEventListener('pointerleave', cancelPointer);
+			dom.removeEventListener('pointercancel', cancelPointer);
 			dom.removeEventListener('pointerup', handlePointerUp);
+			placementGesture.reset();
 		};
 	});
 
 	function handlePointerDown(event: PointerEvent): void {
-		if (event.button !== 0) return;
-		pointerDown = { x: event.clientX, y: event.clientY, time: performance.now() };
+		placementGesture.down(event, performance.now());
 	}
 
 	function handlePointerMove(event: PointerEvent): void {
+		placementGesture.move(event);
 		if (event.buttons !== 0) return;
 		setHover(pickMove(event));
 	}
 
 	function handlePointerUp(event: PointerEvent): void {
-		if (event.button !== 0 || pointerDown === null) return;
-
-		const distance = Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y);
-		const elapsed = performance.now() - pointerDown.time;
-		pointerDown = null;
-
-		if (distance > 8 || elapsed > 650) return;
+		if (!placementGesture.up(event, performance.now())) return;
 
 		const move = pickMove(event);
 		if (move) onPlay(move);
@@ -118,8 +116,8 @@
 		onHover(move);
 	}
 
-	function clearHover(): void {
-		pointerDown = null;
+	function cancelPointer(event: PointerEvent): void {
+		placementGesture.cancel(event.pointerId);
 		setHover(null);
 	}
 </script>

@@ -1,38 +1,37 @@
 <script lang="ts">
 	import { ArrowRight, Check, Compass, X } from '@lucide/svelte';
-	import type { Move } from '@axial/core';
 
 	let {
-		move,
-		landingHeight,
+		completed,
+		hint,
 		onContinue,
 		onExit
 	}: {
-		move: Move | null;
-		landingHeight: number;
+		completed: boolean;
+		hint: string;
 		onContinue: () => void;
 		onExit: () => void;
 	} = $props();
 
 	const selectionLabel = $derived(
-		move && landingHeight >= 0
-			? `Row ${move.row + 1}, column ${move.col + 1} lands on layer ${landingHeight + 1}.`
-			: 'Drag to orbit, pinch or scroll to zoom, then choose a column.'
+		completed
+			? 'You connected four pieces in a straight line.'
+			: hint || 'Drop on the glowing tile at row 4, column 4.'
 	);
 </script>
 
 <aside class="practice-banner" aria-labelledby="practice-title" aria-describedby="practice-copy">
 	<div class="practice-mark" aria-hidden="true">
-		{#if move}
+		{#if completed}
 			<Check size={19} strokeWidth={2.2} />
 		{:else}
 			<Compass size={19} strokeWidth={2} />
 		{/if}
 	</div>
 	<div class="practice-copy">
-		<span>Practice · no move committed</span>
-		<strong id="practice-title">{move ? 'Drop staged' : 'Explore the board'}</strong>
-		<small id="practice-copy">{selectionLabel}</small>
+		<span>Practice</span>
+		<strong id="practice-title">{completed ? 'Four in a row!' : 'Place the winning piece'}</strong>
+		<small id="practice-copy" aria-live="polite">{selectionLabel}</small>
 	</div>
 	<div class="practice-actions">
 		<button type="button" class="practice-exit" aria-label="Exit tutorial" onclick={onExit}>
@@ -42,7 +41,7 @@
 			type="button"
 			class="practice-continue"
 			aria-label="Continue tutorial"
-			disabled={!move}
+			disabled={!completed}
 			onclick={onContinue}
 		>
 			<span>Continue</span>
@@ -53,6 +52,8 @@
 
 <style>
 	.practice-banner {
+		user-select: none;
+		-webkit-user-select: none;
 		position: absolute;
 		left: 50%;
 		bottom: max(1rem, env(safe-area-inset-bottom));
@@ -92,7 +93,7 @@
 	.practice-copy span {
 		color: color-mix(in oklab, var(--accent) 70%, var(--text));
 		font-size: 0.6rem;
-		font-weight: 840;
+		font-weight: 700;
 		text-transform: uppercase;
 	}
 
@@ -105,13 +106,13 @@
 
 	.practice-copy strong {
 		font-size: 0.82rem;
-		font-weight: 830;
+		font-weight: 700;
 	}
 
 	.practice-copy small {
 		color: var(--muted);
 		font-size: 0.68rem;
-		font-weight: 680;
+		font-weight: 600;
 	}
 
 	.practice-actions {
@@ -141,7 +142,7 @@
 		border-color: color-mix(in oklab, var(--accent) 48%, transparent) !important;
 		background: color-mix(in oklab, var(--accent) 23%, var(--surface)) !important;
 		font-size: 0.72rem;
-		font-weight: 820;
+		font-weight: 700;
 	}
 
 	.practice-actions button:disabled {

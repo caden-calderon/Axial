@@ -27,6 +27,38 @@ class FakeWorker {
 }
 
 describe('Classic AI worker client', () => {
+	it('cleans up a synchronous postMessage failure before retrying', async () => {
+		vi.useFakeTimers();
+		try {
+			const broken = new FakeWorker();
+			broken.postMessage = () => {
+				throw new DOMException('Cannot clone', 'DataCloneError');
+			};
+			const fresh = new FakeWorker();
+			const factory = vi.fn().mockReturnValueOnce(broken).mockReturnValue(fresh);
+			const client = createClassicAiClient(factory);
+			await expect(client.requestMove(createGame(), {})).rejects.toMatchObject({
+				name: 'DataCloneError'
+			});
+			expect(broken.terminated).toBe(true);
+			expect(vi.getTimerCount()).toBe(0);
+			const request = client.requestMove(createGame(), {});
+			fresh.send({
+				id: fresh.messages[0].id,
+				ok: true,
+				move: { row: 2, col: 3 },
+				moveIndex: 17,
+				reason: 'search',
+				simulations: 1,
+				elapsedMs: 1,
+				stats: []
+			});
+			await expect(request).resolves.toMatchObject({ move: { row: 2, col: 3 } });
+			expect(factory).toHaveBeenCalledTimes(2);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 	it('bounds worker searches with room for the configured MCTS budget', () => {
 		expect(requestTimeoutMs({ maxTimeMs: 100 })).toBe(4_000);
 		expect(requestTimeoutMs({ maxTimeMs: 4_000 })).toBe(8_000);

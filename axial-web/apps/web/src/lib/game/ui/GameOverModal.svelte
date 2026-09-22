@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { Eye, Play, RotateCcw, Trophy } from '@lucide/svelte';
+	import { Eye, Play, RotateCcw, Trophy, Equal } from '@lucide/svelte';
 	import type { GameStatus } from '@axial/core';
 	import DialogShell from './DialogShell.svelte';
 
 	let {
 		status,
 		moveCount,
+		matchDurationMs = null,
 		winnerLabel,
 		onNewMatch,
 		onReviewFromStart,
@@ -13,6 +14,7 @@
 	}: {
 		status: GameStatus;
 		moveCount: number;
+		matchDurationMs?: number | null;
 		winnerLabel: string | null;
 		onNewMatch: () => void;
 		onReviewFromStart: () => void;
@@ -20,15 +22,21 @@
 	} = $props();
 
 	const title = $derived(
-		status.state === 'won' && winnerLabel
+		status.state === 'won'
 			? winnerLabel === 'You'
 				? 'You win'
-				: `${winnerLabel} wins`
-			: 'Draw'
+				: `${winnerLabel ?? `Player ${status.winner}`} wins`
+			: 'An even match'
 	);
-	const resultDetail = $derived(
-		status.state === 'won' ? `${moveCount} moves` : `Board filled in ${moveCount} moves`
-	);
+	const durationLabel = $derived(matchDurationMs === null ? null : formatDuration(matchDurationMs));
+
+	function formatDuration(milliseconds: number): string {
+		const seconds = Math.floor(milliseconds / 1000);
+		const minutes = Math.floor(seconds / 60);
+		const remainder = String(seconds % 60).padStart(2, '0');
+		if (minutes < 60) return `${minutes}:${remainder}`;
+		return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}:${remainder}`;
+	}
 </script>
 
 <DialogShell
@@ -40,15 +48,27 @@
 	<div class="game-over-backdrop">
 		<section class="game-over-dialog">
 			<div class="result-header">
-				<div class="result-mark" data-result={status.state}>
-					<Trophy size={26} strokeWidth={1.7} />
+				<div class="result-kicker">
+					{#if status.state === 'won'}<Trophy size={16} strokeWidth={1.7} />{:else}<Equal
+							size={16}
+							strokeWidth={1.7}
+						/>{/if}
+					<span>{status.state === 'won' ? 'Match complete' : 'Draw'}</span>
 				</div>
-
-				<p class="result-kicker">Game over</p>
 				<h2 id="game-over-title">{title}</h2>
-				<p id="game-over-detail" class="result-detail">{resultDetail}</p>
+				<dl id="game-over-detail" class="result-stats">
+					<div>
+						<dt>Moves</dt>
+						<dd>{moveCount}</dd>
+					</div>
+					{#if durationLabel !== null}
+						<div>
+							<dt>Match time</dt>
+							<dd>{durationLabel}</dd>
+						</div>
+					{/if}
+				</dl>
 			</div>
-
 			<div class="modal-actions">
 				<button
 					class="modal-button primary"
@@ -56,36 +76,26 @@
 					aria-label="Start a new match with an empty board"
 					onclick={onNewMatch}
 				>
-					<span class="button-icon"><RotateCcw size={17} strokeWidth={1.9} /></span>
-					<span class="button-copy">
-						<strong>New match</strong>
-						<small>Clear the board</small>
-					</span>
+					<RotateCcw size={17} strokeWidth={1.9} /><span>New match</span>
 				</button>
-				<button
-					class="modal-button"
-					type="button"
-					aria-label="Rewind this match to the start and step through it with redo"
-					onclick={onReviewFromStart}
-				>
-					<span class="button-icon"><Play size={17} strokeWidth={1.9} /></span>
-					<span class="button-copy">
-						<strong>Review from start</strong>
-						<small>Step with redo</small>
-					</span>
-				</button>
-				<button
-					class="modal-button"
-					type="button"
-					aria-label="Dismiss the result and keep the final board visible"
-					onclick={onKeepBoard}
-				>
-					<span class="button-icon"><Eye size={17} strokeWidth={1.9} /></span>
-					<span class="button-copy">
-						<strong>Keep board</strong>
-						<small>Dismiss result</small>
-					</span>
-				</button>
+				<div class="secondary-actions">
+					<button
+						class="modal-button"
+						type="button"
+						aria-label="Rewind this match to the start and step through it with redo"
+						onclick={onReviewFromStart}
+					>
+						<Play size={15} strokeWidth={1.9} /><span>Review match</span>
+					</button>
+					<button
+						class="modal-button"
+						type="button"
+						aria-label="Dismiss the result and keep the final board visible"
+						onclick={onKeepBoard}
+					>
+						<Eye size={16} strokeWidth={1.9} /><span>Keep board</span>
+					</button>
+				</div>
 			</div>
 		</section>
 	</div>
@@ -99,214 +109,134 @@
 		display: grid;
 		place-items: center;
 		padding: 1rem;
-		background:
-			radial-gradient(
-				circle at 50% 42%,
-				color-mix(in oklab, var(--accent) 15%, transparent),
-				transparent 22rem
-			),
-			color-mix(in oklab, #000 34%, transparent);
-		backdrop-filter: blur(8px);
-		animation: result-backdrop-in 260ms ease-out both;
+		background: color-mix(in oklab, #000 38%, transparent);
+		backdrop-filter: blur(6px);
+		animation: result-in 220ms ease-out both;
 	}
-
 	.game-over-dialog {
-		position: static;
-		width: min(28rem, calc(100vw - 2rem));
+		width: min(24rem, calc(100vw - 2rem));
+		max-height: calc(100dvh - 2rem);
+		overflow: auto;
 		margin: 0;
-		padding: 1.1rem;
-		border: 1px solid color-mix(in oklab, var(--text) 20%, transparent);
-		border-radius: 8px;
-		background: color-mix(in oklab, var(--surface) 88%, transparent);
+		padding: 1.75rem;
+		border: 1px solid color-mix(in oklab, var(--text) 15%, transparent);
+		border-radius: 1.1rem;
+		background: color-mix(in oklab, var(--surface) 96%, transparent);
 		color: var(--text);
 		box-shadow: 0 24px 70px var(--shadow);
-		text-align: center;
-		transform-origin: 50% 54%;
-		animation: result-dialog-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation: result-rise 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
 	}
-
 	.result-header {
-		display: grid;
-		justify-items: center;
-		gap: 0.22rem;
-		margin-bottom: 1rem;
+		margin-bottom: 1.75rem;
 	}
-
-	.result-mark {
-		display: inline-grid;
-		width: 3.2rem;
-		height: 3.2rem;
-		margin-bottom: 0.5rem;
-		place-items: center;
-		border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
-		border-radius: 999px;
-		background: color-mix(in oklab, var(--accent) 16%, transparent);
-		color: var(--accent);
-		box-shadow: 0 0 28px color-mix(in oklab, var(--accent) 18%, transparent);
-		animation: result-mark-in 560ms cubic-bezier(0.16, 1, 0.3, 1) 90ms both;
-	}
-
-	.result-mark[data-result='draw'] {
-		color: var(--azure);
-		border-color: color-mix(in oklab, var(--azure) 36%, transparent);
-		background: color-mix(in oklab, var(--azure) 14%, transparent);
-		box-shadow: 0 0 28px color-mix(in oklab, var(--azure) 16%, transparent);
-	}
-
 	.result-kicker {
-		margin: 0;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		color: var(--muted);
+		font-size: 0.7rem;
+		font-weight: 600;
+	}
+	.result-kicker :global(svg) {
+		color: var(--accent);
+	}
+	.game-over-dialog h2 {
+		margin: 0.8rem 0 0;
+		font-size: clamp(1.9rem, 6vw, 2.5rem);
+		line-height: 1.1;
+		font-weight: 600;
+		letter-spacing: -0.035em;
+		text-wrap: balance;
+	}
+	.result-stats {
+		display: flex;
+		gap: 2rem;
+		margin: 1.25rem 0 0;
+	}
+	.result-stats dt {
 		color: var(--muted);
 		font-size: 0.72rem;
-		font-weight: 760;
-		text-transform: uppercase;
 	}
-
-	.game-over-dialog h2 {
-		margin: 0;
-		font-size: 1.55rem;
-		font-weight: 790;
-		letter-spacing: 0;
+	.result-stats dd {
+		margin: 0.3rem 0 0;
+		font-size: 1.15rem;
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
 	}
-
-	.result-detail {
-		margin: 0.14rem 0 0;
-		color: var(--muted);
-		font-size: 0.88rem;
-		font-weight: 650;
-	}
-
 	.modal-actions {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 0.5rem;
+		gap: 0.45rem;
 	}
-
-	.modal-button.primary {
-		grid-column: 1 / -1;
+	.secondary-actions {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.45rem;
 	}
-
 	.modal-button {
-		display: grid;
-		grid-template-columns: auto minmax(0, 1fr);
-		min-width: 0;
-		min-height: 3.1rem;
+		display: flex;
 		align-items: center;
-		justify-content: stretch;
-		gap: 0.52rem;
-		padding: 0 0.78rem;
-		border: 1px solid color-mix(in oklab, var(--text) 14%, transparent);
-		border-radius: 8px;
-		background: color-mix(in oklab, var(--surface) 58%, transparent);
-		color: var(--text);
-		cursor: pointer;
-		font-size: 0.82rem;
-		font-weight: 760;
-		text-align: left;
-		transition:
-			transform 160ms ease,
-			background 160ms ease,
-			border-color 160ms ease;
-	}
-
-	.button-icon {
-		display: inline-grid;
-		width: 1.7rem;
-		height: 1.7rem;
-		place-items: center;
-		border-radius: 999px;
-		background: color-mix(in oklab, var(--surface) 48%, transparent);
-		color: color-mix(in oklab, var(--text) 84%, var(--accent));
-	}
-
-	.button-copy {
-		display: grid;
+		justify-content: center;
+		gap: 0.45rem;
 		min-width: 0;
-		gap: 0.1rem;
-	}
-
-	.modal-button strong,
-	.modal-button small {
-		display: block;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.modal-button strong {
-		font-size: 0.82rem;
-		font-weight: 780;
-	}
-
-	.modal-button small {
+		min-height: 2.8rem;
+		padding: 0.6rem 0.35rem;
+		border: 1px solid transparent;
+		border-radius: 0.6rem;
+		background: transparent;
 		color: var(--muted);
-		font-size: 0.68rem;
-		font-weight: 680;
+		cursor: pointer;
+		font-size: 0.76rem;
+		font-weight: 600;
+		transition:
+			background 150ms ease,
+			color 150ms ease;
 	}
-
-	.modal-button:hover {
-		transform: translateY(-1px);
-		border-color: color-mix(in oklab, var(--accent) 46%, transparent);
-		background: color-mix(in oklab, var(--accent) 13%, var(--surface));
-	}
-
 	.modal-button.primary {
-		border-color: color-mix(in oklab, var(--accent) 52%, transparent);
-		background: color-mix(in oklab, var(--accent) 22%, var(--surface));
-	}
-
-	.modal-button.primary .button-icon {
+		min-height: 3rem;
+		background: color-mix(in oklab, var(--accent) 18%, var(--surface));
+		border-color: color-mix(in oklab, var(--accent) 35%, transparent);
 		color: var(--text);
-		background: color-mix(in oklab, var(--accent) 30%, transparent);
+		font-size: 0.88rem;
 	}
-
-	@media (max-width: 440px) {
-		.modal-actions {
-			grid-template-columns: 1fr;
+	.modal-button:hover {
+		background: color-mix(in oklab, var(--accent) 12%, var(--surface));
+		color: var(--text);
+	}
+	.modal-button:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 3px;
+	}
+	@media (max-width: 380px) {
+		.game-over-dialog {
+			padding: 1.25rem;
+		}
+		.modal-button {
+			gap: 0.3rem;
+			font-size: 0.7rem;
 		}
 	}
-
 	@media (prefers-reduced-motion: reduce) {
 		.game-over-backdrop,
-		.game-over-dialog,
-		.result-mark {
+		.game-over-dialog {
 			animation: none;
 		}
 	}
-
-	@keyframes result-backdrop-in {
+	@keyframes result-in {
 		from {
 			opacity: 0;
-			backdrop-filter: blur(0);
 		}
 		to {
 			opacity: 1;
-			backdrop-filter: blur(8px);
 		}
 	}
-
-	@keyframes result-dialog-in {
+	@keyframes result-rise {
 		from {
 			opacity: 0;
-			transform: translateY(0.9rem) scale(0.965);
+			transform: translateY(0.5rem);
 		}
 		to {
 			opacity: 1;
-			transform: translateY(0) scale(1);
-		}
-	}
-
-	@keyframes result-mark-in {
-		0% {
-			opacity: 0;
-			transform: scale(0.82);
-		}
-		62% {
-			opacity: 1;
-			transform: scale(1.08);
-		}
-		100% {
-			opacity: 1;
-			transform: scale(1);
+			transform: translateY(0);
 		}
 	}
 </style>

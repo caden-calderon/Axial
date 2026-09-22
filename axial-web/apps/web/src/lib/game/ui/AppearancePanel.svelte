@@ -1,10 +1,12 @@
 <script lang="ts">
-	import { Box, Circle, Gem, Lock, Moon, Palette, Pipette, Sun } from '@lucide/svelte';
+	import { Box, Circle, Lock, Moon, Palette, Pipette, Sun } from '@lucide/svelte';
 	import type { Player } from '@axial/core';
 	import { PIECE_SHAPE_OPTIONS, type PieceColors, type PieceShape } from '../state/pieceAppearance';
 	import type { UiThemeName } from '../theming/sceneThemes';
 
 	let {
+		soundEnabled,
+		onToggleSound,
 		boardColor,
 		uiTheme,
 		labelsVisible,
@@ -21,6 +23,8 @@
 		onToggleLabels,
 		onToggleTheme
 	}: {
+		soundEnabled: boolean;
+		onToggleSound: () => void;
 		boardColor: string;
 		uiTheme: UiThemeName;
 		labelsVisible: boolean;
@@ -73,14 +77,18 @@
 			<span
 				class="lock-indicator"
 				aria-label="Piece appearance locked until a new match"
-				title="Start a new match to edit pieces"
+				data-tooltip="Start a new match to edit pieces"
 			>
 				<Lock size={12} strokeWidth={2.2} />
 			</span>
 		{/if}
 	</div>
 
-	<label class="board-color-picker" style={`--picked-color: ${boardColor}`} title="Board color">
+	<label
+		class="board-color-picker"
+		style={`--picked-color: ${boardColor}`}
+		data-tooltip="Board color"
+	>
 		<span class="color-dot"></span>
 		<span>{boardColorLabel}</span>
 		<Pipette size={12} strokeWidth={2.1} />
@@ -101,14 +109,14 @@
 					<small>Style locked for this match</small>
 				</span>
 			</div>
-			<div class="locked-piece-bands" aria-label="Player piece markings">
+			<div class="locked-piece-colors" aria-label="Player piece colors">
 				<span style={`--piece-color: ${pieceColors.playerOne}`}>
 					<i></i>
-					P1 · 1 band
+					P1
 				</span>
 				<span style={`--piece-color: ${pieceColors.playerTwo}`}>
 					<i></i>
-					P2 · 2 bands
+					P2
 				</span>
 			</div>
 		</div>
@@ -126,15 +134,15 @@
 						class:selected={pieceShape === option.value}
 						aria-pressed={pieceShape === option.value}
 						disabled={appearanceLocked}
-						title={appearanceLocked ? 'Start a new match to edit pieces' : `${option.label} pieces`}
+						data-tooltip={appearanceLocked
+							? 'Start a new match to edit pieces'
+							: `${option.label} pieces`}
 						onclick={() => onPieceShapeChange(option.value)}
 					>
 						{#if option.value === 'cube'}
 							<Box size={14} strokeWidth={2} />
-						{:else if option.value === 'orb'}
-							<Circle size={14} strokeWidth={2} />
 						{:else}
-							<Gem size={14} strokeWidth={2} />
+							<Circle size={14} strokeWidth={2} />
 						{/if}
 						<span>{option.label}</span>
 					</button>
@@ -146,7 +154,9 @@
 					class="piece-color"
 					class:locked={appearanceLocked}
 					style={`--piece-color: ${pieceColors.playerOne}`}
-					title={appearanceLocked ? 'Start a new match to edit pieces' : 'Player 1 piece color'}
+					data-tooltip={appearanceLocked
+						? 'Start a new match to edit pieces'
+						: 'Player 1 piece color'}
 				>
 					<span class="color-dot"></span>
 					<span>P1</span>
@@ -163,7 +173,9 @@
 					class="piece-color"
 					class:locked={appearanceLocked}
 					style={`--piece-color: ${pieceColors.playerTwo}`}
-					title={appearanceLocked ? 'Start a new match to edit pieces' : 'Player 2 piece color'}
+					data-tooltip={appearanceLocked
+						? 'Start a new match to edit pieces'
+						: 'Player 2 piece color'}
 				>
 					<span class="color-dot"></span>
 					<span>P2</span>
@@ -179,7 +191,7 @@
 			</div>
 			{#if pieceColorsAreClose}
 				<p class="color-warning" role="status">
-					These colors are close. P1 uses one band; P2 uses two.
+					These colors are close. Choose more distinct colors to tell the players apart.
 				</p>
 			{/if}
 		</div>
@@ -240,6 +252,15 @@
 					checked={confirmDropEnabled}
 					aria-label="Toggle click to confirm drops"
 					onchange={() => onToggleConfirmDrop()}
+				/>
+			</label>
+			<label class="toggle-row">
+				<span>Sound</span>
+				<input
+					type="checkbox"
+					checked={soundEnabled}
+					aria-label="Game sound"
+					onchange={onToggleSound}
 				/>
 			</label>
 		</div>
