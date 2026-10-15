@@ -23,8 +23,10 @@ export type CameraFit = {
 const DESKTOP_CAMERA: Vec3 = [5.8, 5.1, 9.4];
 const DESKTOP_TARGET: Vec3 = [0, -0.6, 0];
 const PORTRAIT_CAMERA: Vec3 = [7.7, 7.3, 14.8];
-const LANDSCAPE_CAMERA: Vec3 = [6.35, 6.15, 10.7];
-const ORIGIN_TARGET: Vec3 = [0, 0, 0];
+// Landscape phones are short: lowering the view 0.35 units keeps the near floor numbers off the
+// bottom edge without pushing the board's top into the top bar.
+const LANDSCAPE_CAMERA: Vec3 = [6.35, 5.8, 10.7];
+const LANDSCAPE_TARGET: Vec3 = [0, -0.35, 0];
 const PORTRAIT_TARGET: Vec3 = [0, -0.12, 0];
 
 /**
@@ -58,7 +60,7 @@ export function resolveCameraFit(viewport: SceneViewport, dimensions: BoardDimen
 			compact,
 			portrait,
 			position: LANDSCAPE_CAMERA,
-			target: ORIGIN_TARGET,
+			target: LANDSCAPE_TARGET,
 			fov: 43,
 			boardScale: 0.9 * dimensionScale,
 			minDistance: 6.6,
