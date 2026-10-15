@@ -15,3 +15,19 @@ test('unknown paths return a 404 page that leads back to the game', async ({ pag
 	await expect(page).toHaveURL(/\/$/);
 	await expect(page.locator('canvas')).toBeVisible();
 });
+
+test('static head tags are in the initial HTML so they work before hydration', async ({
+	request
+}) => {
+	const html = await (await request.get('/')).text();
+	const href = (rel: string) =>
+		new RegExp(`<link\\s+rel="${rel}"\\s+href="([^"]+)"`).exec(html)?.[1];
+
+	for (const rel of ['icon', 'apple-touch-icon', 'manifest', 'preload']) {
+		const target = href(rel);
+		expect(target, `${rel} link`).toBeTruthy();
+		const response = await request.get(new URL(target!, 'http://localhost/').pathname);
+		expect(response.ok(), `${rel} ${target}`).toBe(true);
+	}
+	expect(html).toContain('<meta name="theme-color" content="#071012" />');
+});
