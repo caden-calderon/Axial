@@ -465,6 +465,8 @@
 		welcomeTourStartStep = resumeStepIndex;
 		welcomeTourActive = false;
 		practiceGame = createPracticeGame();
+		// Practice is taught from the default view, and play resumes from it afterwards.
+		viewResetKey += 1;
 		gameAudio.cancel();
 		welcomePracticeActive = true;
 		practiceHint = '';
@@ -474,6 +476,7 @@
 	}
 
 	function resumeWelcomeTour(): void {
+		viewResetKey += 1;
 		welcomePracticeActive = false;
 		practiceHint = '';
 		welcomePracticeHover = null;
@@ -482,6 +485,7 @@
 
 	function exitWelcomePractice(): void {
 		markWelcomeTourSeen(getBrowserStorage('localStorage'));
+		viewResetKey += 1;
 		welcomePracticeActive = false;
 		practiceHint = '';
 		welcomePracticeHover = null;
@@ -536,7 +540,9 @@
 	<ControlTooltip />
 	<div class="aurora"></div>
 	<svelte:boundary onerror={handleSceneBoundaryError}>
-		{#key `${sceneEpoch}:${welcomePracticeActive}`}
+		<!-- Only error recovery remounts the scene: every remount creates a new WebGL context, and
+		     practice swaps boards through the game prop with a camera reset instead. -->
+		{#key sceneEpoch}
 			{#if hydrated}
 				<AxialScene
 					game={sceneGame}
