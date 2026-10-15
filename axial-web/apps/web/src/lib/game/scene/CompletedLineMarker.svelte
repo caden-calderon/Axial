@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { prefersReducedMotion } from 'svelte/motion';
 	import { T, useTask } from '@threlte/core';
 	import { AdditiveBlending, Quaternion, Vector3 } from 'three';
@@ -8,7 +8,7 @@
 		COMPLETED_LINE_DRAW_DURATION_SECONDS,
 		COMPLETED_LINE_SETTLE_DURATION_SECONDS
 	} from '../animation';
-	import { cellPosition, PIECE_SIZE, type Vec3 } from './geometry';
+	import { cellPosition, PIECE_SIZE, type LineFrontLight, type Vec3 } from './geometry';
 	import type { PieceColors } from '../state/pieceAppearance';
 
 	let {
@@ -16,15 +16,20 @@
 		animate = false,
 		delay = 0,
 		onComplete,
+		onFrontLight,
 		pieceColors,
-		dimensions
+		dimensions,
+		name
 	}: {
 		line: CompletedLine;
 		animate?: boolean;
 		delay?: number;
 		onComplete?: () => void;
+		/** The world owns the light at the drawing front; see AxialWorld. */
+		onFrontLight?: (lineId: string, light: LineFrontLight | null) => void;
 		pieceColors: PieceColors;
 		dimensions: BoardDimensions;
+		name?: string;
 	} = $props();
 
 	const cells = $derived(line.cells.map(cellCenter));
@@ -60,6 +65,16 @@
 	const haloOpacity = $derived(0.14 + finalPulse * 0.16);
 	const coreOpacity = $derived(0.5 + finalPulse * 0.14);
 	const frontOpacity = $derived(visible && progress < 1 ? 0.52 : finalPulse * 0.28);
+
+	$effect(() => {
+		onFrontLight?.(
+			line.id,
+			frontOpacity > 0.02
+				? { position: frontPosition, color, intensity: frontOpacity * 0.85 }
+				: null
+		);
+	});
+	onDestroy(() => onFrontLight?.(line.id, null));
 
 	$effect(() => {
 		if (prefersReducedMotion.current) {
@@ -137,7 +152,7 @@
 	}
 </script>
 
-<T.Group name={`completed-line-${line.id}`} {visible}>
+<T.Group name={name ?? `completed-line-${line.id}`} {visible}>
 	<T.Mesh position={linePosition} {quaternion} scale={[1, lineScale, 1]} renderOrder={12}>
 		<T.CylinderGeometry args={[PIECE_SIZE * 0.082, PIECE_SIZE * 0.082, length, 18]} />
 		<T.MeshBasicMaterial
@@ -163,12 +178,6 @@
 	</T.Mesh>
 
 	{#if frontOpacity > 0.02}
-		<T.PointLight
-			{color}
-			position={frontPosition}
-			intensity={frontOpacity * 0.85}
-			distance={1.45}
-		/>
 		<T.Mesh position={frontPosition} renderOrder={13} scale={PIECE_SIZE * 0.18 + finalPulse * 0.03}>
 			<T.SphereGeometry args={[1, 20, 12]} />
 			<T.MeshBasicMaterial

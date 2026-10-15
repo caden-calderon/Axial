@@ -17,6 +17,7 @@ type SceneFrame = {
 	objects: ObjectSample[];
 	resultVisible: boolean;
 	turnText: string;
+	programIds: number[];
 	cameraPosition: number[];
 	cameraQuaternion: number[];
 };
@@ -105,6 +106,7 @@ test.beforeEach(async ({ page }) => {
 					objects,
 					resultVisible: document.querySelector(resultSelector) !== null,
 					turnText: document.querySelector('.turn-chip')?.textContent ?? '',
+					programIds: (renderer.info.programs ?? []).map((program) => program.id),
 					cameraPosition: camera.position.toArray(),
 					cameraQuaternion: camera.quaternion.toArray()
 				});
@@ -512,6 +514,42 @@ test('the last-move pulse settles to a steady glow and the idle board stops rend
 	await clearFrames(page);
 	await page.waitForTimeout(1_000);
 	expect(await page.evaluate(() => window.__axialSceneProbe.frames.length)).toBeLessThanOrEqual(2);
+});
+
+test('the first move, a winning line and a new match compile no new shaders', async ({ page }) => {
+	await seedMatch(page, [
+		{ row: 3, col: 0 },
+		{ row: 5, col: 0 },
+		{ row: 3, col: 1 },
+		{ row: 5, col: 1 },
+		{ row: 3, col: 2 },
+		{ row: 5, col: 2 }
+	]);
+	await openBoard(page);
+	// Let the startup shader warm-up finish, then force a frame to read the compiled programs.
+	await page.waitForTimeout(800);
+	await page.locator('.scene-shell').press('ArrowLeft');
+	await expect
+		.poll(async () => (await latestFrame(page))?.programIds.length ?? 0)
+		.toBeGreaterThan(0);
+	const warmedIds = (await latestFrame(page))!.programIds;
+	const newestWarmed = Math.max(...warmedIds);
+	// three.js gives every compiled program a new id; any id above the warm-up set is a stall.
+	const compiledLater = (frames: SceneFrame[]) => [
+		...new Set(frames.flatMap((frame) => frame.programIds).filter((id) => id > newestWarmed))
+	];
+
+	await clearFrames(page);
+	await page.locator('.scene-shell').press('ArrowRight');
+	await page.locator('.scene-shell').press('Enter');
+	await expect(page.locator('.game-over-dialog')).toBeVisible({ timeout: 8_000 });
+	expect(compiledLater(await page.evaluate(() => window.__axialSceneProbe.frames))).toEqual([]);
+
+	await page.getByRole('button', { name: 'New match' }).click();
+	await clearFrames(page);
+	await page.locator('.scene-shell').press('Enter');
+	await expect.poll(async () => (await latestFrame(page))?.objects.filter(isPiece).length).toBe(1);
+	expect(compiledLater(await page.evaluate(() => window.__axialSceneProbe.frames))).toEqual([]);
 });
 
 test('sound is opt-in, follows fresh landings, stays silent on restore, and mutes immediately', async ({

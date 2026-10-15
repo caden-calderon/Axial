@@ -23,7 +23,8 @@
 		pieceShape,
 		pieceColors,
 		highlighted = false,
-		dimensions
+		dimensions,
+		name
 	}: {
 		move: PlacedMove;
 		animate?: boolean;
@@ -34,6 +35,7 @@
 		pieceColors: PieceColors;
 		highlighted?: boolean;
 		dimensions: BoardDimensions;
+		name?: string;
 	} = $props();
 
 	const target = $derived(cellPosition(move.height, move.row, move.col, dimensions));
@@ -135,7 +137,11 @@
 	);
 </script>
 
-<T.Group name={`piece-${move.row}-${move.col}-${move.height}`} position={piecePosition} {scale}>
+<T.Group
+	name={name ?? `piece-${move.row}-${move.col}-${move.height}`}
+	position={piecePosition}
+	{scale}
+>
 	{#if highlighted}
 		<T.PointLight color={glow} intensity={highlightLight} distance={2.3} decay={2} />
 	{/if}

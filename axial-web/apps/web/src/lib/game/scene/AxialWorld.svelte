@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from 'svelte';
-	import { T, useThrelte } from '@threlte/core';
+	import { T, useTask, useThrelte } from '@threlte/core';
 	import { Color, Fog } from 'three';
 	import {
 		getDropHeight,
 		isLegalDoubleAdjacentMove,
+		type CompletedLine,
 		type GameSnapshot,
 		type Move,
 		type PlacedMove
@@ -26,7 +27,7 @@
 	import ColumnPicker from './ColumnPicker.svelte';
 	import CompletedLineMarker from './CompletedLineMarker.svelte';
 	import OrbitCameraControls from './OrbitCameraControls.svelte';
-	import { type Vec3 } from './geometry';
+	import { type LineFrontLight, type Vec3 } from './geometry';
 	import type { PlacementMode } from '../state/gameController.svelte';
 	import type { PieceColors, PieceShape } from '../state/pieceAppearance';
 	import { resolveScenePalette, type UiThemeName } from '../theming/sceneThemes';
@@ -148,7 +149,45 @@
 	});
 
 	const boardRotation = -0.34;
-	const { scene } = useThrelte();
+	const { scene, renderer, camera } = useThrelte();
+
+	// three.js recompiles every lit material whenever the number of lights changes. The newest
+	// piece carries a point light and the drawing line front had one too, so the first move and
+	// the winning line each stalled a frame by ~100 ms. The count now stays constant: one world
+	// light follows whichever line front is drawing, and a stand-in replaces the newest piece's
+	// light before the first move.
+	let lineFront = $state<{ lineId: string; light: LineFrontLight } | null>(null);
+	function reportLineFront(lineId: string, light: LineFrontLight | null): void {
+		if (light) lineFront = { lineId, light };
+		else if (lineFront?.lineId === lineId) lineFront = null;
+	}
+
+	// A never-visible piece keeps the piece shaders compiled across matches (they would otherwise
+	// be released with the last piece and rebuilt on the next match's first move), and one
+	// compile pass at startup builds them before the first move instead of during it.
+	const SHADER_WARMUP_MOVE: PlacedMove = { row: 0, col: 0, height: 0, player: 1, kind: 'piece' };
+	// The four lowest cells of the first column: a vertical line, valid on every board size.
+	const SHADER_WARMUP_LINE: CompletedLine = {
+		id: 'shader-warmup',
+		player: 1,
+		cells: [0, 1, 2, 3],
+		direction: [1, 0, 0],
+		lineLength: 4
+	};
+	let shadersWarmed = false;
+	useTask(
+		() => {
+			shadersWarmed = true;
+			// Synchronous on purpose: compileAsync polls each material afterwards, and a material
+			// disposed meanwhile (a hover preview unmounting) makes three.js throw from that poll.
+			try {
+				renderer.compile(scene, camera.current);
+			} catch (error) {
+				console.warn('[Axial] Shader warm-up failed; shaders will compile on first use.', error);
+			}
+		},
+		{ autoInvalidate: false, running: () => !shadersWarmed }
+	);
 	const sceneBackground = new Color();
 	const sceneFog = new Fog('#000000', 10, 21);
 
@@ -258,7 +297,34 @@
 		/>
 	{/if}
 
+	<T.PointLight
+		position={lineFront?.light.position ?? [0, 0, 0]}
+		color={lineFront?.light.color ?? '#ffffff'}
+		intensity={lineFront?.light.intensity ?? 0}
+		distance={1.45}
+	/>
+
+	<T.Group visible={false}>
+		<GamePiece
+			name="shader-warmup-piece"
+			move={SHADER_WARMUP_MOVE}
+			{pieceShape}
+			{pieceColors}
+			{dimensions}
+		/>
+		<CompletedLineMarker
+			name="shader-warmup-line"
+			line={SHADER_WARMUP_LINE}
+			{pieceColors}
+			{dimensions}
+		/>
+	</T.Group>
+
 	{#key `${dimensionKey}:${presentationEpoch}`}
+		{#if game.moveHistory.length === 0}
+			<!-- Stands in for the newest piece's highlight light; see lineFront above. -->
+			<T.PointLight intensity={0} distance={2.3} decay={2} />
+		{/if}
 		{#each game.moveHistory as move, index (sceneMoveKey(move, index))}
 			<GamePiece
 				{move}
@@ -280,6 +346,7 @@
 				{dimensions}
 				animate={animatedLineIds.includes(line.id)}
 				delay={lineDelay}
+				onFrontLight={reportLineFront}
 				onComplete={game.status.state === 'won' && line.id === animatedLineIds[0]
 					? onWinReveal
 					: undefined}
