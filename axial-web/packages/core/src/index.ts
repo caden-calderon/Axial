@@ -344,10 +344,11 @@ export function applyMove(
   next.lastMove = placed;
   next.moveHistory.push(placed);
 
-  next.completedLines = findCompletedLineSegments(
+  next.completedLines = updateCompletedLines(
+    next.completedLines,
     next.board,
+    placed,
     next.winCondition,
-    undefined,
     next.dimensions,
   );
   const playerLines = next.completedLines.filter(
@@ -594,6 +595,110 @@ export function findCompletedLineSegments(
   }
 
   return lines;
+}
+
+/**
+ * The completed lines after `placed` was added to `board`, given the lines before it. Lines are
+ * maximal straight runs, so only the runs through the new piece can change: in each direction it
+ * creates a run, extends one, or joins two into one. Rescanning the whole board on every move made
+ * replaying a long game on a large board take seconds. The result, including its order, matches
+ * findCompletedLineSegments on the same board; `previous` must be the lines of the board before
+ * the move, as every snapshot built by createGame, applyMove and replayMoves is.
+ */
+function updateCompletedLines(
+  previous: readonly CompletedLine[],
+  board: Uint8Array,
+  placed: PlacedMove,
+  winCondition: WinCondition,
+  dimensions: BoardDimensions,
+): CompletedLine[] {
+  const { lineLength } = winCondition;
+  const { player } = placed;
+  const replaced = new Set<CompletedLine>();
+  const added: CompletedLine[] = [];
+
+  for (const direction of DIRECTIONS) {
+    const [dh, dr, dc] = direction;
+    let height = placed.height;
+    let row = placed.row;
+    let col = placed.col;
+    while (
+      isInBounds(height - dh, row - dr, col - dc, dimensions) &&
+      getCell(board, height - dh, row - dr, col - dc, dimensions) === player
+    ) {
+      height -= dh;
+      row -= dr;
+      col -= dc;
+    }
+
+    const cells: number[] = [];
+    while (
+      isInBounds(height, row, col, dimensions) &&
+      getCell(board, height, row, col, dimensions) === player
+    ) {
+      cells.push(indexOf(height, row, col, dimensions));
+      height += dh;
+      row += dr;
+      col += dc;
+    }
+
+    // Runs this piece extended or joined are now part of the new run.
+    const run = new Set(cells);
+    for (const line of previous) {
+      if (
+        line.player === player &&
+        sameDirection(line.direction, direction) &&
+        run.has(line.cells[0]!)
+      ) {
+        replaced.add(line);
+      }
+    }
+    if (cells.length >= lineLength) {
+      added.push({
+        id: completedLineId(player, lineLength, cells),
+        player,
+        cells,
+        direction,
+        lineLength,
+      });
+    }
+  }
+
+  return [...previous.filter((line) => !replaced.has(line)), ...added].sort(
+    (first, second) => compareLineScanOrder(first, second, dimensions),
+  );
+}
+
+/** The order findCompletedLineSegments emits lines in: start cell, then direction, then player. */
+function compareLineScanOrder(
+  first: CompletedLine,
+  second: CompletedLine,
+  dimensions: BoardDimensions,
+): number {
+  const firstStart = cellFromIndex(first.cells[0]!, dimensions);
+  const secondStart = cellFromIndex(second.cells[0]!, dimensions);
+  return (
+    firstStart.height - secondStart.height ||
+    firstStart.row - secondStart.row ||
+    firstStart.col - secondStart.col ||
+    directionIndex(first.direction) - directionIndex(second.direction) ||
+    first.player - second.player
+  );
+}
+
+function directionIndex(direction: readonly number[]): number {
+  return DIRECTIONS.findIndex((candidate) =>
+    sameDirection(candidate, direction),
+  );
+}
+
+function sameDirection(
+  first: readonly number[],
+  second: readonly number[],
+): boolean {
+  return (
+    first[0] === second[0] && first[1] === second[1] && first[2] === second[2]
+  );
 }
 
 export function normalizeWinCondition(
