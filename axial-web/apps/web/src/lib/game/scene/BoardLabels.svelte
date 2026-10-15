@@ -266,13 +266,14 @@
 	// Height numbers stand on the board's left silhouette edge. The camera-nearest edge projects
 	// straight up through the middle of the board, so its numbers (drawn without depth testing)
 	// covered the pieces. A corner's "leftness" is how far it lies along the screen-left
-	// direction, (-cameraZ, cameraX) in board space; it fades between the two left corners while
-	// the camera looks squarely at a face.
+	// direction, (-cameraZ, cameraX) in board space. Looking squarely at a face, the two left
+	// corners tie at 0.71 and line up on screen; each stays at about 0.7 opacity there so the
+	// numbers remain legible while they hand over.
 	function zRailVisibility(candidate: ZRailCandidate): number {
 		if (portrait) return nearestZRailVisibility(candidate);
 		const leftness = (candidate.sideZ * cameraLocalX - candidate.sideX * cameraLocalZ) / Math.SQRT2;
 
-		return smoothstep(0.62, 0.92, leftness);
+		return smoothstep(0.45, 0.85, leftness);
 	}
 
 	function nearestZRailVisibility(candidate: ZRailCandidate): number {
