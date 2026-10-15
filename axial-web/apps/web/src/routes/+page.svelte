@@ -22,6 +22,7 @@
 	import OnlineMatchOverlay from '$lib/game/ui/OnlineMatchOverlay.svelte';
 	import GameStatusPanel from '$lib/game/ui/GameStatusPanel.svelte';
 	import MoveConfirmBar from '$lib/game/ui/MoveConfirmBar.svelte';
+	import ReviewBar from '$lib/game/ui/ReviewBar.svelte';
 	import {
 		createOnlineController,
 		type BoardDimensionKey
@@ -689,6 +690,18 @@
 			{controlsExpanded}
 			onConfirm={confirmSceneMove}
 			onCancel={cancelSceneMove}
+		/>
+	{/if}
+
+	{#if !welcomePracticeActive && !welcomeTourActive && playMode !== 'online' && controller.canRedo && !controlsExpanded && !activeLockedMove && !(controller.showGameOverModal && !presentationPending)}
+		<ReviewBar
+			moveNumber={controller.game.moveHistory.length}
+			totalMoves={controller.game.moveHistory.length + controller.redoMoveCount}
+			canStepBack={controller.canUndo}
+			canStepForward={controller.canRedo}
+			{controlsExpanded}
+			onStepBack={controller.undoMove}
+			onStepForward={controller.redoMove}
 		/>
 	{/if}
 

@@ -1060,6 +1060,9 @@ export function createGameController() {
 		get canRedo() {
 			return canRedo;
 		},
+		get redoMoveCount() {
+			return redoMoves.length;
+		},
 		get canUndo() {
 			return canUndo;
 		},
