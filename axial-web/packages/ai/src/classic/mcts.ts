@@ -148,12 +148,14 @@ export function analyzeMctsMove(
   const rootState = ClassicSearchState.fromGame(game);
   const stateConversionMs = performanceNow() - stateStart;
   if (rootState.winner !== null) return null;
+  if (rootState.legalMoveIndices().length === 0) return null;
 
   const tacticalStart = performanceNow();
   const criticalTactical = selectTacticalMove(
     rootState,
     game.currentPlayer,
     options.tacticalMode ?? "forced-only",
+    { scoreAlternatives: false },
   );
   const tacticalMs = performanceNow() - tacticalStart;
   if (criticalTactical) {
@@ -190,10 +192,20 @@ export function analyzeMctsMove(
     };
   }
 
-  const heuristicStart = performanceNow();
-  const tactical = selectHeuristicMove(rootState, game.currentPlayer);
-  const heuristicMs = performanceNow() - heuristicStart;
-  if (!tactical) return null;
+  // The heuristic anchor is only needed when the search can't stand behind its own choice,
+  // so compute it lazily: scoring every legal move dominated large-board decisions.
+  let heuristicMs = 0;
+  let heuristicAnchor: MoveIndex | undefined;
+  const anchorMoveIndex = (): MoveIndex => {
+    if (heuristicAnchor === undefined) {
+      const heuristicStart = performanceNow();
+      heuristicAnchor =
+        selectHeuristicMove(rootState, game.currentPlayer)?.moveIndex ??
+        rootState.legalMoveIndices()[0]!;
+      heuristicMs += performanceNow() - heuristicStart;
+    }
+    return heuristicAnchor;
+  };
 
   const remainingDecisionTime =
     options.maxTimeMs === undefined
@@ -223,8 +235,8 @@ export function analyzeMctsMove(
     lookahead,
   );
   const result = search.run(
-    lookahead?.moveIndex ?? tactical.moveIndex,
-    tactical.moveIndex,
+    () => lookahead?.moveIndex ?? anchorMoveIndex(),
+    anchorMoveIndex,
   );
   const totalMs = performanceNow() - decisionStart;
   return {
@@ -305,8 +317,8 @@ class MctsSearch {
   }
 
   run(
-    fallbackMoveIndex: MoveIndex,
-    strategicAnchorMoveIndex: MoveIndex,
+    resolveFallbackMoveIndex: () => MoveIndex,
+    resolveStrategicAnchor: () => MoveIndex,
   ): MctsMoveResult {
     const start = performanceNow();
     const maxSimulations = this.options.simulations ?? DEFAULT_SIMULATIONS;
@@ -333,6 +345,7 @@ class MctsSearch {
     const selected = this.selectRootMove(stats);
 
     if (!selected) {
+      const fallbackMoveIndex = resolveFallbackMoveIndex();
       return {
         move: publicMoveFromIndex(fallbackMoveIndex, this.rootState.dimensions),
         moveIndex: fallbackMoveIndex,
@@ -356,6 +369,7 @@ class MctsSearch {
       this.options.minimumSearchDepth ?? 0,
     );
     if (selected.stat.maxDepth < minimumSearchDepth) {
+      const strategicAnchorMoveIndex = resolveStrategicAnchor();
       return {
         move: publicMoveFromIndex(
           strategicAnchorMoveIndex,
