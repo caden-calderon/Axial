@@ -199,7 +199,9 @@
 		return Math.atan2(sin * worldX + cos * worldZ, cos * worldX - sin * worldZ);
 	}
 
-	let shadersWarmed = false;
+	// Reactive so the task's running condition sees it: a plain flag kept the task alive and
+	// recompiled (cheaply, but every frame) for as long as the scene existed.
+	let shadersWarmed = $state(false);
 	useTask(
 		() => {
 			shadersWarmed = true;

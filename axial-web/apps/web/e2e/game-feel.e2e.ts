@@ -44,6 +44,7 @@ declare global {
 		__axialRoomSocket: EventTarget;
 		__axialObservedNames?: string[];
 		__axialCanvases: number;
+		__axialCompileCalls?: number;
 	}
 }
 
@@ -71,6 +72,11 @@ test.beforeEach(async ({ page }) => {
 			const renderer = (event as CustomEvent<WebGLRenderer>).detail;
 			if (!renderer.isWebGLRenderer) return;
 			const render = renderer.render.bind(renderer);
+			const compile = renderer.compile.bind(renderer);
+			renderer.compile = (...args: Parameters<WebGLRenderer['compile']>) => {
+				window.__axialCompileCalls = (window.__axialCompileCalls ?? 0) + 1;
+				return compile(...args);
+			};
 			renderer.render = (scene, camera) => {
 				render(scene, camera);
 				if (!(scene as Scene).isScene || !(camera as PerspectiveCamera).isPerspectiveCamera) return;
@@ -525,6 +531,28 @@ test('the last-move pulse settles to a steady glow and the idle board stops rend
 	await clearFrames(page);
 	await page.waitForTimeout(1_000);
 	expect(await page.evaluate(() => window.__axialSceneProbe.frames.length)).toBeLessThanOrEqual(2);
+});
+
+test('an empty board compiles its shaders once at startup and none on the first move', async ({
+	page
+}) => {
+	await openBoard(page);
+	await page.waitForTimeout(800);
+	await page.locator('.scene-shell').press('ArrowLeft');
+	await expect
+		.poll(async () => (await latestFrame(page))?.programIds.length ?? 0)
+		.toBeGreaterThan(0);
+	const newestWarmed = Math.max(...(await latestFrame(page))!.programIds);
+
+	await clearFrames(page);
+	await page.locator('.scene-shell').press('Enter');
+	await expect.poll(async () => (await latestFrame(page))?.objects.filter(isPiece).length).toBe(1);
+	// Let the drop and the last-move pulse run for a while: the warm-up must not repeat per frame.
+	await page.waitForTimeout(1_000);
+	const frames = await page.evaluate(() => window.__axialSceneProbe.frames);
+	expect(frames.length).toBeGreaterThan(10);
+	expect(frames.flatMap((frame) => frame.programIds).filter((id) => id > newestWarmed)).toEqual([]);
+	expect(await page.evaluate(() => window.__axialCompileCalls)).toBe(1);
 });
 
 test('the first move, a winning line and a new match compile no new shaders', async ({ page }) => {
