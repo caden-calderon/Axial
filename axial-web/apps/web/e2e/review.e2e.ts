@@ -35,7 +35,7 @@ test('a phone can step through a reviewed match without opening the panel', asyn
 	await expect(reviewBar).toHaveCount(0);
 	await page
 		.getByRole('dialog')
-		.getByRole('button', { name: /Rewind this match to the start/ })
+		.getByRole('button', { name: /^Review match/ })
 		.click();
 	await expect(page.getByRole('button', { name: 'Expand settings' })).toBeVisible();
 	await expect(reviewBar).toBeVisible();

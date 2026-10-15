@@ -41,14 +41,12 @@ for (const viewport of [
 		await expect(dialog.locator('dd')).toHaveText(['7', '1:30']);
 		await expect(dialog).not.toContainText('Across the board');
 		await expect(
-			dialog.getByRole('button', { name: 'Start a new match with an empty board' })
+			dialog.getByRole('button', { name: 'New match with an empty board' })
 		).toBeInViewport();
 		await page.screenshot({ path: `/tmp/axial-polish-result-${viewport.width}.png` });
 		await page.reload();
 		await expect(dialog.locator('dd')).toHaveText(['7', '1:30']);
-		await dialog
-			.getByRole('button', { name: 'Dismiss the result and keep the final board visible' })
-			.click();
+		await dialog.getByRole('button', { name: 'Keep board visible and dismiss the result' }).click();
 		await expect(dialog).toHaveCount(0);
 		await expect(page.locator('canvas')).toBeVisible();
 		await page.screenshot({ path: `/tmp/axial-polish-pieces-${viewport.width}.png` });

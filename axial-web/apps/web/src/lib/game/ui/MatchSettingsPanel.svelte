@@ -61,17 +61,21 @@
 	const dimensionControls: readonly {
 		key: BoardDimensionKey;
 		label: string;
+		name: string;
 		value: number;
 	}[] = $derived([
-		{ key: 'height', label: 'H', value: boardDimensions.height },
-		{ key: 'rows', label: 'R', value: boardDimensions.rows },
-		{ key: 'columns', label: 'C', value: boardDimensions.columns }
+		{ key: 'height', label: 'H', name: 'height', value: boardDimensions.height },
+		{ key: 'rows', label: 'R', name: 'rows', value: boardDimensions.rows },
+		{ key: 'columns', label: 'C', name: 'columns', value: boardDimensions.columns }
 	]);
 
-	function incrementDimension(key: BoardDimensionKey): void {
+	function nextDimensionValue(key: BoardDimensionKey): number {
 		const current = boardDimensions[key];
-		const next = current >= MAX_BOARD_DIMENSIONS[key] ? MIN_BOARD_DIMENSIONS[key] : current + 1;
-		onBoardDimensionChange(key, next);
+		return current >= MAX_BOARD_DIMENSIONS[key] ? MIN_BOARD_DIMENSIONS[key] : current + 1;
+	}
+
+	function incrementDimension(key: BoardDimensionKey): void {
+		onBoardDimensionChange(key, nextDimensionValue(key));
 	}
 
 	function choosePlayMode(mode: PlayMode): void {
@@ -208,7 +212,7 @@
 						<button
 							type="button"
 							disabled={setupLocked}
-							aria-label={`Increase board ${dimension.label} dimension`}
+							aria-label={`${dimension.value} ${dimension.label}, board ${dimension.name}; next ${nextDimensionValue(dimension.key)}`}
 							data-tooltip={setupLocked
 								? 'Start a new match to change board size'
 								: 'Click to increase'}

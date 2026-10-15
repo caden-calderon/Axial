@@ -36,7 +36,7 @@
 			<X size={18} strokeWidth={2.2} />
 			<span>Cancel</span>
 		</button>
-		<button type="button" class="confirm" aria-label="Confirm selected move" onclick={onConfirm}>
+		<button type="button" class="confirm" aria-label="Drop selected move" onclick={onConfirm}>
 			<Check size={18} strokeWidth={2.2} />
 			<span>Drop</span>
 		</button>
