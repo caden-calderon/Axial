@@ -642,6 +642,27 @@ test('height numbers stay clear of the pieces on a crowded desktop board', async
 	expect(closest.distance).toBeGreaterThan(30);
 });
 
+test('clicking a stack drops into that column, not the floor tile behind it', async ({ page }) => {
+	await seedMatch(page, [
+		{ row: 3, col: 3 },
+		{ row: 3, col: 3 },
+		{ row: 3, col: 3 }
+	]);
+	await openBoard(page);
+	await page.locator('.scene-shell').press('ArrowLeft');
+	await expect.poll(async () => (await latestFrame(page))?.objects.filter(isPiece).length).toBe(3);
+	const top = objectNamed((await latestFrame(page))!, 'piece-3-3-2')!;
+	const viewport = page.viewportSize()!;
+	await page.mouse.click(
+		((top.screenPosition[0] + 1) / 2) * viewport.width,
+		((1 - top.screenPosition[1]) / 2) * viewport.height
+	);
+	await expect
+		.poll(async () => Boolean(objectNamed((await latestFrame(page))!, 'piece-3-3-3')))
+		.toBe(true);
+	expect((await latestFrame(page))!.objects.filter(isPiece)).toHaveLength(4);
+});
+
 test('sound is opt-in, follows fresh landings, stays silent on restore, and mutes immediately', async ({
 	page
 }) => {

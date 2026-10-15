@@ -2,9 +2,14 @@
 	import { onMount, untrack } from 'svelte';
 	import { useThrelte } from '@threlte/core';
 	import { getDropHeight, type GameSnapshot, type Move } from '@axial/core';
-	import { Plane, Raycaster, Vector2, Vector3 } from 'three';
+	import { Raycaster, Vector2 } from 'three';
 	import { CELL_SPACING } from './geometry';
-	import { moveFromBoardLocalPoint, type BoardLocalPoint } from './picking';
+	import {
+		moveFromBoardLocalPoint,
+		moveFromBoardLocalRay,
+		type BoardLocalPoint,
+		type BoardLocalRay
+	} from './picking';
 	import { createPlacementGesture } from './placementGesture';
 
 	let {
@@ -29,9 +34,6 @@
 	const { camera, canvas, dom } = useThrelte();
 	const raycaster = new Raycaster();
 	const pointerNdc = new Vector2();
-	const hitPlane = new Plane();
-	const hitPoint = new Vector3();
-	const hitPlaneNormal = new Vector3(0, 1, 0);
 
 	const placementGesture = createPlacementGesture();
 	let hoverKey = '';
@@ -98,44 +100,65 @@
 	function pickMove(pointer: { clientX: number; clientY: number }): Move | null {
 		if (game.status.state !== 'playing') return null;
 
-		const localPoint = boardLocalPointFromPointer(pointer);
-		if (localPoint === null) return null;
+		const ray = boardLocalRayFromPointer(pointer);
+		if (ray === null) return null;
 
-		const move = moveFromBoardLocalPoint(localPoint, game.dimensions);
+		// A stack under the pointer wins; otherwise the floor tile the pointer projects onto.
+		const floor = floorPoint(ray);
+		const move =
+			moveFromBoardLocalRay(ray, game.dimensions, stackHeight) ??
+			(floor && moveFromBoardLocalPoint(floor, game.dimensions));
 		if (move === null) return null;
 		if (isMovePlayable && !isMovePlayable(move)) return null;
 
 		return getDropHeight(game.board, move, game.dimensions) >= 0 ? move : null;
 	}
 
-	function boardLocalPointFromPointer(event: {
+	function stackHeight(move: Move): number {
+		const landing = getDropHeight(game.board, move, game.dimensions);
+		return landing < 0 ? game.dimensions.height : landing;
+	}
+
+	/** The pointer's camera ray in the board group's unrotated, unscaled space. */
+	function boardLocalRayFromPointer(pointer: {
 		clientX: number;
 		clientY: number;
-	}): BoardLocalPoint | null {
+	}): BoardLocalRay | null {
 		const rect = canvas.getBoundingClientRect();
 		if (rect.width <= 0 || rect.height <= 0) return null;
 
 		pointerNdc.set(
-			((event.clientX - rect.left) / rect.width) * 2 - 1,
-			-(((event.clientY - rect.top) / rect.height) * 2 - 1)
+			((pointer.clientX - rect.left) / rect.width) * 2 - 1,
+			-(((pointer.clientY - rect.top) / rect.height) * 2 - 1)
 		);
 
 		camera.current.updateMatrixWorld();
 		raycaster.setFromCamera(pointerNdc, camera.current);
 
-		const floorY = -game.dimensions.height * CELL_SPACING * 0.5 * boardScale;
-		hitPlane.set(hitPlaneNormal, -floorY);
-
-		if (raycaster.ray.intersectPlane(hitPlane, hitPoint) === null) return null;
-
-		const scaledX = hitPoint.x / boardScale;
-		const scaledZ = hitPoint.z / boardScale;
+		const { origin, direction } = raycaster.ray;
 		const cos = Math.cos(boardRotation);
 		const sin = Math.sin(boardRotation);
-
 		return {
-			x: cos * scaledX - sin * scaledZ,
-			z: sin * scaledX + cos * scaledZ
+			origin: [
+				(cos * origin.x - sin * origin.z) / boardScale,
+				origin.y / boardScale,
+				(sin * origin.x + cos * origin.z) / boardScale
+			],
+			direction: [
+				cos * direction.x - sin * direction.z,
+				direction.y,
+				sin * direction.x + cos * direction.z
+			]
+		};
+	}
+
+	function floorPoint(ray: BoardLocalRay): BoardLocalPoint | null {
+		const floorY = -game.dimensions.height * CELL_SPACING * 0.5;
+		if (ray.direction[1] >= 0) return null;
+		const distance = (floorY - ray.origin[1]) / ray.direction[1];
+		return {
+			x: ray.origin[0] + ray.direction[0] * distance,
+			z: ray.origin[2] + ray.direction[2] * distance
 		};
 	}
 
