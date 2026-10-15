@@ -5,7 +5,12 @@
 	import { AdditiveBlending } from 'three';
 	import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 	import type { BoardDimensions, PlacedMove } from '@axial/core';
-	import { pieceDropDuration, samplePieceDrop } from '../animation';
+	import {
+		LAST_MOVE_PULSE_SECONDS,
+		lastMovePulseAmplitude,
+		pieceDropDuration,
+		samplePieceDrop
+	} from '../animation';
 	import { CELL_SPACING, cellPosition, dropStartY, PIECE_SIZE } from './geometry';
 	import type { PieceColors, PieceShape } from '../state/pieceAppearance';
 
@@ -46,6 +51,8 @@
 	let fallGlow = $state(shouldAnimate ? 1 : 0);
 	let settled = $state(!shouldAnimate);
 	let highlightPhase = $state(0);
+	let highlightElapsed = $state(0);
+	let wasHighlighted = untrack(() => highlighted);
 	const startsAt = performance.now() / 1000 + untrack(() => delay);
 	let elapsed = -untrack(() => delay);
 
@@ -59,10 +66,25 @@
 	const piecePosition = $derived([target[0], y, target[2]] as [number, number, number]);
 	const boardHeight = $derived(dimensions.height * CELL_SPACING);
 	const floorMarkerOffsetY = $derived(-boardHeight / 2 - y + CELL_SPACING * 0.012);
-	const highlightPulse = $derived(highlighted ? 0.68 + Math.sin(highlightPhase) * 0.24 : 0);
+	const highlightPulse = $derived(
+		highlighted
+			? 0.68 + Math.sin(highlightPhase) * 0.24 * lastMovePulseAmplitude(highlightElapsed)
+			: 0
+	);
+	const highlightPulsing = $derived(highlighted && highlightElapsed < LAST_MOVE_PULSE_SECONDS);
+
 	const highlightScale = $derived(1.18 + highlightPulse * 0.16);
 	const highlightOpacity = $derived(opacity * (highlighted ? 0.16 + highlightPulse * 0.22 : 0));
 	const highlightLight = $derived(highlighted ? 0.58 + highlightPulse * 0.52 : 0);
+
+	$effect(() => {
+		// Undo hands the highlight back to an older piece; give it a fresh pulse.
+		if (highlighted && !wasHighlighted) {
+			highlightPhase = 0;
+			highlightElapsed = 0;
+		}
+		wasHighlighted = highlighted;
+	});
 
 	$effect(() => {
 		if (!prefersReducedMotion.current) return;
@@ -85,7 +107,11 @@
 
 	useTask(
 		(delta) => {
-			if (highlighted) highlightPhase += Math.min(delta, 0.1) * 2.2;
+			if (highlightPulsing) {
+				const step = Math.min(delta, 0.1);
+				highlightPhase += step * 2.2;
+				highlightElapsed += step;
+			}
 			if (settled) return;
 
 			elapsed = performance.now() / 1000 - startsAt;
@@ -105,7 +131,7 @@
 				onSettle?.(move);
 			}
 		},
-		{ running: () => !settled || (highlighted && !prefersReducedMotion.current) }
+		{ running: () => !settled || (highlightPulsing && !prefersReducedMotion.current) }
 	);
 </script>
 

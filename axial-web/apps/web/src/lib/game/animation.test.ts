@@ -7,6 +7,8 @@ import {
 	COMPLETED_LINE_DRAW_DURATION_SECONDS,
 	COMPLETED_LINE_SETTLE_DURATION_SECONDS,
 	createLandingSequence,
+	LAST_MOVE_PULSE_SECONDS,
+	lastMovePulseAmplitude,
 	hasSameMoveHistory,
 	isSingleMoveAppend,
 	pieceDropDuration,
@@ -96,4 +98,20 @@ it('stages a fast reply after its support lands, while other columns stay immedi
 	expect(sequence.reserve(other.lastMove!, game.dimensions, 0.01)).toBe(0);
 	sequence.clear();
 	expect(sequence.reserve(lower.lastMove!, game.dimensions, 0)).toBe(0);
+});
+
+describe('last-move highlight', () => {
+	it('pulses at full strength, eases out, and ends as a steady glow', () => {
+		expect(lastMovePulseAmplitude(0)).toBe(1);
+		expect(lastMovePulseAmplitude(LAST_MOVE_PULSE_SECONDS / 2)).toBe(1);
+		let previous = 1;
+		for (let time = 0; time <= LAST_MOVE_PULSE_SECONDS + 0.5; time += 0.05) {
+			const amplitude = lastMovePulseAmplitude(time);
+			expect(amplitude).toBeLessThanOrEqual(previous + 1e-12);
+			expect(amplitude).toBeGreaterThanOrEqual(0);
+			previous = amplitude;
+		}
+		expect(lastMovePulseAmplitude(LAST_MOVE_PULSE_SECONDS)).toBe(0);
+		expect(lastMovePulseAmplitude(LAST_MOVE_PULSE_SECONDS + 10)).toBe(0);
+	});
 });

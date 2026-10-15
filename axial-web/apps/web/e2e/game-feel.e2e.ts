@@ -483,6 +483,27 @@ test('an idle empty board stops submitting GPU renders until the camera changes'
 		.toBeGreaterThan(0);
 });
 
+test('the last-move pulse settles to a steady glow and the idle board stops rendering', async ({
+	page
+}) => {
+	await openBoard(page);
+	await page.locator('.scene-shell').press('Enter');
+	// Clear the keyboard cursor; its drop preview animates for as long as it is shown.
+	await page.locator('.scene-shell').press('Escape');
+	await expect.poll(async () => (await latestFrame(page))?.objects.filter(isPiece).length).toBe(1);
+	// LAST_MOVE_PULSE_SECONDS is 5.6 s from placement.
+	await page.waitForTimeout(6_500);
+	const settledFrame = (await latestFrame(page))!;
+	const glow = objectNamed(settledFrame, 'piece-3-3-0')!.children.find(
+		(child) => child.intensity !== undefined
+	);
+	// Steady highlight light: 0.58 + 0.68 * 0.52.
+	expect(glow?.intensity).toBeCloseTo(0.9336, 3);
+	await clearFrames(page);
+	await page.waitForTimeout(1_000);
+	expect(await page.evaluate(() => window.__axialSceneProbe.frames.length)).toBeLessThanOrEqual(2);
+});
+
 test('sound is opt-in, follows fresh landings, stays silent on restore, and mutes immediately', async ({
 	page
 }) => {
