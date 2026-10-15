@@ -12,7 +12,8 @@
 		uiTheme,
 		boardRotation,
 		dimensions,
-		compact = false
+		compact = false,
+		portrait = false
 	}: {
 		visible?: boolean;
 		palette: ScenePalette;
@@ -20,6 +21,8 @@
 		boardRotation: number;
 		dimensions: BoardDimensions;
 		compact?: boolean;
+		/** Portrait phones have no side margin, so height numbers keep the camera-nearest edge. */
+		portrait?: boolean;
 	} = $props();
 
 	type PerimeterRailId = 'west-y' | 'south-x' | 'east-y' | 'north-x';
@@ -253,13 +256,35 @@
 		return smoothstep(0, 0.34, score);
 	}
 
+	// Height numbers stand on the board's left silhouette edge. The camera-nearest edge projects
+	// straight up through the middle of the board, so its numbers (drawn without depth testing)
+	// covered the pieces. A corner's "leftness" is how far it lies along the screen-left
+	// direction, (-cameraZ, cameraX) in board space; it fades between the two left corners while
+	// the camera looks squarely at a face.
 	function zRailVisibility(candidate: ZRailCandidate): number {
+		if (portrait) return nearestZRailVisibility(candidate);
+		const leftness = (candidate.sideZ * cameraLocalX - candidate.sideX * cameraLocalZ) / Math.SQRT2;
+
+		return smoothstep(0.62, 0.92, leftness);
+	}
+
+	function nearestZRailVisibility(candidate: ZRailCandidate): number {
 		const xVisibility = zSideVisibility(cameraLocalX, candidate.sideX);
 		const zVisibility = zSideVisibility(cameraLocalZ, candidate.sideZ);
 		const xWeight = zSideCrossfade(cameraLocalX, candidate.sideX);
 		const zWeight = zSideCrossfade(cameraLocalZ, candidate.sideZ);
 
 		return Math.max(xVisibility, zVisibility) * xWeight * zWeight;
+	}
+
+	function zSideVisibility(value: number, side: Side): number {
+		return smoothstep(-0.08, 0.44, side * value);
+	}
+
+	function zSideCrossfade(value: number, side: Side): number {
+		const positiveSideWeight = smoothstep(-0.17, 0.17, value + 0.018);
+
+		return side === 1 ? positiveSideWeight : 1 - positiveSideWeight;
 	}
 
 	function zNumberPosition(candidate: ZRailCandidate, index: number): Vec3 {
@@ -280,16 +305,6 @@
 
 	function axisSideVisibility(value: number, side: Side): number {
 		return smoothstep(-0.2, 0.36, side * value);
-	}
-
-	function zSideVisibility(value: number, side: Side): number {
-		return smoothstep(-0.08, 0.44, side * value);
-	}
-
-	function zSideCrossfade(value: number, side: Side): number {
-		const positiveSideWeight = smoothstep(-0.17, 0.17, value + 0.018);
-
-		return side === 1 ? positiveSideWeight : 1 - positiveSideWeight;
 	}
 
 	function smoothstep(edge0: number, edge1: number, value: number): number {
@@ -368,6 +383,7 @@
 		{#if visibility > 0.01}
 			{#each zNumbers as number, index (`${candidate.id}-${number}`)}
 				<BillboardLabel
+					name={`z-number-${number}`}
 					text={number}
 					position={zNumberPosition(candidate, index)}
 					fontSize={numberFontSize}

@@ -1,5 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
-import { replayMoves, type GameSnapshot, type Move, type WinCondition } from '@axial/core';
+import {
+	applyMove,
+	createGame,
+	legalMoves,
+	replayMoves,
+	type GameSnapshot,
+	type Move,
+	type WinCondition
+} from '@axial/core';
 import type { PrivateRoomSnapshot } from '@axial/multiplayer-protocol';
 import type { Material, Mesh, Object3D, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
 
@@ -24,6 +32,7 @@ type SceneFrame = {
 type SceneProbe = {
 	frames: SceneFrame[];
 	camera: PerspectiveCamera | null;
+	scene?: Scene;
 	resultAtAppearance: SceneFrame | null;
 };
 
@@ -66,6 +75,7 @@ test.beforeEach(async ({ page }) => {
 				if (!(scene as Scene).isScene || !(camera as PerspectiveCamera).isPerspectiveCamera) return;
 				const probe = window.__axialSceneProbe;
 				probe.camera = camera as PerspectiveCamera;
+				probe.scene = scene as Scene;
 				const objects: ObjectSample[] = [];
 				scene.traverse((object: Object3D) => {
 					if (!/^(piece-|completed-line-|drop-preview$)/.test(object.name)) return;
@@ -584,6 +594,52 @@ test('the drop preview returns under a resting mouse and hides during the AI tur
 		.poll(async () => (await latestFrame(page))?.objects.filter(isPiece).length, { timeout: 8_000 })
 		.toBe(2);
 	await expect.poll(hasPreview).toBe(true);
+});
+
+test('height numbers stay clear of the pieces on a crowded desktop board', async ({ page }) => {
+	// A dense, still-playing position: columns filled round-robin, skipping any winning move.
+	let game = createGame({ lineLength: 4, linesToWin: 3 });
+	const moves: Move[] = [];
+	for (let step = 0; moves.length < 40; step += 1) {
+		const options = legalMoves(game.board, game.dimensions);
+		for (let offset = 0; offset < options.length; offset += 1) {
+			const move = options[(step * 7 + offset) % options.length];
+			const next = applyMove(game, move);
+			if (next.status.state !== 'playing') continue;
+			game = next;
+			moves.push(move);
+			break;
+		}
+	}
+	await seedMatch(page, moves, { lineLength: 4, linesToWin: 3 });
+	await openBoard(page);
+	await page.locator('.scene-shell').press('ArrowLeft');
+	await expect.poll(() => page.evaluate(() => Boolean(window.__axialSceneProbe.scene))).toBe(true);
+
+	const closest = await page.evaluate(() => {
+		const { scene, camera } = window.__axialSceneProbe;
+		const canvas = document.querySelector('canvas')!.getBoundingClientRect();
+		const toScreen = (object: Object3D) => {
+			const point = object.getWorldPosition(object.position.clone()).project(camera!);
+			return [((point.x + 1) / 2) * canvas.width, ((1 - point.y) / 2) * canvas.height];
+		};
+		const numbers: number[][] = [];
+		const pieces: number[][] = [];
+		scene!.traverse((object) => {
+			const opacity = ((object as Mesh).material as Material | undefined)?.opacity ?? 0;
+			if (object.name.startsWith('z-number-') && object.visible && opacity > 0.5)
+				numbers.push(toScreen(object));
+			if (object.name.startsWith('piece-')) pieces.push(toScreen(object));
+		});
+		return {
+			numbers: numbers.length,
+			distance: Math.min(
+				...numbers.flatMap(([x, y]) => pieces.map(([px, py]) => Math.hypot(x - px, y - py)))
+			)
+		};
+	});
+	expect(closest.numbers).toBe(6);
+	expect(closest.distance).toBeGreaterThan(30);
 });
 
 test('sound is opt-in, follows fresh landings, stays silent on restore, and mutes immediately', async ({

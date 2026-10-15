@@ -288,6 +288,7 @@
 			{boardRotation}
 			{dimensions}
 			compact={isCompact}
+			portrait={cameraFit.portrait}
 		/>
 	{/key}
 

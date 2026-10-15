@@ -16,7 +16,8 @@
 		outlineWidth = 0.1,
 		outlineGlow = 0.09,
 		fillGlow = 0.02,
-		renderOrder = 9
+		renderOrder = 9,
+		name = ''
 	}: {
 		text: string;
 		position: Vec3;
@@ -30,6 +31,7 @@
 		outlineGlow?: number;
 		fillGlow?: number;
 		renderOrder?: number;
+		name?: string;
 	} = $props();
 
 	const { invalidate } = useThrelte();
@@ -145,4 +147,4 @@
 	}
 </script>
 
-<T is={Sprite} args={[material]} {position} {scale} {renderOrder} visible={fontsReady} />
+<T is={Sprite} args={[material]} {name} {position} {scale} {renderOrder} visible={fontsReady} />
