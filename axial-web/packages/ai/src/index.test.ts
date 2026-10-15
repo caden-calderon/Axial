@@ -613,7 +613,7 @@ describe("Classic tactical lookahead", () => {
 });
 
 describe("Classic MCTS AI", () => {
-  it("searches fork blocks the lookahead proves lost instead of returning them", () => {
+  it("searches a fork block only when the lookahead proves it lost", () => {
     // Engine audit 2026-10-14: the fork-block shortcut chose row=3,col=2 here, which loses
     // within five plies; row=3,col=4 is the only reply that survives.
     const game = replayMoves([
@@ -636,9 +636,13 @@ describe("Classic MCTS AI", () => {
     expect(deep.reason).not.toBe("tactical");
     expect(deep.move).toEqual({ row: 3, col: 4 });
 
-    // Without a real lookahead (Easy, Medium) the shortcut still answers instantly.
-    const shallow = analyzeMctsMove(game, { ...searched, lookaheadDepth: 1 })!;
-    expect(shallow.reason).toBe("tactical");
+    // A depth-2 check cannot prove this block lost, so it keeps its instant reply, as do
+    // presets without a real lookahead (Easy, Medium).
+    for (const lookaheadDepth of [1, 2]) {
+      const shallow = analyzeMctsMove(game, { ...searched, lookaheadDepth })!;
+      expect(shallow.reason).toBe("tactical");
+      expect(shallow.move).toEqual({ row: 3, col: 2 });
+    }
   });
 
   it("separates difficulty capabilities and scales custom-rule budgets", () => {

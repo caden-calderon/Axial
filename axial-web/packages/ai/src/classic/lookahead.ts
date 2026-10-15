@@ -17,6 +17,8 @@ export type LookaheadOptions = {
   nodeLimit?: number;
   maxTimeMs?: number;
   quiescenceDepth?: number;
+  /** Search only these root moves (e.g. to verify one candidate) instead of choosing them. */
+  rootMoves?: readonly MoveIndex[];
 };
 
 export type LookaheadMoveScore = {
@@ -95,12 +97,11 @@ export function selectLookaheadMove(
   const rootMaxMoves = normalizedPositiveInteger(
     options.rootMaxMoves ?? Math.max(DEFAULT_ROOT_MAX_MOVES, maxMoves),
   );
-  const rootCandidates = candidateMoves(
-    state,
-    player,
-    Math.max(1, rootMaxMoves),
-    true,
-  );
+  const rootCandidates = options.rootMoves
+    ? uniqueMoves(options.rootMoves).filter((moveIndex) =>
+        state.isLegalMove(moveIndex),
+      )
+    : candidateMoves(state, player, Math.max(1, rootMaxMoves), true);
   if (rootCandidates.length === 0) return null;
 
   const startedAt = performanceNow();
