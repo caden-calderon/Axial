@@ -5,7 +5,6 @@
 	import { createGameAudio } from '$lib/game/audio/gameAudio';
 	import { hasSameMoveHistory, isSingleMoveAppend, sceneMoveKey } from '$lib/game/animation';
 	import { createAxialBridgeController } from '$lib/game/bridge/bridgeController';
-	import AxialScene from '$lib/game/scene/AxialScene.svelte';
 	import WelcomeTourOverlay from '$lib/game/onboarding/WelcomeTourOverlay.svelte';
 	import TourPracticeBanner from '$lib/game/onboarding/TourPracticeBanner.svelte';
 	import { createPracticeGame, PRACTICE_WINNING_MOVE } from '$lib/game/onboarding/practiceGame';
@@ -27,6 +26,13 @@
 		createOnlineController,
 		type BoardDimensionKey
 	} from '$lib/multiplayer/onlineController.svelte';
+
+	// three.js and the scene are most of the page's JavaScript. Loading them as a separate chunk,
+	// started right away, lets the HUD, panel and tour render while the board downloads.
+	let sceneModule = $state(loadScene());
+	function loadScene() {
+		return import('$lib/game/scene/AxialScene.svelte');
+	}
 
 	const gameAudio = createGameAudio();
 	let soundEnabled = $state(false);
@@ -545,54 +551,62 @@
 		     practice swaps boards through the game prop with a camera reset instead. -->
 		{#key sceneEpoch}
 			{#if hydrated}
-				<AxialScene
-					game={sceneGame}
-					hoveredMove={activePreviewMove}
-					guidedMove={welcomePracticeActive && !practiceCompleted ? PRACTICE_WINNING_MOVE : null}
-					previewLocked={!welcomePracticeActive && activeLockedMove !== null}
-					labelsVisible={welcomePracticeActive || controller.labelsVisible}
-					gridLayersVisible={controller.gridLayersVisible}
-					uiTheme={controller.uiTheme}
-					boardColor={controller.boardColor}
-					pieceShape={controller.pieceShape}
-					pieceColors={controller.pieceColors}
-					placementMode={welcomePracticeActive || playMode === 'online'
-						? 'piece'
-						: controller.placementMode}
-					doubleAdjacentAnchor={welcomePracticeActive || playMode === 'online'
-						? null
-						: controller.pendingDoubleAdjacentOrigin}
-					{viewResetKey}
-					onHover={setSceneHover}
-					onPlay={playSceneMove}
-					onCancelSelection={cancelSceneMove}
-					onRecoverableError={handleRecoverableSceneError}
-					onLand={(move) => gameAudio.playImpact(move.player, move.height)}
-					onSettle={(move) => {
-						if (
-							!welcomePracticeActive &&
-							activeGame.status.state === 'draw' &&
-							activeGame.lastMove &&
-							sceneMoveKey(move, 0) === sceneMoveKey(activeGame.lastMove, 0)
-						)
-							void finishRenderedPresentation();
-					}}
-					onWinReveal={() => {
-						if (welcomePracticeActive) {
-							if (practiceGame.status.state === 'won')
-								gameAudio.playWin(practiceGame.status.winner);
-							return;
-						}
-						if (activeGame.status.state === 'won') {
-							gameAudio.playWin(activeGame.status.winner);
-							void finishRenderedPresentation();
-						}
-					}}
-					interactionLabel={welcomePracticeActive ? practiceLabel : activeCurrentLabel}
-					inputEnabled={welcomePracticeActive
-						? !practiceCompleted
-						: !welcomeTourActive && (playMode === 'online' ? online.yourTurn : controller.canPlay)}
-				/>
+				{#await sceneModule then { default: AxialScene }}
+					<AxialScene
+						game={sceneGame}
+						hoveredMove={activePreviewMove}
+						guidedMove={welcomePracticeActive && !practiceCompleted ? PRACTICE_WINNING_MOVE : null}
+						previewLocked={!welcomePracticeActive && activeLockedMove !== null}
+						labelsVisible={welcomePracticeActive || controller.labelsVisible}
+						gridLayersVisible={controller.gridLayersVisible}
+						uiTheme={controller.uiTheme}
+						boardColor={controller.boardColor}
+						pieceShape={controller.pieceShape}
+						pieceColors={controller.pieceColors}
+						placementMode={welcomePracticeActive || playMode === 'online'
+							? 'piece'
+							: controller.placementMode}
+						doubleAdjacentAnchor={welcomePracticeActive || playMode === 'online'
+							? null
+							: controller.pendingDoubleAdjacentOrigin}
+						{viewResetKey}
+						onHover={setSceneHover}
+						onPlay={playSceneMove}
+						onCancelSelection={cancelSceneMove}
+						onRecoverableError={handleRecoverableSceneError}
+						onLand={(move) => gameAudio.playImpact(move.player, move.height)}
+						onSettle={(move) => {
+							if (
+								!welcomePracticeActive &&
+								activeGame.status.state === 'draw' &&
+								activeGame.lastMove &&
+								sceneMoveKey(move, 0) === sceneMoveKey(activeGame.lastMove, 0)
+							)
+								void finishRenderedPresentation();
+						}}
+						onWinReveal={() => {
+							if (welcomePracticeActive) {
+								if (practiceGame.status.state === 'won')
+									gameAudio.playWin(practiceGame.status.winner);
+								return;
+							}
+							if (activeGame.status.state === 'won') {
+								gameAudio.playWin(activeGame.status.winner);
+								void finishRenderedPresentation();
+							}
+						}}
+						interactionLabel={welcomePracticeActive ? practiceLabel : activeCurrentLabel}
+						inputEnabled={welcomePracticeActive
+							? !practiceCompleted
+							: !welcomeTourActive &&
+								(playMode === 'online' ? online.yourTurn : controller.canPlay)}
+					/>
+				{:catch error}
+					<div class="scene-recovery" role="alert" aria-label={recoveryErrorLabel(error)}>
+						<strong>Board failed to load</strong>
+						<button type="button" onclick={() => (sceneModule = loadScene())}>Try again</button>
+					</div>
+				{/await}
 			{/if}
 		{/key}
 
