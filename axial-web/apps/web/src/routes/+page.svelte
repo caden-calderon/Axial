@@ -774,7 +774,7 @@
 	}
 
 	.scene-recovery button {
-		min-height: 2rem;
+		min-height: 2.75rem;
 		border: 1px solid color-mix(in oklab, var(--accent) 42%, transparent);
 		border-radius: 999px;
 		background: color-mix(in oklab, var(--accent) 18%, var(--surface));
@@ -787,7 +787,7 @@
 
 	.recovery-toast {
 		left: 50%;
-		bottom: 1rem;
+		bottom: calc(env(safe-area-inset-bottom) + 1rem);
 		max-width: min(22rem, calc(100vw - 2rem));
 		padding: 0.62rem 0.78rem;
 		border-radius: 999px;

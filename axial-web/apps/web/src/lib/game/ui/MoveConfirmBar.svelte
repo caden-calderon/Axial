@@ -47,7 +47,7 @@
 	.move-confirm-bar {
 		position: absolute;
 		left: 50%;
-		bottom: max(1rem, env(safe-area-inset-bottom));
+		bottom: calc(env(safe-area-inset-bottom) + 1rem);
 		z-index: var(--z-contextual);
 		display: flex;
 		align-items: center;
@@ -134,7 +134,7 @@
 
 	@media (max-width: 720px), (hover: none) and (pointer: coarse) {
 		.move-confirm-bar {
-			bottom: max(0.5rem, env(safe-area-inset-bottom));
+			bottom: calc(env(safe-area-inset-bottom) + 0.5rem);
 			width: min(26rem, calc(100vw - 1rem));
 			justify-content: space-between;
 		}

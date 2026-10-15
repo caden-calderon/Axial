@@ -56,7 +56,7 @@
 		-webkit-user-select: none;
 		position: absolute;
 		left: 50%;
-		bottom: max(1rem, env(safe-area-inset-bottom));
+		bottom: calc(env(safe-area-inset-bottom) + 1rem);
 		z-index: var(--z-contextual);
 		display: grid;
 		width: min(40rem, calc(100vw - 2rem));
@@ -164,7 +164,7 @@
 
 	@media (max-width: 720px), (hover: none) and (pointer: coarse) {
 		.practice-banner {
-			bottom: max(0.5rem, env(safe-area-inset-bottom));
+			bottom: calc(env(safe-area-inset-bottom) + 0.5rem);
 			width: calc(100vw - 1rem);
 			gap: 0.48rem;
 			padding: 0.46rem;

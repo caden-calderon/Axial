@@ -255,7 +255,7 @@
 	.keyboard-readout {
 		position: absolute;
 		left: max(1rem, env(safe-area-inset-left));
-		bottom: max(1rem, env(safe-area-inset-bottom));
+		bottom: calc(env(safe-area-inset-bottom) + 1rem);
 		z-index: var(--z-contextual);
 		display: grid;
 		gap: 0.2rem;
