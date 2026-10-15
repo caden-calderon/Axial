@@ -60,6 +60,10 @@ export type StoredRoomState = {
   roomCode: string;
   phase: RoomPhase;
   revision: number;
+  // Revision of the last change to the game itself (moves, rules, match start,
+  // rematch, room end). Presence and name updates bump only `revision`, so a
+  // move is stale only if its client has not seen this revision.
+  gameRevision: number;
   createdAt: number;
   updatedAt: number;
   expiresAt: number;
@@ -105,6 +109,7 @@ export function createInitialRoomState(input: {
     roomCode: input.roomCode,
     phase: "waiting",
     revision: 1,
+    gameRevision: 1,
     createdAt: input.now,
     updatedAt: input.now,
     expiresAt: input.now + WAITING_EMPTY_TTL_MS,
@@ -355,7 +360,7 @@ export function setRoomRules(
   next.rules = rules;
   next.moveHistory = [];
   for (const roomPlayer of next.players) roomPlayer.ready = false;
-  touch(next, now);
+  touchGame(next, now);
   return withPublicEvent(next, "room:rules-updated", commandId);
 }
 
@@ -433,7 +438,7 @@ export function startMatch(
     roomPlayer.ready = false;
     roomPlayer.rematchReady = false;
   }
-  touch(next, now);
+  touchGame(next, now);
   return withPublicEvent(next, "game:started", commandId);
 }
 
@@ -446,7 +451,7 @@ export function playClassicMove(
   commandId?: string,
 ): RoomCommandOutcome {
   assertUsableRoom(state);
-  assertExpectedRevision(state, expectedRevision);
+  assertCurrentGameRevision(state, expectedRevision);
   if (state.phase !== "playing") {
     throw new RoomServiceError(
       "illegal-move",
@@ -506,7 +511,7 @@ export function playClassicMove(
       roomPlayer.rematchReady = false;
     }
   }
-  touch(next, now);
+  touchGame(next, now);
 
   const events = createPublicEvents(next, "game:move-accepted", commandId, {
     move: placed,
@@ -565,7 +570,7 @@ export function setRematchVote(
       roomPlayer.ready = false;
       roomPlayer.rematchReady = false;
     }
-    touch(next, now);
+    touchGame(next, now);
     return withPublicEvent(next, "game:started", commandId);
   }
 
@@ -589,7 +594,7 @@ export function expireRoom(
     player.disconnectedAt = player.disconnectedAt ?? now;
     player.lastSeenAt = now;
   }
-  touch(next, now);
+  touchGame(next, now);
   next.expiresAt = now;
   return withPublicEvent(next, "room:expired", commandId);
 }
@@ -692,6 +697,9 @@ export function normalizeStoredRoomState(
 ): StoredRoomState {
   return {
     ...state,
+    // Rooms stored before gameRevision existed keep the old exact-revision
+    // check until their next game change.
+    gameRevision: state.gameRevision ?? state.revision,
     matchNumber: state.matchNumber ?? 1,
     startingPlayer: state.startingPlayer === 2 ? 2 : 1,
     matchStartedAt: state.matchStartedAt ?? null,
@@ -800,15 +808,35 @@ function assertExpectedRevision(
     !Number.isInteger(expectedRevision) ||
     expectedRevision !== state.revision
   ) {
-    throw new RoomServiceError(
-      "stale-revision",
-      "Room state changed; resync before retrying.",
-      409,
-      {
-        currentRevision: state.revision,
-      },
-    );
+    throw staleRevisionError(state);
   }
+}
+
+// A move is aimed at the board, so revisions bumped only by presence or names
+// since the client's snapshot do not make it stale.
+function assertCurrentGameRevision(
+  state: StoredRoomState,
+  expectedRevision: number | undefined,
+): void {
+  if (expectedRevision === undefined) return;
+  if (
+    !Number.isInteger(expectedRevision) ||
+    expectedRevision < state.gameRevision ||
+    expectedRevision > state.revision
+  ) {
+    throw staleRevisionError(state);
+  }
+}
+
+function staleRevisionError(state: StoredRoomState): RoomServiceError {
+  return new RoomServiceError(
+    "stale-revision",
+    "Room state changed; resync before retrying.",
+    409,
+    {
+      currentRevision: state.revision,
+    },
+  );
 }
 
 function assertUsableRoom(state: StoredRoomState): void {
@@ -820,6 +848,11 @@ function assertUsableRoom(state: StoredRoomState): void {
 function touch(state: StoredRoomState, now: number): void {
   state.revision += 1;
   touchWithoutRevision(state, now);
+}
+
+function touchGame(state: StoredRoomState, now: number): void {
+  touch(state, now);
+  state.gameRevision = state.revision;
 }
 
 function touchWithoutRevision(state: StoredRoomState, now: number): void {
