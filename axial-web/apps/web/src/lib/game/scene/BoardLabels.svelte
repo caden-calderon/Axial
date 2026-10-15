@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { T, useTask, useThrelte } from '@threlte/core';
 	import type { BoardDimensions } from '@axial/core';
 	import type { ScenePalette, UiThemeName } from '../theming/sceneThemes';
 	import { boardSize, CELL_SPACING, cellPosition, type Vec3 } from './geometry';
 	import BillboardLabel from './BillboardLabel.svelte';
+	import { createLabelTextureCache, provideLabelTextureCache } from './labelTextures';
 
 	let {
 		visible = true,
@@ -24,6 +25,12 @@
 		/** Portrait phones have no side margin, so height numbers keep the camera-nearest edge. */
 		portrait?: boolean;
 	} = $props();
+
+	// Labels are mounted once and fade through opacity: mounting them as the camera orbits drew
+	// a fresh canvas texture each time (37 in one full orbit in the experience audit).
+	const labelTextures = createLabelTextureCache();
+	provideLabelTextureCache(labelTextures);
+	onDestroy(() => labelTextures.dispose());
 
 	type PerimeterRailId = 'west-y' | 'south-x' | 'east-y' | 'north-x';
 	type Side = -1 | 1;
@@ -342,10 +349,45 @@
 <T.Group {visible}>
 	{#each perimeterLabels as label (label.id)}
 		{@const visibility = perimeterNumberVisibility(label)}
-		{#if visibility > 0.01}
+		<BillboardLabel
+			text={label.text}
+			position={label.position}
+			fontSize={numberFontSize}
+			color={labelColor}
+			outlineColor={palette.gridEmissive}
+			fillOpacity={numberFillOpacity}
+			outlineOpacity={numberOutlineOpacity}
+			outlineWidth={numberOutlineWidth}
+			outlineGlow={numberOutlineGlow}
+			fillGlow={numberFillGlow}
+			opacity={visibility}
+		/>
+	{/each}
+
+	{#each axisLabelCandidates as label (label.id)}
+		{@const visibility = axisLabelVisibility(label)}
+		<BillboardLabel
+			text={label.text}
+			position={label.position}
+			fontSize={axisFontSize}
+			color={labelColor}
+			outlineColor={palette.gridEmissive}
+			fillOpacity={axisFillOpacity}
+			outlineOpacity={axisOutlineOpacity}
+			outlineWidth={axisOutlineWidth}
+			outlineGlow={axisOutlineGlow}
+			fillGlow={axisFillGlow}
+			opacity={visibility}
+		/>
+	{/each}
+
+	{#each zRailCandidates as candidate (candidate.id)}
+		{@const visibility = zRailVisibility(candidate)}
+		{#each zNumbers as number, index (`${candidate.id}-${number}`)}
 			<BillboardLabel
-				text={label.text}
-				position={label.position}
+				name={`z-number-${number}`}
+				text={number}
+				position={zNumberPosition(candidate, index)}
 				fontSize={numberFontSize}
 				color={labelColor}
 				outlineColor={palette.gridEmissive}
@@ -356,61 +398,20 @@
 				fillGlow={numberFillGlow}
 				opacity={visibility}
 			/>
-		{/if}
-	{/each}
+		{/each}
 
-	{#each axisLabelCandidates as label (label.id)}
-		{@const visibility = axisLabelVisibility(label)}
-		{#if visibility > 0.01}
-			<BillboardLabel
-				text={label.text}
-				position={label.position}
-				fontSize={axisFontSize}
-				color={labelColor}
-				outlineColor={palette.gridEmissive}
-				fillOpacity={axisFillOpacity}
-				outlineOpacity={axisOutlineOpacity}
-				outlineWidth={axisOutlineWidth}
-				outlineGlow={axisOutlineGlow}
-				fillGlow={axisFillGlow}
-				opacity={visibility}
-			/>
-		{/if}
-	{/each}
-
-	{#each zRailCandidates as candidate (candidate.id)}
-		{@const visibility = zRailVisibility(candidate)}
-		{#if visibility > 0.01}
-			{#each zNumbers as number, index (`${candidate.id}-${number}`)}
-				<BillboardLabel
-					name={`z-number-${number}`}
-					text={number}
-					position={zNumberPosition(candidate, index)}
-					fontSize={numberFontSize}
-					color={labelColor}
-					outlineColor={palette.gridEmissive}
-					fillOpacity={numberFillOpacity}
-					outlineOpacity={numberOutlineOpacity}
-					outlineWidth={numberOutlineWidth}
-					outlineGlow={numberOutlineGlow}
-					fillGlow={numberFillGlow}
-					opacity={visibility}
-				/>
-			{/each}
-
-			<BillboardLabel
-				text="Z"
-				position={zAxisPosition(candidate)}
-				fontSize={axisFontSize}
-				color={labelColor}
-				outlineColor={palette.gridEmissive}
-				fillOpacity={axisFillOpacity}
-				outlineOpacity={axisOutlineOpacity}
-				outlineWidth={axisOutlineWidth}
-				outlineGlow={axisOutlineGlow}
-				fillGlow={axisFillGlow}
-				opacity={visibility}
-			/>
-		{/if}
+		<BillboardLabel
+			text="Z"
+			position={zAxisPosition(candidate)}
+			fontSize={axisFontSize}
+			color={labelColor}
+			outlineColor={palette.gridEmissive}
+			fillOpacity={axisFillOpacity}
+			outlineOpacity={axisOutlineOpacity}
+			outlineWidth={axisOutlineWidth}
+			outlineGlow={axisOutlineGlow}
+			fillGlow={axisFillGlow}
+			opacity={visibility}
+		/>
 	{/each}
 </T.Group>

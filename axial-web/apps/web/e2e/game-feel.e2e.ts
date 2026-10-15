@@ -43,6 +43,7 @@ declare global {
 		__axialOscillatorStarts: number[];
 		__axialRoomSocket: EventTarget;
 		__axialObservedNames?: string[];
+		__axialCanvases: number;
 	}
 }
 
@@ -661,6 +662,31 @@ test('clicking a stack drops into that column, not the floor tile behind it', as
 		.poll(async () => Boolean(objectNamed((await latestFrame(page))!, 'piece-3-3-3')))
 		.toBe(true);
 	expect((await latestFrame(page))!.objects.filter(isPiece)).toHaveLength(4);
+});
+
+test('orbiting the board draws no new label textures', async ({ page }) => {
+	await page.addInitScript(() => {
+		const createElement = document.createElement.bind(document);
+		window.__axialCanvases = 0;
+		document.createElement = ((tagName: string, options?: ElementCreationOptions) => {
+			if (tagName.toLowerCase() === 'canvas') window.__axialCanvases += 1;
+			return createElement(tagName, options);
+		}) as typeof document.createElement;
+	});
+	await openBoard(page);
+	await page.evaluate(() => document.fonts.ready);
+	await page.waitForTimeout(500);
+	await page.evaluate(() => (window.__axialCanvases = 0));
+
+	// Two long drags turn the camera most of the way around the board.
+	for (let drag = 0; drag < 2; drag += 1) {
+		await page.mouse.move(250, 200);
+		await page.mouse.down();
+		await page.mouse.move(1000, 200, { steps: 30 });
+		await page.mouse.up();
+	}
+	await page.waitForTimeout(400);
+	expect(await page.evaluate(() => window.__axialCanvases)).toBe(0);
 });
 
 test('sound is opt-in, follows fresh landings, stays silent on restore, and mutes immediately', async ({
