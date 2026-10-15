@@ -204,8 +204,6 @@
 			clearcoat={isBlocker ? 0.72 : 1}
 			clearcoatRoughness={isBlocker ? 0.18 : 0.035}
 			ior={isBlocker ? 1.42 : 1.55}
-			transmission={isBlocker ? 0.08 : 0.18}
-			thickness={isBlocker ? 0.18 : 0.32}
 			specularIntensity={1}
 			transparent
 			opacity={opacity * materialOpacity}
