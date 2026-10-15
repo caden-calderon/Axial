@@ -3,11 +3,10 @@
 	import { useThrelte } from '@threlte/core';
 	import { getDropHeight, type GameSnapshot, type Move } from '@axial/core';
 	import { Raycaster, Vector2 } from 'three';
-	import { CELL_SPACING } from './geometry';
 	import {
+		floorPointFromBoardLocalRay,
 		moveFromBoardLocalPoint,
 		moveFromBoardLocalRay,
-		type BoardLocalPoint,
 		type BoardLocalRay
 	} from './picking';
 	import { createPlacementGesture } from './placementGesture';
@@ -104,7 +103,7 @@
 		if (ray === null) return null;
 
 		// A stack under the pointer wins; otherwise the floor tile the pointer projects onto.
-		const floor = floorPoint(ray);
+		const floor = floorPointFromBoardLocalRay(ray, game.dimensions);
 		const move =
 			moveFromBoardLocalRay(ray, game.dimensions, stackHeight) ??
 			(floor && moveFromBoardLocalPoint(floor, game.dimensions));
@@ -149,16 +148,6 @@
 				direction.y,
 				sin * direction.x + cos * direction.z
 			]
-		};
-	}
-
-	function floorPoint(ray: BoardLocalRay): BoardLocalPoint | null {
-		const floorY = -game.dimensions.height * CELL_SPACING * 0.5;
-		if (ray.direction[1] >= 0) return null;
-		const distance = (floorY - ray.origin[1]) / ray.direction[1];
-		return {
-			x: ray.origin[0] + ray.direction[0] * distance,
-			z: ray.origin[2] + ray.direction[2] * distance
 		};
 	}
 

@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { BoardDimensions } from '@axial/core';
 import { CELL_SPACING, cellPosition, type Vec3 } from './geometry';
-import { moveFromBoardLocalPoint, moveFromBoardLocalRay } from './picking';
+import {
+	floorPointFromBoardLocalRay,
+	moveFromBoardLocalPoint,
+	moveFromBoardLocalRay
+} from './picking';
 
 const dimensions: BoardDimensions = { height: 6, rows: 6, columns: 7 };
 
@@ -102,5 +106,36 @@ describe('moveFromBoardLocalRay', () => {
 		// The space above a short stack is not part of it.
 		const aboveStack = towards(cellPosition(3, 3, 3, dimensions));
 		expect(moveFromBoardLocalRay(aboveStack, dimensions, stacks({ '3:3': 1 }))).toBeNull();
+	});
+});
+
+describe('floorPointFromBoardLocalRay', () => {
+	const floorY = -dimensions.height * CELL_SPACING * 0.5;
+	const ray = (origin: Vec3, target: Vec3) => {
+		const direction: Vec3 = [target[0] - origin[0], target[1] - origin[1], target[2] - origin[2]];
+		const length = Math.hypot(...direction);
+		return { origin, direction: direction.map((value) => value / length) as Vec3 };
+	};
+
+	it('meets the floor from above and from below the board', () => {
+		for (const eye of [
+			[4, 7, 9],
+			[4, -9, 6]
+		] as Vec3[]) {
+			const [x, , z] = cellPosition(0, 2, 5, dimensions);
+			const point = floorPointFromBoardLocalRay(ray(eye, [x, floorY, z]), dimensions);
+			expect(point!.x).toBeCloseTo(x, 6);
+			expect(point!.z).toBeCloseTo(z, 6);
+			expect(moveFromBoardLocalPoint(point!, dimensions)).toEqual({ row: 2, col: 5 });
+		}
+	});
+
+	it('ignores a floor behind the ray or parallel to it', () => {
+		expect(
+			floorPointFromBoardLocalRay({ origin: [0, 5, 0], direction: [0, 1, 0] }, dimensions)
+		).toBeNull();
+		expect(
+			floorPointFromBoardLocalRay({ origin: [0, 5, 0], direction: [1, 0, 0] }, dimensions)
+		).toBeNull();
 	});
 });

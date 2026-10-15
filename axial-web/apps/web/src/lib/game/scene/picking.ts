@@ -53,6 +53,24 @@ export function moveFromBoardLocalRay(
 	return nearest?.move ?? null;
 }
 
+/**
+ * Where the ray meets the board's floor plane, from above or below (the orbit allows the camera
+ * under the floor), or null if the plane is behind the ray or parallel to it.
+ */
+export function floorPointFromBoardLocalRay(
+	ray: BoardLocalRay,
+	dimensions: BoardDimensions
+): BoardLocalPoint | null {
+	const floorY = -dimensions.height * CELL_SPACING * 0.5;
+	if (Math.abs(ray.direction[1]) < 1e-12) return null;
+	const distance = (floorY - ray.origin[1]) / ray.direction[1];
+	if (distance < 0) return null;
+	return {
+		x: ray.origin[0] + ray.direction[0] * distance,
+		z: ray.origin[2] + ray.direction[2] * distance
+	};
+}
+
 /** Entry distance of a ray into an axis-aligned box (slab method), or null if it misses. */
 function rayBoxDistance(ray: BoardLocalRay, min: Vec3, max: Vec3): number | null {
 	let near = Number.NEGATIVE_INFINITY;
