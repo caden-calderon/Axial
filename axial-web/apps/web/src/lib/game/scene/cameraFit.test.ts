@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PerspectiveCamera, Vector3 } from 'three';
 import type { BoardDimensions } from '@axial/core';
 import { resolveCameraFit } from './cameraFit';
+import { CELL_SPACING } from './geometry';
 
 const defaultBoard: BoardDimensions = { height: 6, rows: 6, columns: 7 };
 
@@ -69,5 +70,45 @@ describe('viewport-only camera framing', () => {
 					expect(projectedX).toBeGreaterThan(12);
 					expect(projectedX).toBeLessThan(width - 12);
 				}
+	});
+
+	it.each([
+		[1280, 720],
+		[1366, 768],
+		[1440, 900],
+		[1920, 1080],
+		[2560, 1440]
+	])('keeps the board and its floor numbers inside a %i × %i desktop frame', (width, height) => {
+		const fit = resolveCameraFit({ width, height, coarsePointer: false }, defaultBoard);
+		const camera = new PerspectiveCamera(fit.fov, width / height, 0.1, 100);
+		camera.position.set(...fit.position);
+		camera.lookAt(...fit.target);
+		camera.updateMatrixWorld();
+		const screenY = (x: number, y: number, z: number) =>
+			((1 -
+				new Vector3(x, y, z)
+					.applyAxisAngle(new Vector3(0, 1, 0), -0.34)
+					.multiplyScalar(fit.boardScale)
+					.project(camera).y) *
+				height) /
+			2;
+		const xHalf = (defaultBoard.columns * CELL_SPACING) / 2;
+		const yHalf = (defaultBoard.height * CELL_SPACING) / 2;
+		const zHalf = (defaultBoard.rows * CELL_SPACING) / 2;
+		// Floor numbers sit outside the grid and below the floor (BoardLabels offsets).
+		const labelY = -yHalf - CELL_SPACING * 0.5;
+		const labelOut = CELL_SPACING * 0.68;
+		const margin = height * 0.02;
+		for (const sideX of [-1, 1])
+			for (const sideZ of [-1, 1]) {
+				expect(screenY(sideX * (xHalf + labelOut), labelY, sideZ * zHalf)).toBeLessThan(
+					height - margin
+				);
+				expect(screenY(sideX * xHalf, labelY, sideZ * (zHalf + labelOut))).toBeLessThan(
+					height - margin
+				);
+				// The top of a full stack stays clear of the turn indicator.
+				expect(screenY(sideX * xHalf, yHalf, sideZ * zHalf)).toBeGreaterThan(height * 0.1);
+			}
 	});
 });

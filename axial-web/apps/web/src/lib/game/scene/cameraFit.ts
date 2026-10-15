@@ -18,7 +18,10 @@ export type CameraFit = {
 	maxDistance: number;
 };
 
-const DESKTOP_CAMERA: Vec3 = [5.8, 5.7, 9.4];
+// Desktop framing sits 0.6 units below the board centre so the near axis numbers stay in
+// frame at 16:9 and 16:10 instead of clipping at the bottom edge.
+const DESKTOP_CAMERA: Vec3 = [5.8, 5.1, 9.4];
+const DESKTOP_TARGET: Vec3 = [0, -0.6, 0];
 const PORTRAIT_CAMERA: Vec3 = [7.7, 7.3, 14.8];
 const LANDSCAPE_CAMERA: Vec3 = [6.35, 6.15, 10.7];
 const ORIGIN_TARGET: Vec3 = [0, 0, 0];
@@ -67,7 +70,7 @@ export function resolveCameraFit(viewport: SceneViewport, dimensions: BoardDimen
 		compact,
 		portrait,
 		position: DESKTOP_CAMERA,
-		target: ORIGIN_TARGET,
+		target: DESKTOP_TARGET,
 		fov: 42,
 		boardScale: 0.84 * dimensionScale,
 		minDistance: 7.2,
