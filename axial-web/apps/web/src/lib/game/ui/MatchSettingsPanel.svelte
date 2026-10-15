@@ -212,7 +212,7 @@
 						<button
 							type="button"
 							disabled={setupLocked}
-							aria-label={`${dimension.value} ${dimension.label}, board ${dimension.name}; next ${nextDimensionValue(dimension.key)}`}
+							aria-label={`${dimension.value} ${dimension.label}, board ${dimension.name}; change to ${nextDimensionValue(dimension.key)}`}
 							data-tooltip={setupLocked
 								? 'Start a new match to change board size'
 								: 'Click to increase'}
