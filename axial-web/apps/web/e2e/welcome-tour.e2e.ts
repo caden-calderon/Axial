@@ -8,6 +8,10 @@ test('welcome tour shows once, opens the menu, and persists dismissal', async ({
 	const tour = page.getByRole('dialog', { name: 'This is Axial' });
 	await expect(tour).toBeVisible();
 	await expect(page.locator('[data-tour-step="welcome"]')).toBeVisible();
+	// The typed heading uses pre-wrap, so stray template whitespace would show as double spaces.
+	await expect
+		.poll(() => page.locator('.typed-title').evaluate((title) => title.textContent))
+		.toBe('This is Axial');
 	await expect(page.locator('.control-panel')).toHaveClass(/collapsed/);
 
 	await page.getByRole('button', { name: 'Next' }).click();

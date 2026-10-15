@@ -86,18 +86,18 @@
 	}
 </script>
 
-<span class="typed-title" aria-hidden="true">
-	<span>{visibleBeforeShine}</span>
-	{#if visibleShine}
-		<span class="typed-shine" class:has-shine={hasShineText} data-text={visibleShine}>
-			{visibleShine}
-		</span>
-	{/if}
-	{#if visibleAfterShine}
-		<span>{visibleAfterShine}</span>
-	{/if}
-	<span class="typed-cursor" class:settled aria-hidden="true"></span>
-</span>
+<!-- pre-wrap renders template whitespace, so these spans must touch: "This is  Axial" otherwise. -->
+<span class="typed-title" aria-hidden="true"
+	><span>{visibleBeforeShine}</span>{#if visibleShine}<span
+			class="typed-shine"
+			class:has-shine={hasShineText}
+			data-text={visibleShine}>{visibleShine}</span
+		>{/if}{#if visibleAfterShine}<span>{visibleAfterShine}</span>{/if}<span
+		class="typed-cursor"
+		class:settled
+		aria-hidden="true"
+	></span></span
+>
 
 <style>
 	.typed-title {
