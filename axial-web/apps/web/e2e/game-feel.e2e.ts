@@ -16,6 +16,7 @@ type SceneFrame = {
 	time: number;
 	objects: ObjectSample[];
 	resultVisible: boolean;
+	turnText: string;
 	cameraPosition: number[];
 	cameraQuaternion: number[];
 };
@@ -103,6 +104,7 @@ test.beforeEach(async ({ page }) => {
 					time: performance.now(),
 					objects,
 					resultVisible: document.querySelector(resultSelector) !== null,
+					turnText: document.querySelector('.turn-chip')?.textContent ?? '',
 					cameraPosition: camera.position.toArray(),
 					cameraQuaternion: camera.quaternion.toArray()
 				});
@@ -174,6 +176,14 @@ test('a winning drop lands before its line is drawn and the result is revealed',
 	expect(objectNamed(firstLineFrame!, 'piece-3-3-0')!.position[1]).toBeCloseTo(landingY(0), 4);
 	expect(objectNamed(firstLineFrame!, 'piece-3-3-0')!.scale).toEqual([1, 1, 1]);
 	expect(firstLineFrame!.resultVisible).toBe(false);
+	// The turn indicator must not announce the result while the piece falls or the line draws.
+	const drawingFrames = freshFrames.filter((frame) => {
+		const line = frame.objects.find((object) => object.name.startsWith('completed-line-'));
+		return !line || !line.visible || line.children[1].scale[1] < 0.999;
+	});
+	expect(drawingFrames.length).toBeGreaterThan(3);
+	for (const frame of drawingFrames) expect(frame.turnText).not.toContain('wins');
+	await expect(page.locator('.turn-chip')).toContainText('Player 1 wins');
 	const resultFrame = freshFrames.find((frame) => frame.resultVisible);
 	expect(resultFrame).toBeDefined();
 	const line = resultFrame!.objects.find((object) => object.name.startsWith('completed-line-'))!;

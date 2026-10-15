@@ -93,6 +93,26 @@
 	const activeCurrentPlayer = $derived(
 		playMode === 'online' ? online.currentPlayer : controller.currentPlayer
 	);
+	// While the final piece falls and its line draws, keep the turn indicator on the last
+	// in-play state so the result is revealed by the board, not announced ahead of it.
+	let lastInPlayTurn = $state<{
+		title: string;
+		label: string;
+		player: typeof activeCurrentPlayer;
+	} | null>(null);
+	$effect.pre(() => {
+		if (activeGame.status.state !== 'playing') return;
+		lastInPlayTurn = {
+			title: activeStatusTitle,
+			label: activeCurrentLabel,
+			player: activeCurrentPlayer
+		};
+	});
+	const displayedTurn = $derived(
+		presentationPending && lastInPlayTurn
+			? lastInPlayTurn
+			: { title: activeStatusTitle, label: activeCurrentLabel, player: activeCurrentPlayer }
+	);
 	const activeBoardDimensions = $derived(
 		playMode === 'online' ? online.boardDimensions : controller.boardDimensions
 	);
@@ -583,8 +603,8 @@
 	</svelte:boundary>
 
 	<GameHud
-		currentLabel={welcomePracticeActive ? practiceLabel : activeCurrentLabel}
-		currentPlayer={welcomePracticeActive ? (practiceCompleted ? null : 1) : activeCurrentPlayer}
+		currentLabel={welcomePracticeActive ? practiceLabel : displayedTurn.label}
+		currentPlayer={welcomePracticeActive ? (practiceCompleted ? null : 1) : displayedTurn.player}
 		boardDimensions={sceneGame.dimensions}
 	/>
 
@@ -595,7 +615,7 @@
 			game={activeGame}
 			{soundEnabled}
 			onToggleSound={toggleSound}
-			statusTitle={activeStatusTitle}
+			statusTitle={displayedTurn.title}
 			moveCount={activeGame.moveHistory.length}
 			boardColor={controller.boardColor}
 			uiTheme={controller.uiTheme}
