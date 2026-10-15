@@ -689,6 +689,35 @@ test('orbiting the board draws no new label textures', async ({ page }) => {
 	expect(await page.evaluate(() => window.__axialCanvases)).toBe(0);
 });
 
+test('arrow keys follow the camera after it orbits around the board', async ({ page }) => {
+	await openBoard(page);
+	const previewX = async () => {
+		await expect
+			.poll(async () => Boolean(objectNamed((await latestFrame(page))!, 'drop-preview')))
+			.toBe(true);
+		return objectNamed((await latestFrame(page))!, 'drop-preview')!.screenPosition[0];
+	};
+	const rightStep = async () => {
+		await page.locator('.scene-shell').press('ArrowRight');
+		const before = await previewX();
+		await page.locator('.scene-shell').press('ArrowRight');
+		await expect.poll(previewX).not.toBeCloseTo(before, 3);
+		return (await previewX()) - before;
+	};
+
+	expect(await rightStep()).toBeGreaterThan(0);
+	await page.locator('.scene-shell').press('Escape');
+
+	// About half a turn around the board.
+	await page.mouse.move(300, 200);
+	await page.mouse.down();
+	await page.mouse.move(1040, 200, { steps: 30 });
+	await page.mouse.up();
+	await page.waitForTimeout(600);
+	await page.locator('.scene-shell').focus();
+	expect(await rightStep()).toBeGreaterThan(0);
+});
+
 test('sound is opt-in, follows fresh landings, stays silent on restore, and mutes immediately', async ({
 	page
 }) => {

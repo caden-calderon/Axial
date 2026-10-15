@@ -52,7 +52,8 @@
 		onWinReveal,
 		onHover,
 		onPlay,
-		inputEnabled = true
+		inputEnabled = true,
+		onViewQuarterTurns
 	}: {
 		game: GameSnapshot;
 		hoveredMove: Move | null;
@@ -73,6 +74,8 @@
 		onHover: (move: Move | null) => void;
 		onPlay: (move: Move) => void;
 		inputEnabled?: boolean;
+		/** Quarter turns the camera has orbited from the reset view, so arrow keys can follow it. */
+		onViewQuarterTurns?: (turns: number) => void;
 	} = $props();
 
 	const palette = $derived(resolveScenePalette(uiTheme, boardColor));
@@ -176,6 +179,26 @@
 		direction: [1, 0, 0],
 		lineLength: 4
 	};
+	let reportedQuarterTurns = 0;
+	useTask(
+		() => {
+			const resetAngle = boardAzimuth(cameraFit.position[0], cameraFit.position[2]);
+			const { x, z } = camera.current.position;
+			const turns = ((Math.round((boardAzimuth(x, z) - resetAngle) / (Math.PI / 2)) % 4) + 4) % 4;
+			if (turns === reportedQuarterTurns) return;
+			reportedQuarterTurns = turns;
+			onViewQuarterTurns?.(turns);
+		},
+		{ autoInvalidate: false }
+	);
+
+	/** The camera's angle around the board's vertical axis, in the board's own frame. */
+	function boardAzimuth(worldX: number, worldZ: number): number {
+		const cos = Math.cos(boardRotation);
+		const sin = Math.sin(boardRotation);
+		return Math.atan2(sin * worldX + cos * worldZ, cos * worldX - sin * worldZ);
+	}
+
 	let shadersWarmed = false;
 	useTask(
 		() => {

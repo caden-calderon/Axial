@@ -65,6 +65,9 @@
 	let keyboardMove = $state<Move | null>(null);
 	let keyboardActive = $state(false);
 	let keyboardNotice = $state('');
+	// Arrow keys are defined for the reset view; after the camera orbits a quarter turn or more,
+	// the same keys are rotated so "right" still moves the cursor right on screen.
+	let viewQuarterTurns = 0;
 	let noticeHistory: GameSnapshot['moveHistory'] | null = null;
 	$effect(() => {
 		if (noticeHistory !== game.moveHistory) {
@@ -146,8 +149,11 @@
 				row: Math.floor(game.dimensions.rows / 2),
 				col: Math.floor(game.dimensions.columns / 2)
 			};
-			const rowDelta = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
-			const colDelta = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+			let rowDelta = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
+			let colDelta = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+			for (let turn = 0; turn < viewQuarterTurns; turn += 1) {
+				[colDelta, rowDelta] = [-rowDelta, colDelta];
+			}
 			setKeyboardMove({
 				row: clamp(current.row + rowDelta, 0, game.dimensions.rows - 1),
 				col: clamp(current.col + colDelta, 0, game.dimensions.columns - 1)
@@ -235,6 +241,7 @@
 			{onHover}
 			{onPlay}
 			{inputEnabled}
+			onViewQuarterTurns={(turns) => (viewQuarterTurns = turns)}
 		/>
 	</Canvas>
 </button>
