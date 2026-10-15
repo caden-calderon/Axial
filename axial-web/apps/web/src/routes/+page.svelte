@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import { getBrowserStorage } from '$lib/browserStorage';
 	import { applyMove, getDropHeight, type MatchMode, type Move } from '@axial/core';
 	import { createGameAudio } from '$lib/game/audio/gameAudio';
 	import { hasSameMoveHistory, isSingleMoveAppend, sceneMoveKey } from '$lib/game/animation';
@@ -150,7 +151,7 @@
 			playMode = controller.opponentMode;
 		}
 		if (searchParams.get('tour')?.toLowerCase() === 'reset') {
-			clearWelcomeTourSeen(localStorage);
+			clearWelcomeTourSeen(getBrowserStorage('localStorage'));
 		}
 		if (
 			shouldStartWelcomeTour({
@@ -158,7 +159,7 @@
 				embedMode,
 				hasActiveMatch: controller.game.moveHistory.length > 0,
 				hasOnlineIntent: searchParams.has('room') || searchParams.get('online') === '1',
-				hasSeenTour: hasSeenWelcomeTour(localStorage)
+				hasSeenTour: hasSeenWelcomeTour(getBrowserStorage('localStorage'))
 			})
 		) {
 			welcomeTourRestorePanelExpanded = false;
@@ -460,7 +461,7 @@
 	}
 
 	function exitWelcomePractice(): void {
-		markWelcomeTourSeen(localStorage);
+		markWelcomeTourSeen(getBrowserStorage('localStorage'));
 		welcomePracticeActive = false;
 		practiceHint = '';
 		welcomePracticeHover = null;
@@ -472,12 +473,12 @@
 	}
 
 	function completeWelcomeTour(): void {
-		markWelcomeTourSeen(localStorage);
+		markWelcomeTourSeen(getBrowserStorage('localStorage'));
 		closeWelcomeTour();
 	}
 
 	function skipWelcomeTour(): void {
-		markWelcomeTourSeen(localStorage);
+		markWelcomeTourSeen(getBrowserStorage('localStorage'));
 		closeWelcomeTour();
 	}
 
@@ -504,14 +505,6 @@
 </script>
 
 <svelte:window onpointerdown={unlockSound} onkeydown={unlockSound} />
-
-<svelte:head>
-	<title>Axial</title>
-	<meta
-		name="description"
-		content="Axial is a browser-native 3D gravity strategy game rebuilt with SvelteKit and Three.js."
-	/>
-</svelte:head>
 
 <main
 	class="game-shell"

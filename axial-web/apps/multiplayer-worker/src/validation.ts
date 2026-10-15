@@ -34,13 +34,29 @@ export async function readJsonRequest(request: Request): Promise<unknown> {
     );
   }
 
-  const text = await request.text();
-  if (text.length > MAX_JSON_BYTES) {
-    throw new RoomServiceError(
-      "invalid-message",
-      "Request body is too large.",
-      413,
-    );
+  if (!request.body) return {};
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let bytesRead = 0;
+  let text = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytesRead += value.byteLength;
+      if (bytesRead > MAX_JSON_BYTES) {
+        await reader.cancel();
+        throw new RoomServiceError(
+          "invalid-message",
+          "Request body is too large.",
+          413,
+        );
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+  } finally {
+    reader.releaseLock();
   }
   if (!text.trim()) return {};
 
@@ -53,6 +69,30 @@ export async function readJsonRequest(request: Request): Promise<unknown> {
       400,
     );
   }
+}
+
+export function parseClientMessage(
+  message: string | ArrayBuffer,
+): ClientCommand {
+  if (typeof message !== "string") {
+    throw new RoomServiceError(
+      "invalid-message",
+      "Binary messages are not supported.",
+      400,
+    );
+  }
+  // Check characters first so encoding cannot allocate an unbounded second copy.
+  if (
+    message.length > MAX_JSON_BYTES ||
+    new TextEncoder().encode(message).byteLength > MAX_JSON_BYTES
+  ) {
+    throw new RoomServiceError(
+      "invalid-message",
+      "Client message is too large.",
+      413,
+    );
+  }
+  return parseClientCommand(JSON.parse(message) as unknown);
 }
 
 export function parseCreateRoomRequest(value: unknown): CreateRoomRequest {

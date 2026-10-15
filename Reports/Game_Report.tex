@@ -6,7 +6,8 @@
 \usepackage{amsmath, amssymb}
 \usepackage{graphicx}
 \usepackage{booktabs}
-\usepackage{hyperref}
+\usepackage{array}
+\usepackage[hidelinks]{hyperref}
 \usepackage{enumitem}
 \usepackage{listings}
 \usepackage{xcolor}
@@ -26,7 +27,7 @@
 
 \title{\textbf{Axial: A 3D Strategy Game with \\Gesture-Based Hand Tracking Controls}}
 \author{Caden Calderon}
-\date{\today}
+\date{December 11, 2025}
 
 \begin{document}
 
@@ -165,7 +166,7 @@ The game provides visual cues to help players understand what is happening:
 \begin{table}[H]
 \centering
 \caption{Visual Feedback Elements}
-\begin{tabular}{p{4cm}p{8cm}}
+\begin{tabular}{>{\raggedright\arraybackslash}p{4cm}>{\raggedright\arraybackslash}p{8cm}}
 \toprule
 \textbf{Visual Cue} & \textbf{Meaning} \\
 \midrule
@@ -370,7 +371,7 @@ Eight different measurement approaches were tested:
 \begin{table}[H]
 \centering
 \caption{Hand Size Methods Evaluated}
-\begin{tabular}{p{4cm}p{2cm}p{6cm}}
+\begin{tabular}{>{\raggedright\arraybackslash}p{4cm}>{\raggedright\arraybackslash}p{2cm}>{\raggedright\arraybackslash}p{6cm}}
 \toprule
 \textbf{Method} & \textbf{Result} & \textbf{Problem} \\
 \midrule

@@ -12,10 +12,6 @@
 	});
 </script>
 
-<svelte:head>
-	<title>Axial Room</title>
-</svelte:head>
-
 <main class="room-redirect" aria-live="polite">Opening Axial online...</main>
 
 <style>

@@ -2,6 +2,39 @@ import { expect, test, type Page } from '@playwright/test';
 
 const LOCAL_BASE_URL = 'http://127.0.0.1:4173';
 
+test('a room creation limit shows a retry message and keeps local play available', async ({
+	page
+}) => {
+	await page.route('**/api/rooms', (route) =>
+		route.fulfill({
+			status: 429,
+			contentType: 'application/json',
+			headers: { 'Retry-After': '60' },
+			body: JSON.stringify({
+				error: {
+					code: 'rate-limited',
+					message: 'Too many rooms created from this network. Wait a minute and try again.',
+					details: { retryAfterSeconds: 60 }
+				}
+			})
+		})
+	);
+	await openOnlineSetup(page);
+	await page.getByLabel('Your name').fill('Host');
+	await page.getByRole('button', { name: 'Create room', exact: true }).click();
+	await expect(page.getByRole('alert')).toHaveText(
+		'Too many rooms created from this network. Wait a minute and try again.'
+	);
+	await expect(page.getByRole('button', { name: 'Create room', exact: true })).toBeEnabled();
+	await expect(page).not.toHaveURL(/[?&]room=/);
+	await page
+		.getByRole('group', { name: 'Opponent mode' })
+		.getByRole('button', { name: 'Local', exact: true })
+		.click();
+	await page.locator('.scene-shell').press('Enter');
+	await expect(page.getByText('1 move', { exact: true }).first()).toBeVisible();
+});
+
 test('two players can start, enforce countdown, reconnect, and leave cleanly', async ({
 	browser,
 	page: hostPage

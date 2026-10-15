@@ -77,6 +77,27 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 async function handleCreateRoom(request: Request, env: Env): Promise<Response> {
+  // Creation is anonymous, so use the edge-provided address rather than a
+  // caller-chosen ID. Missing addresses share a bucket instead of bypassing it.
+  const address = request.headers.get("CF-Connecting-IP") || "unknown";
+  const { success } = await env.ROOM_CREATION_LIMITER.limit({
+    key: `axial:room-create:${address}`,
+  });
+  if (!success) {
+    const response = errorResponse(
+      {
+        code: "rate-limited",
+        message:
+          "Too many rooms created from this network. Wait a minute and try again.",
+        details: { retryAfterSeconds: 60 },
+      },
+      429,
+    );
+    response.headers.set("Retry-After", "60");
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  }
+
   const payload = parseCreateRoomRequest(await readJsonRequest(request));
   const inviteOrigin = publicWebOrigin(request, env);
 

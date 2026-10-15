@@ -1,5 +1,10 @@
-import { env, SELF } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import {
+  env,
+  SELF,
+  runInDurableObject,
+  runDurableObjectAlarm,
+} from "cloudflare:test";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AXIAL_CLIENT_SOURCE,
   AXIAL_MULTIPLAYER_PROTOCOL_VERSION,
@@ -14,6 +19,10 @@ import {
   type ServerEvent,
 } from "@axial/multiplayer-protocol";
 import type { RoomObjectRpc } from "../src/roomObject";
+import { EXPIRED_RETENTION_MS } from "../src/roomState";
+
+afterEach(() => vi.restoreAllMocks());
+let nextFixtureClient = 1;
 
 describe("Axial multiplayer room service", () => {
   it("creates a private room with host credentials and invite metadata", async () => {
@@ -309,6 +318,29 @@ describe("Axial multiplayer room service", () => {
     second.socket.close();
   });
 
+  it("rejects an oversized socket message without changing the room or losing the connection", async () => {
+    const created = await createRoom("Host");
+    const connection = await openSocket(created.player);
+    await connection.firstEvent;
+    const rejected = nextEvent(connection.socket);
+    connection.socket.send("x".repeat(4097));
+    const error = await rejected;
+    expect(error.type).toBe("room:error");
+    if (error.type === "room:error") {
+      expect(error.payload.error.code).toBe("invalid-message");
+      expect(error.payload.error.message).toBe("Client message is too large.");
+    }
+    const accepted = nextEvent(connection.socket);
+    connection.socket.send(
+      JSON.stringify(
+        command("room:set-name", { displayName: "Still connected" }),
+      ),
+    );
+    const updated = await accepted;
+    expect(updated.type).toBe("room:player-updated");
+    connection.socket.close();
+  });
+
   it("keeps a healthy socket authoritative during HTTPS fallback sync", async () => {
     const created = await createRoom("Host");
     const connection = await openSocket(created.player);
@@ -397,10 +429,190 @@ describe("Axial multiplayer room service", () => {
   });
 });
 
+describe("expired room retention", () => {
+  it("does not recreate storage on a fresh lookup for a missing room", async () => {
+    const stub = env.AXIAL_ROOM.getByName("MISSING1");
+    const missing = await stub.syncPlayer(
+      { playerId: "old-player", reconnectToken: "old-secret" },
+      "https://playaxial.dev/?room=MISSING1",
+    );
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.error.code).toBe("room-not-found");
+    await runInDurableObject(stub, async (_instance, state) => {
+      expect(await state.storage.getAlarm()).toBeNull();
+      expect(
+        state.storage.sql
+          .exec(
+            "SELECT name FROM sqlite_master WHERE name IN ('room_state', 'room_events', '_sql_schema_migrations')",
+          )
+          .toArray(),
+      ).toHaveLength(0);
+    });
+  });
+
+  it("retains expired rooms for 24 hours, then removes storage and safely reuses the code", async () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    const created = await createRoom("Retention host");
+    const stub = env.AXIAL_ROOM.getByName(created.roomCode);
+    const expired = unwrap(
+      await stub.submitCommand(
+        created.player,
+        command("room:leave", {}),
+        created.inviteUrl,
+      ),
+    );
+    const cleanupAt = expired.snapshot.expiresAt + EXPIRED_RETENTION_MS;
+    expect(cleanupAt).toBe(now + 24 * 60 * 60 * 1000);
+    await runInDurableObject(stub, async (_instance, state) => {
+      expect(await state.storage.getAlarm()).toBe(cleanupAt);
+      await state.storage.put("retention-test", "also removed");
+    });
+
+    const reuseInput = {
+      roomCode: created.roomCode,
+      displayName: "Replacement host",
+      reconnectToken: "replacement-secret",
+      inviteUrl: created.inviteUrl,
+    };
+    const prematureReuse = await stub.createRoom(reuseInput);
+    expect(prematureReuse.ok).toBe(false);
+    if (!prematureReuse.ok)
+      expect(prematureReuse.error.code).toBe("room-conflict");
+
+    clock.mockReturnValue(cleanupAt - 1);
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    const graceSync = await stub.syncPlayer(created.player, created.inviteUrl);
+    expect(graceSync.ok).toBe(false);
+    if (!graceSync.ok) expect(graceSync.error.code).toBe("room-expired");
+    await runInDurableObject(stub, async (_instance, state) => {
+      expect(
+        state.storage.sql.exec("SELECT * FROM room_state").toArray(),
+      ).toHaveLength(1);
+      expect(await state.storage.getAlarm()).toBe(cleanupAt);
+    });
+
+    clock.mockReturnValue(cleanupAt);
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    await runInDurableObject(stub, async (_instance, state) => {
+      expect(await state.storage.getAlarm()).toBeNull();
+      expect((await state.storage.list()).size).toBe(0);
+      expect(
+        state.storage.sql
+          .exec(
+            "SELECT name FROM sqlite_master WHERE name IN ('room_state', 'room_events', '_sql_schema_migrations')",
+          )
+          .toArray(),
+      ).toHaveLength(0);
+    });
+    expect(await runDurableObjectAlarm(stub)).toBe(false);
+    const missingSync = await stub.syncPlayer(
+      created.player,
+      created.inviteUrl,
+    );
+    expect(missingSync.ok).toBe(false);
+    if (!missingSync.ok) expect(missingSync.error.code).toBe("room-not-found");
+
+    const replacement = unwrap(await stub.createRoom(reuseInput));
+    expect(replacement.player.playerId).not.toBe(created.player.playerId);
+    expect(replacement.snapshot.players).toHaveLength(1);
+    expect(replacement.snapshot.players[0]?.displayName).toBe(
+      "Replacement host",
+    );
+    const oldCredentials = await stub.syncPlayer(
+      created.player,
+      created.inviteUrl,
+    );
+    expect(oldCredentials.ok).toBe(false);
+    if (!oldCredentials.ok)
+      expect(oldCredentials.error.code).toBe("auth-failed");
+    const newCredentials = await stub.syncPlayer(
+      replacement.player,
+      replacement.inviteUrl,
+    );
+    expect(newCredentials.ok).toBe(true);
+    await runInDurableObject(stub, (_instance, state) => {
+      const events = state.storage.sql
+        .exec<{ type: string }>("SELECT type FROM room_events")
+        .toArray();
+      expect(events.some((event) => event.type === "room:expired")).toBe(false);
+      expect(events[0]?.type).toBe("room:created");
+    });
+  });
+
+  it("does not delete an active room and gives natural expiry its own retention period", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now());
+    const created = await createRoom("Active host");
+    const stub = env.AXIAL_ROOM.getByName(created.roomCode);
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    await runInDurableObject(stub, async (_instance, state) => {
+      const row = state.storage.sql
+        .exec<{ state_json: string }>("SELECT state_json FROM room_state")
+        .one();
+      expect(JSON.parse(row.state_json).phase).toBe("waiting");
+      expect(await state.storage.getAlarm()).toBe(created.snapshot.expiresAt);
+    });
+    clock.mockReturnValue(created.snapshot.expiresAt);
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    await runInDurableObject(stub, async (_instance, state) => {
+      const row = state.storage.sql
+        .exec<{ state_json: string }>("SELECT state_json FROM room_state")
+        .one();
+      expect(JSON.parse(row.state_json).phase).toBe("expired");
+      expect(await state.storage.getAlarm()).toBe(
+        created.snapshot.expiresAt + EXPIRED_RETENTION_MS,
+      );
+    });
+  });
+
+  it("repairs legacy missing alarms on access and lazily removes overdue records", async () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    const created = await createRoom("Legacy host");
+    const stub = env.AXIAL_ROOM.getByName(created.roomCode);
+    unwrap(
+      await stub.submitCommand(
+        created.player,
+        command("room:leave", {}),
+        created.inviteUrl,
+      ),
+    );
+    await runInDurableObject(stub, async (_instance, state) => {
+      await state.storage.deleteAlarm();
+      expect(await state.storage.getAlarm()).toBeNull();
+    });
+    const grace = await stub.syncPlayer(created.player, created.inviteUrl);
+    expect(grace.ok).toBe(false);
+    if (!grace.ok) expect(grace.error.code).toBe("room-expired");
+    await runInDurableObject(stub, async (_instance, state) => {
+      expect(await state.storage.getAlarm()).toBe(now + EXPIRED_RETENTION_MS);
+      await state.storage.deleteAlarm();
+    });
+    clock.mockReturnValue(now + EXPIRED_RETENTION_MS + 1);
+    const lateJoin = await stub.joinRoom({
+      displayName: "Visitor",
+      reconnectToken: "visitor-secret",
+      inviteUrl: created.inviteUrl,
+    });
+    expect(lateJoin.ok).toBe(false);
+    if (!lateJoin.ok) expect(lateJoin.error.code).toBe("room-not-found");
+    await runInDurableObject(stub, async (_instance, state) => {
+      expect(await state.storage.getAlarm()).toBeNull();
+      expect(
+        state.storage.sql
+          .exec("SELECT name FROM sqlite_master WHERE name = 'room_state'")
+          .toArray(),
+      ).toHaveLength(0);
+    });
+  });
+});
+
 async function createRoom(displayName: string): Promise<CreateRoomResponse> {
+  const clientIp = `192.0.2.${nextFixtureClient++}`;
   const response = await SELF.fetch("https://worker.test/api/rooms", {
     method: "POST",
     body: JSON.stringify({ displayName }),
+    headers: { "CF-Connecting-IP": clientIp },
   });
   expect(response.status).toBe(201);
   return (await response.json()) as CreateRoomResponse;

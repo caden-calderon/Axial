@@ -1,3 +1,4 @@
+import { readStorage, writeStorage, removeStorage } from '$lib/browserStorage';
 import { browser } from '$app/environment';
 import { untrack } from 'svelte';
 import {
@@ -280,31 +281,37 @@ export function createGameController() {
 	function hydrateFromStorage(): void {
 		if (!browser) return;
 
-		const savedUiTheme = parseUiTheme(localStorage.getItem(STORAGE_KEYS.uiTheme));
+		const savedUiTheme = parseUiTheme(readStorage('localStorage', STORAGE_KEYS.uiTheme));
 		const savedBoardColor = normalizeBoardColor(
-			localStorage.getItem(STORAGE_KEYS.boardColor),
-			legacyBoardColor(localStorage.getItem(LEGACY_SCENE_THEME_KEY))
+			readStorage('localStorage', STORAGE_KEYS.boardColor),
+			legacyBoardColor(readStorage('localStorage', LEGACY_SCENE_THEME_KEY))
 		);
-		const savedLabelsVisible = parseBoolean(localStorage.getItem(STORAGE_KEYS.labelsVisible));
+		const savedLabelsVisible = parseBoolean(
+			readStorage('localStorage', STORAGE_KEYS.labelsVisible)
+		);
 		const savedGridLayersVisible = parseBoolean(
-			localStorage.getItem(STORAGE_KEYS.gridLayersVisible)
+			readStorage('localStorage', STORAGE_KEYS.gridLayersVisible)
 		);
 		const savedConfirmDropEnabled = parseBoolean(
-			localStorage.getItem(STORAGE_KEYS.confirmDropEnabled)
+			readStorage('localStorage', STORAGE_KEYS.confirmDropEnabled)
 		);
-		const savedOpponentMode = parseOpponentMode(localStorage.getItem(STORAGE_KEYS.opponentMode));
-		const savedAiDifficulty = parseAiDifficulty(localStorage.getItem(STORAGE_KEYS.aiDifficulty));
-		const savedMatchMode = parseMatchMode(localStorage.getItem(STORAGE_KEYS.matchMode));
+		const savedOpponentMode = parseOpponentMode(
+			readStorage('localStorage', STORAGE_KEYS.opponentMode)
+		);
+		const savedAiDifficulty = parseAiDifficulty(
+			readStorage('localStorage', STORAGE_KEYS.aiDifficulty)
+		);
+		const savedMatchMode = parseMatchMode(readStorage('localStorage', STORAGE_KEYS.matchMode));
 		const savedBoardDimensions = parseBoardDimensions(
-			localStorage.getItem(STORAGE_KEYS.boardHeight),
-			localStorage.getItem(STORAGE_KEYS.boardRows),
-			localStorage.getItem(STORAGE_KEYS.boardColumns)
+			readStorage('localStorage', STORAGE_KEYS.boardHeight),
+			readStorage('localStorage', STORAGE_KEYS.boardRows),
+			readStorage('localStorage', STORAGE_KEYS.boardColumns)
 		);
 		const savedWinCondition = parseWinCondition(
-			localStorage.getItem(STORAGE_KEYS.winLineLength),
-			localStorage.getItem(STORAGE_KEYS.linesToWin)
+			readStorage('localStorage', STORAGE_KEYS.winLineLength),
+			readStorage('localStorage', STORAGE_KEYS.linesToWin)
 		);
-		const savedPieceShape = parsePieceShape(localStorage.getItem(STORAGE_KEYS.pieceShape));
+		const savedPieceShape = parsePieceShape(readStorage('localStorage', STORAGE_KEYS.pieceShape));
 
 		if (savedUiTheme) uiTheme = savedUiTheme;
 		boardColor = savedBoardColor;
@@ -332,16 +339,16 @@ export function createGameController() {
 
 		pieceColors = {
 			playerOne: normalizePieceColor(
-				localStorage.getItem(STORAGE_KEYS.playerOneColor),
+				readStorage('localStorage', STORAGE_KEYS.playerOneColor),
 				DEFAULT_PIECE_COLORS.playerOne
 			),
 			playerTwo: normalizePieceColor(
-				localStorage.getItem(STORAGE_KEYS.playerTwoColor),
+				readStorage('localStorage', STORAGE_KEYS.playerTwoColor),
 				DEFAULT_PIECE_COLORS.playerTwo
 			)
 		};
 
-		if (restoreActiveMatch(localStorage.getItem(STORAGE_KEYS.activeMatch))) {
+		if (restoreActiveMatch(readStorage('localStorage', STORAGE_KEYS.activeMatch))) {
 			queueGameOverModal();
 			queueAiMove();
 		}
@@ -406,11 +413,11 @@ export function createGameController() {
 			matchEndedAt
 		};
 
-		localStorage.setItem(STORAGE_KEYS.activeMatch, JSON.stringify(payload));
+		writeStorage('localStorage', STORAGE_KEYS.activeMatch, JSON.stringify(payload));
 	}
 
 	function clearSavedActiveMatch(): void {
-		if (browser) localStorage.removeItem(STORAGE_KEYS.activeMatch);
+		if (browser) removeStorage('localStorage', STORAGE_KEYS.activeMatch);
 	}
 
 	function selectOrPlayMove(move: Move): void {
@@ -1504,7 +1511,7 @@ function parseMatchMode(value: string | null): MatchMode | null {
 }
 
 function persist(key: string, value: string): void {
-	if (browser) localStorage.setItem(key, value);
+	if (browser) writeStorage('localStorage', key, value);
 }
 
 function persistBoardDimensions(dimensions: BoardDimensions): void {

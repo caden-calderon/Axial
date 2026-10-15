@@ -54,3 +54,6 @@ venv/
 
 # Legacy Unity project stays local for reference.
 /axial-unity/
+
+# Generated and recovered local publication outputs. Selected papers live in docs/papers/.
+/output/

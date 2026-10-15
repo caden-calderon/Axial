@@ -1,3 +1,4 @@
+import { readStorage, writeStorage } from '$lib/browserStorage';
 import { browser } from '$app/environment';
 import {
 	createGame,
@@ -155,7 +156,7 @@ export function createOnlineController() {
 	function hydrateFromBrowser(searchParams?: RoomSearchParams): boolean {
 		if (!browser) return false;
 
-		const savedName = localStorage.getItem(STORAGE_KEYS.displayName);
+		const savedName = readStorage('localStorage', STORAGE_KEYS.displayName);
 		if (savedName) displayName = savedName;
 
 		const onlineRequested = searchParams?.get('online') !== null;
@@ -666,7 +667,7 @@ export function createOnlineController() {
 			return '';
 		}
 		displayName = name;
-		if (browser) localStorage.setItem(STORAGE_KEYS.displayName, name);
+		if (browser) writeStorage('localStorage', STORAGE_KEYS.displayName, name);
 		return name;
 	}
 

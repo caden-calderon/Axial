@@ -171,3 +171,46 @@ describe('match duration', () => {
 		expect(game.matchDurationMs).toBe(0);
 	});
 });
+
+describe('unavailable browser storage', () => {
+	it('continues the AI turn when a saved-match write exceeds the storage quota', async () => {
+		const game = controller();
+		game.setOpponentMode('ai');
+		const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+			throw new DOMException('Storage quota exceeded', 'QuotaExceededError');
+		});
+		game.playMove({ row: 0, col: 0 });
+		expect(requestMove).toHaveBeenCalledOnce();
+		await vi.advanceTimersByTimeAsync(MIN_AI_TURN_MS);
+		expect(game.game.moveHistory).toHaveLength(2);
+		expect(game.game.currentPlayer).toBe(1);
+		expect(game.aiThinking).toBe(false);
+		expect(game.aiError).toBe('');
+		expect(game.moveError).toBe('');
+		warning.mockRestore();
+	});
+
+	it('hydrates and starts an AI match when accessing browser storage is denied', async () => {
+		const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')!;
+		Object.defineProperty(globalThis, 'localStorage', {
+			configurable: true,
+			get() {
+				throw new DOMException('Storage access denied', 'SecurityError');
+			}
+		});
+		try {
+			const game = controller();
+			expect(() => game.hydrateFromStorage()).not.toThrow();
+			game.setOpponentMode('ai');
+			game.playMove({ row: 0, col: 0 });
+			await vi.advanceTimersByTimeAsync(MIN_AI_TURN_MS);
+			expect(game.game.moveHistory).toHaveLength(2);
+			expect(() => game.resetGame()).not.toThrow();
+		} finally {
+			Object.defineProperty(globalThis, 'localStorage', descriptor);
+			warning.mockRestore();
+		}
+	});
+});

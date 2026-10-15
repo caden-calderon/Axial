@@ -1,13 +1,13 @@
 # Axial Web
 
-Axial is a browser-native 3D gravity strategy game built with SvelteKit, TypeScript, Three.js and Threlte. The preserved Unity project is at `../axial-unity/`.
+Axial is a browser-native 3D gravity strategy game built with SvelteKit, TypeScript, Three.js and Threlte. [Play the game](https://playaxial.dev), or see the [project overview](../README.md). This directory contains the active application; the original Unity project is preserved separately and is not included in a Git clone.
 
 ## Run locally
 
-From this directory:
+Use Node 24.13.0 (see `.node-version`) and pnpm 10.32.1 (see `package.json`). From this directory:
 
 ```sh
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev --host 127.0.0.1
 ```
 
@@ -50,17 +50,32 @@ The AI uses no LLM. Easy, Medium, Hard and Max have different tactical/search bu
 
 Online rooms support invitation links/codes, readiness/countdown, reconnect and rematch. Accepted moves and scores come from the server. Stale revisions request a fresh snapshot without replaying a stale command; terminal room/authentication errors stop retries and disable gameplay while preserving the final board. See [multiplayer architecture](../dev/active/axial-web-rebuild/multiplayer.md) and [recovery tests](../dev/active/axial-improvement-pass/multiplayer.md).
 
+Room creation has a Cloudflare limit of 10 attempts per minute per network address. Other room actions are outside that creation limit. Expired rooms retain their data for 24 hours, then an alarm removes it; old links subsequently report room not found. The limit is approximate and per Cloudflare location, and people on a shared network share the allowance. See the [room resource policy](../dev/active/axial-announcement-readiness/room-resource-policy.md) for behavior, legacy cleanup limits and validation.
+
 ## Verification
 
 ```sh
 pnpm check
 pnpm lint
-pnpm test:unit
 pnpm test
 pnpm build
 ```
 
-`pnpm test` includes the production-preview Playwright suite and starts the local room service. Browser tests cover desktop/phone controls, onboarding, iframe embedding, AI lifecycle and two-player Online play. The game-feel suite uses Three's existing devtools observation hook inside test pages to inspect actual rendered motion and camera state; no test globals are shipped by the app.
+`pnpm test` runs the unit tests, includes the production-preview Playwright suite, and starts the local room service. The browser suite installs Chromium and uses ports 4173 (preview) and 8787 (room service). Use a Linux environment with Chromium's system dependencies available. Avoid unrelated servers on those ports: outside CI, Playwright can reuse an existing server.
+
+Browser tests cover desktop/phone controls, onboarding, iframe embedding, AI lifecycle and two-player Online play. The game-feel suite uses Three's existing devtools observation hook inside test pages to inspect actual rendered motion and camera state; no test globals are shipped by the app.
+
+For a focused run:
+
+```sh
+# Run unit tests once across the workspace.
+CI=1 pnpm test:unit
+
+# Run only the production-preview browser suite.
+pnpm --filter @axial/web test:e2e
+```
+
+The web package's unit-test command enters watch mode interactively; `CI=1` makes the workspace command exit after one run. `pnpm test` already runs web unit tests once before the browser suite.
 
 Optional AI evaluations:
 

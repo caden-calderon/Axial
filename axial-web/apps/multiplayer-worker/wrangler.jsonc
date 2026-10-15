@@ -37,6 +37,13 @@
       },
     ],
   },
+  "ratelimits": [
+    {
+      "name": "ROOM_CREATION_LIMITER",
+      "namespace_id": "1084783157",
+      "simple": { "limit": 10, "period": 60 },
+    },
+  ],
   "migrations": [
     {
       "tag": "v1",

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { applyMove, legalMoves, replayMoves, type Move } from '@axial/core';
 import type { ClassicAiWorkerResponse } from '../src/lib/game/state/classicAiMessages';
 
 type AiProbe = { attempts: number; errors: string[]; responses: ClassicAiWorkerResponse[] };
@@ -78,9 +79,21 @@ for (const scorer of [1, 2] as const) {
 		expect(response.ok).toBe(true);
 		if (!response.ok) throw new Error(response.error);
 		expect(response.move).not.toBeNull();
-		expect(['search', 'lookahead']).toContain(response.reason);
+		// A deadline-limited search can legally keep its heuristic anchor. The
+		// regression here is worker transport and turn completion, not AI strength.
+		expect(['search', 'lookahead', 'heuristic']).toContain(response.reason);
 		expect(response.simulations + (response.telemetry?.lookaheadNodes ?? 0)).toBeGreaterThan(0);
 		await expect(page.getByText('Your turn', { exact: true }).first()).toBeVisible();
+		const moves: Move[] = await page.evaluate(
+			() => JSON.parse(localStorage.getItem('axial-active-match')!).moveHistory
+		);
+		expect(moves).toHaveLength(scorer === 1 ? 8 : 10);
+		const beforeAiMove = replayMoves(moves.slice(0, -1), { lineLength: 4, linesToWin: 2 });
+		expect(beforeAiMove.completedLines.some((line) => line.player === scorer)).toBe(true);
+		expect(beforeAiMove.currentPlayer).toBe(2);
+		expect(legalMoves(beforeAiMove.board, beforeAiMove.dimensions)).toContainEqual(response.move);
+		expect(moves.at(-1)).toMatchObject(response.move!);
+		expect(applyMove(beforeAiMove, response.move!).currentPlayer).toBe(1);
 	});
 }
 

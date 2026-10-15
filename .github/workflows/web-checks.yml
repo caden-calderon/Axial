@@ -1,0 +1,34 @@
+name: Web checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: axial-web
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: axial-web/.node-version
+          cache: pnpm
+          cache-dependency-path: axial-web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm lint
+      - run: pnpm test:unit
+        env:
+          CI: "1"
+      - run: pnpm build

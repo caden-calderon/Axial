@@ -34,6 +34,7 @@ export const WAITING_ACTIVE_TTL_MS = 6 * 60 * 60 * 1000;
 export const PLAYING_EMPTY_TTL_MS = 2 * 60 * 60 * 1000;
 export const PLAYING_ACTIVE_TTL_MS = 24 * 60 * 60 * 1000;
 export const ENDED_TTL_MS = 45 * 60 * 1000;
+export const EXPIRED_RETENTION_MS = 24 * 60 * 60 * 1000;
 export const START_COUNTDOWN_MS = 3500;
 export const REMATCH_DECISION_MS = 30_000;
 export const HTTP_FALLBACK_LEASE_MS = 10_000;
@@ -597,8 +598,8 @@ export function shouldExpire(state: StoredRoomState, now: number): boolean {
   return state.phase !== "expired" && state.expiresAt <= now;
 }
 
-export function nextRoomAlarmAt(state: StoredRoomState): number | null {
-  if (state.phase === "expired") return null;
+export function nextRoomAlarmAt(state: StoredRoomState): number {
+  if (state.phase === "expired") return state.expiresAt + EXPIRED_RETENTION_MS;
 
   const httpLeaseDeadlines = state.players
     .filter(

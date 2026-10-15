@@ -1,0 +1,43 @@
+{
+  "name": "axial-video",
+  "version": "1.0.0",
+  "description": "Axial gameplay trailer and video editing workspace",
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@remotion/cli": "4.0.526",
+    "@remotion/fonts": "4.0.526",
+    "@remotion/media": "4.0.526",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "remotion": "4.0.526"
+  },
+  "devDependencies": {
+    "@remotion/eslint-config-flat": "4.0.526",
+    "@types/react": "19.2.7",
+    "@types/web": "0.0.166",
+    "eslint": "9.19.0",
+    "prettier": "3.8.1",
+    "typescript": "5.7.3"
+  },
+  "scripts": {
+    "dev": "remotion studio --no-open --port=3333",
+    "build": "remotion bundle",
+    "upgrade": "remotion upgrade",
+    "lint": "eslint src && tsc",
+    "check": "tsc --noEmit",
+    "render:landscape": "remotion render src/index.ts TrailerLandscape out/axial-trailer-landscape.mp4 --codec=h264",
+    "render:portrait": "remotion render src/index.ts TrailerPortrait out/axial-trailer-portrait.mp4 --codec=h264",
+    "render:storyboard:landscape": "remotion render src/index.ts TrailerStoryboardLandscape out/storyboard-landscape.mp4 --codec=h264",
+    "render:storyboard:portrait": "remotion render src/index.ts TrailerStoryboardPortrait out/storyboard-portrait.mp4 --codec=h264"
+  },
+  "sideEffects": [
+    "*.css"
+  ],
+  "packageManager": "pnpm@10.32.1",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

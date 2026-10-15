@@ -18,6 +18,7 @@ import {
   addSecondPlayer,
   createInitialRoomState,
   expireRoom,
+  EXPIRED_RETENTION_MS,
   expireStalePresence,
   markConnected,
   markDisconnected,
@@ -43,7 +44,7 @@ import {
   type StoredRoomState,
 } from "./roomState";
 import { hashSecret, verifySecret } from "./secrets";
-import { normalizeDisplayName, parseClientCommand } from "./validation";
+import { normalizeDisplayName, parseClientMessage } from "./validation";
 
 type ConnectionAttachment = {
   connectionId: string;
@@ -98,12 +99,20 @@ export type RoomObjectRpc = {
 export class RoomObject extends DurableObject<Env> {
   private sessions = new Map<WebSocket, ConnectionAttachment>();
   private cachedState: StoredRoomState | null | undefined;
+  private schemaReady = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
-      this.migrate();
+      const hasSchema =
+        this.ctx.storage.sql
+          .exec(
+            "SELECT name FROM sqlite_master WHERE name = '_sql_schema_migrations'",
+          )
+          .toArray().length > 0;
+      if (hasSchema) this.migrate();
       this.restoreSessions();
+      await this.prepareRoom();
       this.ctx.setWebSocketAutoResponse(
         new WebSocketRequestResponsePair("ping", "pong"),
       );
@@ -118,8 +127,8 @@ export class RoomObject extends DurableObject<Env> {
     rules?: StoredRoomState["rules"];
   }): Promise<RoomResult<CreateRoomResponse>> {
     try {
-      const existing = this.loadState();
-      if (existing && existing.phase !== "expired") {
+      const existing = await this.prepareRoom();
+      if (existing) {
         throw new RoomServiceError(
           "room-conflict",
           "A room already exists for this code.",
@@ -169,6 +178,7 @@ export class RoomObject extends DurableObject<Env> {
     inviteUrl: string;
   }): Promise<RoomResult<JoinRoomResponse>> {
     try {
+      await this.prepareRoom();
       const state = this.requireState();
       const now = Date.now();
       const playerId = crypto.randomUUID();
@@ -362,15 +372,7 @@ export class RoomObject extends DurableObject<Env> {
     const state = this.loadState();
     let commandId: string | undefined;
     try {
-      if (typeof message !== "string") {
-        throw new RoomServiceError(
-          "invalid-message",
-          "Binary messages are not supported.",
-          400,
-        );
-      }
-
-      const command = parseClientCommand(JSON.parse(message) as unknown);
+      const command = parseClientMessage(message);
       commandId = command.id;
       const player = requirePlayer(this.requireState(), attachment.playerId);
       if (player.activeConnectionId !== attachment.connectionId) {
@@ -455,6 +457,10 @@ export class RoomObject extends DurableObject<Env> {
     let state = this.loadState();
     if (!state) return;
     const now = Date.now();
+    if (state.phase === "expired") {
+      await this.prepareRoom();
+      return;
+    }
     const presenceOutcome = expireStalePresence(state, now);
     if (presenceOutcome.events.length > 0) {
       await this.commit(presenceOutcome);
@@ -546,6 +552,7 @@ export class RoomObject extends DurableObject<Env> {
     playerId: string,
     reconnectToken: string,
   ): Promise<StoredRoomState> {
+    await this.prepareRoom();
     const state = this.requireState();
     if (state.phase === "expired") {
       throw new RoomServiceError("room-expired", "This room has expired.", 410);
@@ -583,8 +590,32 @@ export class RoomObject extends DurableObject<Env> {
     this.broadcast(outcome.events);
   }
 
+  private async prepareRoom(): Promise<StoredRoomState | null> {
+    const state = this.loadState();
+    if (state?.phase !== "expired") return state;
+
+    const cleanupAt = state.expiresAt + EXPIRED_RETENTION_MS;
+    if (Date.now() < cleanupAt) {
+      // Also repairs expired rooms written before retention alarms existed.
+      if ((await this.ctx.storage.getAlarm()) === null) {
+        await this.ctx.storage.setAlarm(cleanupAt);
+      }
+      return state;
+    }
+
+    this.closeRoomSockets();
+    // With our compatibility date, deleteAll also removes the alarm atomically.
+    await this.ctx.storage.deleteAll();
+    this.cachedState = null;
+    this.schemaReady = false;
+    this.sessions.clear();
+    return null;
+  }
+
   private loadState(): StoredRoomState | null {
     if (this.cachedState !== undefined) return this.cachedState;
+    // Unknown or purged rooms should not allocate persistent tables on reads.
+    if (!this.schemaReady) return null;
 
     const row = this.ctx.storage.sql
       .exec<{
@@ -605,6 +636,7 @@ export class RoomObject extends DurableObject<Env> {
   }
 
   private persistState(state: StoredRoomState): void {
+    this.migrate();
     this.ctx.storage.sql.exec(
       `INSERT OR REPLACE INTO room_state (id, room_code, state_json, updated_at)
        VALUES (?, ?, ?, ?)`,
@@ -640,12 +672,7 @@ export class RoomObject extends DurableObject<Env> {
   }
 
   private async scheduleExpiry(state: StoredRoomState): Promise<void> {
-    const alarmAt = nextRoomAlarmAt(state);
-    if (alarmAt === null) {
-      await this.ctx.storage.deleteAlarm();
-      return;
-    }
-    await this.ctx.storage.setAlarm(alarmAt);
+    await this.ctx.storage.setAlarm(nextRoomAlarmAt(state));
   }
 
   private restoreSessions(): void {
@@ -745,6 +772,7 @@ export class RoomObject extends DurableObject<Env> {
   }
 
   private migrate(): void {
+    if (this.schemaReady) return;
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS _sql_schema_migrations (
         id INTEGER PRIMARY KEY,
@@ -777,6 +805,7 @@ export class RoomObject extends DurableObject<Env> {
         INSERT INTO _sql_schema_migrations (id) VALUES (1);
       `);
     }
+    this.schemaReady = true;
   }
 }
 

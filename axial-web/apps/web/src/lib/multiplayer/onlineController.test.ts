@@ -67,6 +67,21 @@ afterEach(() => {
 });
 
 describe('online room recovery', () => {
+	it('creates a room when saving the display name is blocked', async () => {
+		const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		vi.mocked(localStorage.setItem).mockImplementation(() => {
+			throw new DOMException('Storage quota exceeded', 'QuotaExceededError');
+		});
+		try {
+			await controller.createPrivateRoom();
+			expect(client.createRoom).toHaveBeenCalledOnce();
+			expect(controller.hasRoom).toBe(true);
+			expect(controller.error).toBe('');
+		} finally {
+			warning.mockRestore();
+		}
+	});
+
 	it.each([
 		['room-expired', 'expired'],
 		['room-not-found', 'expired'],

@@ -30,6 +30,6 @@
     "@axial/core": "workspace:*"
   },
   "devDependencies": {
-    "vitest": "^4.1.3"
+    "vitest": "^4.1.11"
   }
 }
