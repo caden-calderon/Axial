@@ -5,8 +5,13 @@ import {
   isExpectedChallengeMove,
   observeClassicChallenge,
   replayClassicChallenge,
+  type ClassicChallengePosition,
 } from "./index";
 import { CLASSIC_CHALLENGE_FIXTURES } from "./classic/challengeFixtures";
+
+// Widen the literal fixture tuple so optional expectation fields are readable.
+const CHALLENGES: readonly ClassicChallengePosition[] =
+  CLASSIC_CHALLENGE_FIXTURES;
 
 const challengeEvaluationEnabled = process.env.AXIAL_AI_CHALLENGE_EVAL === "1";
 const challengeFilter = process.env.AXIAL_AI_CHALLENGE ?? "all";
@@ -16,7 +21,7 @@ const configuredSeed = Number(process.env.AXIAL_AI_SEED);
 describe.skipIf(!challengeEvaluationEnabled)(
   "Classic deterministic challenge evaluation",
   () => {
-    for (const challenge of CLASSIC_CHALLENGE_FIXTURES) {
+    for (const challenge of CHALLENGES) {
       it.skipIf(challengeFilter !== "all" && challengeFilter !== challenge.id)(
         `satisfies ${challenge.id}`,
         () => {

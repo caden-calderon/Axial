@@ -5,9 +5,14 @@ import {
   isExpectedChallengeMove,
   replayClassicChallenge,
   type ClassicAiDifficulty,
+  type ClassicChallengePosition,
   type MctsOptions,
 } from "./index";
 import { CLASSIC_CHALLENGE_FIXTURES } from "./classic/challengeFixtures";
+
+// Widen the literal fixture tuple so tag lookups accept any tag string.
+const CHALLENGES: readonly ClassicChallengePosition[] =
+  CLASSIC_CHALLENGE_FIXTURES;
 
 type LadderSummary = {
   difficulty: ClassicAiDifficulty;
@@ -74,7 +79,7 @@ describe.skipIf(!ladderEvaluationEnabled)(
 );
 
 function evaluateDifficulty(difficulty: ClassicAiDifficulty): LadderSummary {
-  const decisions = CLASSIC_CHALLENGE_FIXTURES.map((challenge) => {
+  const decisions = CHALLENGES.map((challenge) => {
     const game = replayClassicChallenge(challenge);
     const preset = classicAiSearchOptionsForGame(difficulty, game);
     const work = CONTROLLED_WORK[difficulty];
@@ -99,7 +104,7 @@ function evaluateDifficulty(difficulty: ClassicAiDifficulty): LadderSummary {
     };
   });
   const strategicIds = new Set(
-    CLASSIC_CHALLENGE_FIXTURES.filter(
+    CHALLENGES.filter(
       (challenge) =>
         challenge.tags.includes("strategy") ||
         challenge.tags.includes("critical"),

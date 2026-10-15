@@ -1,15 +1,25 @@
 {
-	"name": "@axial/core",
-	"version": "0.0.1",
-	"private": true,
-	"type": "module",
-	"main": "./src/index.ts",
-	"types": "./src/index.ts",
-	"scripts": {
-		"test:unit": "vitest run",
-		"test": "vitest run"
-	},
-	"devDependencies": {
-		"vitest": "^4.1.11"
-	}
+  "name": "@axial/core",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "lint": "prettier --check . && eslint .",
+    "test:unit": "vitest run",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24",
+    "eslint": "^10.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.4.0",
+    "prettier": "^3.8.1",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.58.1",
+    "vitest": "^4.1.11"
+  }
 }
