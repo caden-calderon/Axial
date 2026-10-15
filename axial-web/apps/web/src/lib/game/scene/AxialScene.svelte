@@ -234,6 +234,7 @@
 			{onWinReveal}
 			{onHover}
 			{onPlay}
+			{inputEnabled}
 		/>
 	</Canvas>
 </button>

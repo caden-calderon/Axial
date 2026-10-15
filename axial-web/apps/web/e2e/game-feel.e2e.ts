@@ -552,6 +552,40 @@ test('the first move, a winning line and a new match compile no new shaders', as
 	expect(compiledLater(await page.evaluate(() => window.__axialSceneProbe.frames))).toEqual([]);
 });
 
+test('the drop preview returns under a resting mouse and hides during the AI turn', async ({
+	page
+}) => {
+	const hasPreview = async () => Boolean(objectNamed((await latestFrame(page))!, 'drop-preview'));
+	const board = { x: 683, y: 560 };
+	await openBoard(page);
+	await page.mouse.move(board.x, board.y);
+	await expect.poll(hasPreview).toBe(true);
+
+	// A drop clears the hover; the preview must come back without leaving the cell.
+	await page.mouse.click(board.x, board.y);
+	await expect.poll(async () => (await latestFrame(page))?.objects.filter(isPiece).length).toBe(1);
+	await expect.poll(hasPreview).toBe(true);
+
+	await page.getByRole('button', { name: 'Reset game' }).click();
+	await page
+		.getByRole('group', { name: 'Opponent mode' })
+		.getByRole('button', { name: 'AI', exact: true })
+		.click();
+	await page.mouse.move(board.x, board.y);
+	await expect.poll(hasPreview).toBe(true);
+	await page.mouse.click(board.x, board.y);
+	await clearFrames(page);
+	await page.mouse.move(board.x + 3, board.y + 2);
+	await page.waitForTimeout(350);
+	const thinkingFrames = await page.evaluate(() => window.__axialSceneProbe.frames);
+	expect(thinkingFrames.length).toBeGreaterThan(0);
+	expect(thinkingFrames.some((frame) => objectNamed(frame, 'drop-preview'))).toBe(false);
+	await expect
+		.poll(async () => (await latestFrame(page))?.objects.filter(isPiece).length, { timeout: 8_000 })
+		.toBe(2);
+	await expect.poll(hasPreview).toBe(true);
+});
+
 test('sound is opt-in, follows fresh landings, stays silent on restore, and mutes immediately', async ({
 	page
 }) => {

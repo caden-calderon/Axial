@@ -51,7 +51,8 @@
 		onSettle,
 		onWinReveal,
 		onHover,
-		onPlay
+		onPlay,
+		inputEnabled = true
 	}: {
 		game: GameSnapshot;
 		hoveredMove: Move | null;
@@ -71,6 +72,7 @@
 		onWinReveal?: () => void;
 		onHover: (move: Move | null) => void;
 		onPlay: (move: Move) => void;
+		inputEnabled?: boolean;
 	} = $props();
 
 	const palette = $derived(resolveScenePalette(uiTheme, boardColor));
@@ -245,7 +247,15 @@
 	</T.PerspectiveCamera>
 {/key}
 
-<ColumnPicker {game} {boardRotation} {boardScale} {onHover} {onPlay} {isMovePlayable} />
+<ColumnPicker
+	{game}
+	{boardRotation}
+	{boardScale}
+	{onHover}
+	{onPlay}
+	{isMovePlayable}
+	enabled={inputEnabled}
+/>
 
 <T.AmbientLight intensity={uiTheme === 'dark' ? 0.62 : 0.92} />
 <T.HemisphereLight
@@ -285,7 +295,8 @@
 		<TutorialTarget move={guidedMove} {dimensions} color={boardColor} />
 	{/if}
 
-	{#if hoveredMove && previewHeight >= 0 && game.status.state === 'playing'}
+	<!-- A preview in the opponent's colour must not follow the pointer during their turn. -->
+	{#if inputEnabled && hoveredMove && previewHeight >= 0 && game.status.state === 'playing'}
 		<DropPreview
 			move={hoveredMove}
 			height={previewHeight}
