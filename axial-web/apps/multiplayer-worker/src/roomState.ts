@@ -96,6 +96,21 @@ export type RoomCommandOutcome = {
   events: RoomMutationEvent[];
 };
 
+type DerivedGame = {
+  rules: MultiplayerRules;
+  startingPlayer: Player;
+  game: GameSnapshot;
+};
+
+// Replaying a long match costs a full-board line scan per move, and every
+// command, poll and event snapshot needs the game. So each state object keeps
+// the game derived for it and clones inherit it. An entry is used only while
+// the state's rules, starting player and moves still match it, so a mutation
+// that changes them needs no explicit invalidation, and a state reloaded from
+// storage is a new object that replays once. Keys are the room object's own
+// states, so rooms sharing an isolate never see each other's entries.
+const derivedGames = new WeakMap<StoredRoomState, DerivedGame>();
+
 export function createInitialRoomState(input: {
   roomCode: string;
   hostPlayerId: string;
@@ -512,6 +527,9 @@ export function playClassicMove(
     }
   }
   touchGame(next, now);
+  // The events below and the caller's reply snapshot reuse this game instead
+  // of replaying the whole match again.
+  rememberGame(next, nextGame);
 
   const events = createPublicEvents(next, "game:move-accepted", commandId, {
     move: placed,
@@ -618,7 +636,17 @@ export function nextRoomAlarmAt(state: StoredRoomState): number {
   return Math.min(state.expiresAt, ...httpLeaseDeadlines);
 }
 
+// The returned game may be shared by later states and snapshots; read it only.
 export function currentGame(state: StoredRoomState): GameSnapshot {
+  const derived = derivedGames.get(state);
+  if (derived && derivesFrom(derived, state)) return derived.game;
+
+  const game = replayGame(state);
+  rememberGame(state, game);
+  return game;
+}
+
+function replayGame(state: StoredRoomState): GameSnapshot {
   if (state.moveHistory.length === 0) {
     return createGame(
       state.rules.winCondition,
@@ -937,7 +965,7 @@ function toReplayMove(move: PlacedMove): ReplayMove {
 }
 
 function cloneState(state: StoredRoomState): StoredRoomState {
-  return {
+  const next: StoredRoomState = {
     ...state,
     rules: cloneRules(state.rules),
     players: state.players.map((player) => ({ ...player })),
@@ -946,6 +974,52 @@ function cloneState(state: StoredRoomState): StoredRoomState {
       ...(move.special ? { special: { ...move.special } } : {}),
     })),
   };
+  const derived = derivedGames.get(state);
+  if (derived) derivedGames.set(next, derived);
+  return next;
+}
+
+function rememberGame(state: StoredRoomState, game: GameSnapshot): void {
+  derivedGames.set(state, {
+    rules: cloneRules(state.rules),
+    startingPlayer: state.startingPlayer,
+    game,
+  });
+}
+
+// Compares exactly the inputs replayGame reads, so a match means a fresh
+// replay would produce the same game.
+function derivesFrom(derived: DerivedGame, state: StoredRoomState): boolean {
+  const { moveHistory } = derived.game;
+  return (
+    derived.startingPlayer === state.startingPlayer &&
+    sameRules(derived.rules, state.rules) &&
+    moveHistory.length === state.moveHistory.length &&
+    state.moveHistory.every((move, index) =>
+      samePlacement(moveHistory[index], move),
+    )
+  );
+}
+
+function sameRules(a: MultiplayerRules, b: MultiplayerRules): boolean {
+  return (
+    a.mode === b.mode &&
+    a.board.height === b.board.height &&
+    a.board.rows === b.board.rows &&
+    a.board.columns === b.board.columns &&
+    a.winCondition.lineLength === b.winCondition.lineLength &&
+    a.winCondition.linesToWin === b.winCondition.linesToWin
+  );
+}
+
+function samePlacement(placed: PlacedMove, move: ReplayMove): boolean {
+  return (
+    placed.row === move.row &&
+    placed.col === move.col &&
+    placed.kind === (move.kind ?? "piece") &&
+    placed.special?.action === move.special?.action &&
+    placed.special?.step === move.special?.step
+  );
 }
 
 function cloneRules(rules: MultiplayerRules): MultiplayerRules {

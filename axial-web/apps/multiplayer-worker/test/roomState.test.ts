@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as core from "@axial/core";
 import type { MultiplayerRules } from "@axial/multiplayer-protocol";
 import { RoomServiceError } from "../src/errors";
 import {
@@ -19,12 +20,25 @@ import {
   setRoomRules,
   START_COUNTDOWN_MS,
   startMatch,
+  toPrivateSnapshot,
+  toPublicSnapshot,
   type RoomCommandOutcome,
   type StoredRoomState,
 } from "../src/roomState";
 
+// Pass-through spies, so tests can count how often the room replays a match.
+vi.mock("@axial/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@axial/core")>();
+  return {
+    ...actual,
+    applyMove: vi.fn(actual.applyMove),
+    replayMoves: vi.fn(actual.replayMoves),
+  };
+});
+
 const T0 = 10_000;
 const PLAYABLE_AT = T0 + START_COUNTDOWN_MS;
+const INVITE_URL = "https://playaxial.dev/?room=ABCDEFGH";
 const FIVE_IN_A_ROW: MultiplayerRules = {
   mode: "classic",
   board: { height: 7, rows: 6, columns: 8 },
@@ -265,6 +279,134 @@ describe("move revision checks", () => {
   });
 });
 
+describe("derived game cache", () => {
+  it("serves the same snapshots as a fresh replay across moves, rules and rematch", () => {
+    const steps: Array<{
+      label: string;
+      run: (state: StoredRoomState) => RoomCommandOutcome;
+    }> = [];
+    const at = (offset: number) => PLAYABLE_AT + offset;
+    let state = waitingRoom();
+    // Warm the cache with the default rules, then change them in the lobby.
+    toPublicSnapshot(state);
+    steps.push({
+      label: "rules",
+      run: (current) =>
+        setRoomRules(current, "host", FIVE_IN_A_ROW, current.revision, T0),
+    });
+    steps.push({
+      label: "start",
+      run: (current) => {
+        const readied = readyBoth(current);
+        return startMatch(readied, "host", readied.revision, T0);
+      },
+    });
+    const match1 = [0, 1, 0, 1, 0, 1, 0, 1, 0];
+    match1.forEach((col, index) =>
+      steps.push({
+        label: `match 1 move ${index + 1}`,
+        run: (current) =>
+          play(
+            current,
+            index % 2 === 0 ? "host" : "guest",
+            col,
+            current.revision,
+            at(index),
+          ),
+      }),
+    );
+    steps.push({
+      label: "guest flap",
+      run: (current) =>
+        markDisconnected(current, "guest", "guest-socket", at(20)),
+    });
+    steps.push({
+      label: "host rematch vote",
+      run: (current) => setRematchVote(current, "host", true, at(21)),
+    });
+    steps.push({
+      label: "guest rematch vote",
+      run: (current) => setRematchVote(current, "guest", true, at(22)),
+    });
+    [2, 2, 3].forEach((col, index) =>
+      steps.push({
+        label: `match 2 move ${index + 1}`,
+        run: (current) =>
+          play(
+            current,
+            index % 2 === 0 ? "guest" : "host",
+            col,
+            current.revision,
+            (current.matchPlayableAt ?? 0) + index,
+          ),
+      }),
+    );
+    steps.push({
+      label: "leave",
+      run: (current) => expireRoom(current, at(9_000)),
+    });
+
+    for (const step of steps) {
+      const outcome = step.run(state);
+      state = outcome.state;
+      const fresh = toPublicSnapshot(reloadFromStorage(state));
+
+      expect(toPublicSnapshot(state), step.label).toStrictEqual(fresh);
+      for (const { event } of outcome.events) {
+        if ("snapshot" in event.payload) {
+          expect(event.payload.snapshot, step.label).toStrictEqual(fresh);
+        }
+      }
+    }
+
+    expect(state.matchNumber).toBe(2);
+    expect(toPublicSnapshot(state).game.dimensions).toEqual(
+      FIVE_IN_A_ROW.board,
+    );
+    expect(toPublicSnapshot(state).game.moveHistory).toHaveLength(3);
+  });
+
+  it("replays a match at most once per command, and not at all once warm", () => {
+    const replays = vi.mocked(core.replayMoves);
+    const applied = vi.mocked(core.applyMove);
+    let state = startedRoom();
+    for (const [index, col] of [0, 1, 0, 1].entries()) {
+      state = play(state, index % 2 === 0 ? "host" : "guest", col).state;
+    }
+
+    // A room object that just woke up has only the stored JSON.
+    replays.mockClear();
+    applied.mockClear();
+    const cold = reloadFromStorage(state);
+    const coldMove = play(cold, "host", 0);
+    toPrivateSnapshot(coldMove.state, "host", INVITE_URL);
+    expect(replays).toHaveBeenCalledTimes(1);
+    expect(applied).toHaveBeenCalledTimes(1);
+
+    replays.mockClear();
+    applied.mockClear();
+    const poll = markHttpFallbackSeen(coldMove.state, "guest", PLAYABLE_AT + 1);
+    toPrivateSnapshot(poll.state, "guest", INVITE_URL);
+    const flap = markDisconnected(
+      poll.state,
+      "host",
+      "host-socket",
+      PLAYABLE_AT + 2,
+    );
+    const guestMove = play(flap.state, "guest", 1, flap.state.revision);
+    toPrivateSnapshot(guestMove.state, "guest", INVITE_URL);
+    // This move wins, so it also emits game:ended with its own snapshot.
+    const winningMove = play(guestMove.state, "host", 0);
+    toPrivateSnapshot(winningMove.state, "host", INVITE_URL);
+    expect(winningMove.events.map(({ event }) => event.type)).toEqual([
+      "game:move-accepted",
+      "game:ended",
+    ]);
+    expect(replays).not.toHaveBeenCalled();
+    expect(applied).toHaveBeenCalledTimes(2);
+  });
+});
+
 function waitingRoom(): StoredRoomState {
   let state = createInitialRoomState({
     roomCode: "ABCDEFGH",
@@ -316,6 +458,12 @@ function playHostWin(started: StoredRoomState): StoredRoomState {
     state = play(state, index % 2 === 0 ? "host" : "guest", col).state;
   }
   return state;
+}
+
+function reloadFromStorage(state: StoredRoomState): StoredRoomState {
+  return normalizeStoredRoomState(
+    JSON.parse(JSON.stringify(state)) as StoredRoomState,
+  );
 }
 
 function roomErrorCode(run: () => unknown): string {
