@@ -613,6 +613,34 @@ describe("Classic tactical lookahead", () => {
 });
 
 describe("Classic MCTS AI", () => {
+  it("searches fork blocks the lookahead proves lost instead of returning them", () => {
+    // Engine audit 2026-10-14: the fork-block shortcut chose row=3,col=2 here, which loses
+    // within five plies; row=3,col=4 is the only reply that survives.
+    const game = replayMoves([
+      { row: 3, col: 3 },
+      { row: 2, col: 4 },
+      { row: 3, col: 1 },
+    ]);
+    const searched = {
+      simulations: 60,
+      lookaheadDepth: 3,
+      lookaheadMaxMoves: 12,
+      lookaheadRootMaxMoves: 18,
+      lookaheadNodeLimit: 4_000,
+      tacticalMode: "forced-only" as const,
+      minimumSearchDepth: 2,
+      seed: 7,
+    };
+
+    const deep = analyzeMctsMove(game, searched)!;
+    expect(deep.reason).not.toBe("tactical");
+    expect(deep.move).toEqual({ row: 3, col: 4 });
+
+    // Without a real lookahead (Easy, Medium) the shortcut still answers instantly.
+    const shallow = analyzeMctsMove(game, { ...searched, lookaheadDepth: 1 })!;
+    expect(shallow.reason).toBe("tactical");
+  });
+
   it("separates difficulty capabilities and scales custom-rule budgets", () => {
     const standard = createGame();
     const multiLine = createGame({ lineLength: 4, linesToWin: 2 });

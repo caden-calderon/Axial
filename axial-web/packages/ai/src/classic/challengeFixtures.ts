@@ -481,6 +481,132 @@ export const CLASSIC_CHALLENGE_FIXTURES = [
     ],
     observations: [],
   },
+  {
+    version: CLASSIC_CHALLENGE_FORMAT_VERSION,
+    id: "connect4-fork-block-trap-second",
+    description:
+      "Answer an early fork threat with the one reply that survives, not the cell the fork would use.",
+    source: {
+      kind: "synthetic",
+      description:
+        "Engine audit 2026-10-14: Medium, Hard and Max all returned the fork-block shortcut here; Max lost to Hard from this reply in eval:strength:hard.",
+    },
+    dimensions: DEFAULT_DIMENSIONS,
+    winCondition: { lineLength: 4, linesToWin: 1 },
+    startingPlayer: 1,
+    moveHistory: [move(3, 3), move(2, 4), move(3, 1)],
+    playerToMove: 2,
+    expectation: {
+      properties: ["prevents-fork"],
+      allowedMoves: [move(3, 4)],
+      notes:
+        "An exact search finds row=3,col=4 is the only reply that does not lose within five plies; the shortcut's row=3,col=2 loses.",
+    },
+    tags: ["connect4", "one-line", "fork", "strategy"],
+    observations: [],
+  },
+  {
+    version: CLASSIC_CHALLENGE_FORMAT_VERSION,
+    id: "connect4-fork-block-trap-first",
+    description:
+      "Neutralize the opponent's fork without handing over a forced win.",
+    source: {
+      kind: "synthetic",
+      description:
+        "Engine audit 2026-10-14: Max lost a full-preset game to Hard after the fork-block shortcut chose row=1,col=4.",
+    },
+    dimensions: DEFAULT_DIMENSIONS,
+    winCondition: { lineLength: 4, linesToWin: 1 },
+    startingPlayer: 1,
+    moveHistory: [
+      move(2, 3),
+      move(3, 4),
+      move(3, 3),
+      move(4, 3),
+      move(2, 5),
+      move(2, 4),
+    ],
+    playerToMove: 1,
+    expectation: {
+      properties: ["prevents-fork"],
+      allowedMoves: [move(0, 3), move(1, 3), move(4, 4)],
+      notes:
+        "Exact search: only these three moves avoid a loss within five plies.",
+    },
+    tags: ["connect4", "one-line", "fork", "strategy"],
+    observations: [],
+  },
+  {
+    version: CLASSIC_CHALLENGE_FORMAT_VERSION,
+    id: "connect4-fork-block-trap-column",
+    description:
+      "Block the fork from the side that keeps the column above it safe.",
+    source: {
+      kind: "synthetic",
+      description:
+        "Engine audit 2026-10-14: Max's fork-block shortcut chose row=3,col=3, which its own lookahead scores as lost.",
+    },
+    dimensions: DEFAULT_DIMENSIONS,
+    winCondition: { lineLength: 4, linesToWin: 1 },
+    startingPlayer: 1,
+    moveHistory: [move(1, 3), move(0, 1), move(2, 3)],
+    playerToMove: 2,
+    expectation: {
+      properties: ["prevents-fork"],
+      allowedMoves: [move(0, 3)],
+      notes:
+        "Exact search: row=0,col=3 is the only reply that does not lose within five plies.",
+    },
+    tags: ["connect4", "one-line", "fork", "strategy"],
+    observations: [],
+  },
+  {
+    version: CLASSIC_CHALLENGE_FORMAT_VERSION,
+    id: "connect4-three-line-anchor-blunder",
+    description:
+      "Do not fall back to a shallow heuristic move that the lookahead has already proven lost.",
+    source: {
+      kind: "synthetic",
+      description:
+        "Engine audit 2026-10-14: Hard's depth gate discarded its lookahead and played the heuristic anchor row=3,col=1 in half of wall-clock runs.",
+    },
+    dimensions: DEFAULT_DIMENSIONS,
+    winCondition: { lineLength: 4, linesToWin: 3 },
+    startingPlayer: 1,
+    moveHistory: [
+      move(1, 4),
+      move(2, 4),
+      move(1, 3),
+      move(3, 3),
+      move(1, 1),
+      move(0, 2),
+      move(1, 6),
+      move(3, 5),
+      move(1, 0),
+      move(3, 4),
+      move(0, 5),
+      move(3, 2),
+      move(0, 1),
+      move(0, 2),
+      move(2, 2),
+      move(4, 4),
+      move(1, 2),
+      move(0, 2),
+      move(4, 5),
+      move(3, 5),
+      move(5, 4),
+      move(2, 4),
+    ],
+    playerToMove: 1,
+    expectation: {
+      properties: ["prevents-fork"],
+      forbiddenMoves: [move(3, 1)],
+      notes:
+        "Exact search: row=3,col=1 loses within three plies. Only row=0,col=2 and row=1,col=3 survive three plies, and only row=0,col=2 survives five.",
+    },
+    tags: ["connect4", "three-lines", "fork", "strategy"],
+    observations: [],
+  },
 ] as const satisfies readonly ClassicChallengePosition[];
 
 export function classicChallengeById(

@@ -36,9 +36,12 @@ describe.skipIf(!challengeEvaluationEnabled)(
                     : fixtureSeed(challenge.id),
                 }
               : {
+                  // Reduced, deterministic work that still lets the tree search and a
+                  // depth-3 lookahead decide. A minimum depth the search can't reach would
+                  // certify only the heuristic fallback.
                   simulations: 180,
                   progressiveBias: 0.24,
-                  lookaheadDepth: 2,
+                  lookaheadDepth: 3,
                   lookaheadMaxMoves: 10,
                   lookaheadRootMaxMoves: 14,
                   lookaheadNodeLimit: 1_400,
@@ -50,7 +53,7 @@ describe.skipIf(!challengeEvaluationEnabled)(
                   progressiveWidening: true,
                   progressiveWideningBase: 5,
                   progressiveWideningExponent: 0.45,
-                  minimumSearchDepth: 4,
+                  minimumSearchDepth: 3,
                   seed: fixtureSeed(challenge.id),
                 },
           );
@@ -67,6 +70,10 @@ describe.skipIf(!challengeEvaluationEnabled)(
           );
 
           expect(result).not.toBeNull();
+          if (challenge.tags.includes("strategy")) {
+            // Strategy fixtures exist to test the search, not the one-ply fallback.
+            expect(result!.reason).not.toBe("heuristic");
+          }
           if (
             challenge.expectation.allowedMoves ||
             challenge.expectation.forbiddenMoves
