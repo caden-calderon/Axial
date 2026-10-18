@@ -92,20 +92,43 @@ export function selectHeuristicMove(
   };
 }
 
+export type TacticalMoveOptions = {
+  /**
+   * Also score every other legal move into `candidates`. Callers that only act on the forced
+   * move can skip it: on a 10x10 board that scoring dominated an instant win or block.
+   */
+  scoreAlternatives?: boolean;
+};
+
 export function selectTacticalMove(
   state: ClassicSearchState,
   player: Player,
   mode: TacticalMoveMode = "include-line-races",
+  { scoreAlternatives = true }: TacticalMoveOptions = {},
 ): Omit<HeuristicMoveResult, "move"> | null {
   const opponent = otherPlayer(player);
   const immediateWins = findWinningMoves(state, player);
   if (immediateWins.length > 0) {
-    return scoredResult(state, player, immediateWins, "win", WIN_SCORE);
+    return scoredResult(
+      state,
+      player,
+      immediateWins,
+      "win",
+      WIN_SCORE,
+      scoreAlternatives,
+    );
   }
 
   const immediateBlocks = findWinningMoves(state, opponent);
   if (immediateBlocks.length > 0) {
-    return scoredResult(state, player, immediateBlocks, "block", BLOCK_SCORE);
+    return scoredResult(
+      state,
+      player,
+      immediateBlocks,
+      "block",
+      BLOCK_SCORE,
+      scoreAlternatives,
+    );
   }
 
   if (mode === "immediate-only") return null;
@@ -118,6 +141,7 @@ export function selectTacticalMove(
       forcingMoves.map((move) => move.moveIndex),
       "forcing",
       FORCING_SCORE,
+      scoreAlternatives,
     );
   }
 
@@ -138,6 +162,7 @@ export function selectTacticalMove(
       forcedOpponentBlocks,
       "block-forcing",
       BLOCK_FORCING_SCORE,
+      scoreAlternatives,
     );
   }
 
@@ -479,6 +504,7 @@ function scoredResult(
   moveIndices: MoveIndex[],
   reason: MoveScore["reason"],
   baseScore: number,
+  scoreAlternatives = true,
 ): Omit<HeuristicMoveResult, "move"> {
   const forcedScores = moveIndices
     .map((moveIndex) => {
@@ -492,12 +518,16 @@ function scoredResult(
     .sort((first, second) =>
       compareMoveScores(first, second, state.dimensions),
     );
-  const candidates = [
-    ...forcedScores,
-    ...scoreLegalMoves(state, player).filter(
-      (candidate) => !moveIndices.includes(candidate.moveIndex),
-    ),
-  ].sort((first, second) => compareMoveScores(first, second, state.dimensions));
+  const candidates = scoreAlternatives
+    ? [
+        ...forcedScores,
+        ...scoreLegalMoves(state, player).filter(
+          (candidate) => !moveIndices.includes(candidate.moveIndex),
+        ),
+      ].sort((first, second) =>
+        compareMoveScores(first, second, state.dimensions),
+      )
+    : forcedScores;
   const best = forcedScores[0];
 
   return {

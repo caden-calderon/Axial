@@ -127,6 +127,9 @@ export class RoomObject extends DurableObject<Env> {
     rules?: StoredRoomState["rules"];
   }): Promise<RoomResult<CreateRoomResponse>> {
     try {
+      // Hashed first for the same reason as joinRoom: the conflict check and
+      // the write below must not be separated by a non-storage await.
+      const tokenHash = await hashSecret(input.reconnectToken);
       const existing = await this.prepareRoom();
       if (existing) {
         throw new RoomServiceError(
@@ -139,7 +142,6 @@ export class RoomObject extends DurableObject<Env> {
       const now = Date.now();
       const hostPlayerId = crypto.randomUUID();
       const displayName = normalizeDisplayName(input.displayName, "Player 1");
-      const tokenHash = await hashSecret(input.reconnectToken);
       const state = createInitialRoomState({
         roomCode: input.roomCode,
         hostPlayerId,
@@ -178,12 +180,14 @@ export class RoomObject extends DurableObject<Env> {
     inviteUrl: string;
   }): Promise<RoomResult<JoinRoomResponse>> {
     try {
+      // Hash before reading the room: the crypto await admits other requests,
+      // and a join holding an older read would overwrite a concurrent join.
+      const tokenHash = await hashSecret(input.reconnectToken);
       await this.prepareRoom();
       const state = this.requireState();
       const now = Date.now();
       const playerId = crypto.randomUUID();
       const displayName = normalizeDisplayName(input.displayName, "Player 2");
-      const tokenHash = await hashSecret(input.reconnectToken);
       const outcome = addSecondPlayer(state, {
         playerId,
         displayName,
@@ -553,20 +557,32 @@ export class RoomObject extends DurableObject<Env> {
     reconnectToken: string,
   ): Promise<StoredRoomState> {
     await this.prepareRoom();
+    const { reconnectTokenHash } = requirePlayer(
+      this.requireLiveState(),
+      playerId,
+    );
+    if (
+      !reconnectToken ||
+      !(await verifySecret(reconnectToken, reconnectTokenHash))
+    ) {
+      throw authFailedError();
+    }
+
+    // Hashing awaits crypto rather than storage, so the input gate lets other
+    // requests commit, or the room expire, in the meantime. Callers build their
+    // next state from what this returns, so it must be read after the await.
+    const state = this.requireLiveState();
+    const player = requirePlayer(state, playerId);
+    if (player.reconnectTokenHash !== reconnectTokenHash) {
+      throw authFailedError();
+    }
+    return state;
+  }
+
+  private requireLiveState(): StoredRoomState {
     const state = this.requireState();
     if (state.phase === "expired") {
       throw new RoomServiceError("room-expired", "This room has expired.", 410);
-    }
-    const player = requirePlayer(state, playerId);
-    if (
-      !reconnectToken ||
-      !(await verifySecret(reconnectToken, player.reconnectTokenHash))
-    ) {
-      throw new RoomServiceError(
-        "auth-failed",
-        "Player credentials do not match this room.",
-        403,
-      );
     }
     return state;
   }
@@ -807,6 +823,14 @@ export class RoomObject extends DurableObject<Env> {
     }
     this.schemaReady = true;
   }
+}
+
+function authFailedError(): RoomServiceError {
+  return new RoomServiceError(
+    "auth-failed",
+    "Player credentials do not match this room.",
+    403,
+  );
 }
 
 function roomInviteUrl(origin: string, roomCode: string): string {

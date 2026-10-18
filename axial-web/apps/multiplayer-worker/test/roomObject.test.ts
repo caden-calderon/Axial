@@ -409,6 +409,51 @@ describe("Axial multiplayer room service", () => {
     );
   });
 
+  it("accepts a fallback move whose snapshot is behind only on presence", async () => {
+    const created = await createRoom("Host");
+    const joined = await joinRoom(created.roomCode, "Friend");
+    const stub = roomStub(created.roomCode);
+    const started = await readyBoth(
+      stub,
+      created.player,
+      joined.player,
+      created.inviteUrl,
+    );
+    vi.spyOn(Date, "now").mockReturnValue((started.match.playableAt ?? 0) + 1);
+
+    const hostView = await syncRoom(created.player);
+    // The guest's reconnect bumps the revision after the host's last poll.
+    const guestView = await syncRoom(joined.player);
+    expect(guestView.snapshot.revision).toBeGreaterThan(
+      hostView.snapshot.revision,
+    );
+
+    const hostMove = await sendHttpCommand(
+      created.player,
+      command("game:play-move", {
+        move: { row: 0, col: 0 },
+        expectedRevision: hostView.snapshot.revision,
+      }),
+    );
+    expect(hostMove.events.map((event) => event.type)).toContain(
+      "game:move-accepted",
+    );
+    expect(hostMove.snapshot.game.moveHistory).toHaveLength(1);
+
+    const staleGuestMove = await postHttpCommand(
+      joined.player,
+      command("game:play-move", {
+        move: { row: 0, col: 1 },
+        expectedRevision: guestView.snapshot.revision,
+      }),
+    );
+    const staleError = (await staleGuestMove.json()) as {
+      error: RoomErrorPayload;
+    };
+    expect(staleGuestMove.status).toBe(409);
+    expect(staleError.error.code).toBe("stale-revision");
+  });
+
   it("expires the private room for both players on explicit leave", async () => {
     const created = await createRoom("Host");
     const joined = await joinRoom(created.roomCode, "Friend");
@@ -426,6 +471,76 @@ describe("Axial multiplayer room service", () => {
     const opponentSync = await stub.syncPlayer(joined.player, joined.inviteUrl);
     expect(opponentSync.ok).toBe(false);
     if (!opponentSync.ok) expect(opponentSync.error.code).toBe("room-expired");
+  });
+});
+
+describe("concurrent room requests", () => {
+  it("does not let an HTTP command commit the state it read before checking credentials", async () => {
+    const created = await createRoom("Host");
+    const joined = await joinRoom(created.roomCode, "Friend");
+    const stub = roomStub(created.roomCode);
+    const digest = pauseNextDigest();
+
+    const slowCommand = sendHttpCommand(
+      created.player,
+      command("room:ready", { ready: true }),
+    );
+    await digest.reached();
+    const rename = unwrap(
+      await stub.submitCommand(
+        joined.player,
+        command("room:set-name", { displayName: "Renamed friend" }),
+        joined.inviteUrl,
+      ),
+    );
+    digest.release();
+    const result = await slowCommand;
+
+    const friend = result.snapshot.players.find(
+      (player) => player.playerId === joined.player.playerId,
+    );
+    expect(friend?.displayName).toBe("Renamed friend");
+    expect(result.snapshot.revision).toBeGreaterThan(rename.snapshot.revision);
+    const stored = unwrap(
+      await stub.syncPlayer(joined.player, joined.inviteUrl),
+    );
+    expect(
+      stored.snapshot.players.find(
+        (player) => player.playerId === joined.player.playerId,
+      )?.displayName,
+    ).toBe("Renamed friend");
+    expect(
+      stored.snapshot.players.find(
+        (player) => player.playerId === created.player.playerId,
+      )?.ready,
+    ).toBe(true);
+  });
+
+  it("gives the second seat to only one of two simultaneous joins", async () => {
+    const created = await createRoom("Host");
+    const digest = pauseNextDigest();
+
+    const slowJoin = SELF.fetch(
+      `https://worker.test/api/rooms/${created.roomCode}/join`,
+      { method: "POST", body: JSON.stringify({ displayName: "Slow" }) },
+    );
+    await digest.reached();
+    const fastJoin = await joinRoom(created.roomCode, "Fast");
+    digest.release();
+    const slow = await slowJoin;
+    const slowError = (await slow.json()) as { error: RoomErrorPayload };
+
+    expect(slow.status).toBe(409);
+    expect(slowError.error.code).toBe("room-full");
+    const synced = unwrap(
+      await roomStub(created.roomCode).syncPlayer(
+        fastJoin.player,
+        fastJoin.inviteUrl,
+      ),
+    );
+    expect(synced.snapshot.players.map((player) => player.displayName)).toEqual(
+      ["Host", "Fast"],
+    );
   });
 });
 
@@ -654,7 +769,16 @@ async function sendHttpCommand<T extends ClientCommand>(
   credentials: PlayerCredentials,
   command: T,
 ): Promise<RoomCommandResponse> {
-  const response = await SELF.fetch(
+  const response = await postHttpCommand(credentials, command);
+  expect(response.status).toBe(200);
+  return (await response.json()) as RoomCommandResponse;
+}
+
+function postHttpCommand(
+  credentials: PlayerCredentials,
+  command: ClientCommand,
+): Promise<Response> {
+  return SELF.fetch(
     `https://worker.test/api/rooms/${credentials.roomCode}/commands`,
     {
       method: "POST",
@@ -665,8 +789,6 @@ async function sendHttpCommand<T extends ClientCommand>(
       }),
     },
   );
-  expect(response.status).toBe(200);
-  return (await response.json()) as RoomCommandResponse;
 }
 
 async function readyBoth(
@@ -725,6 +847,40 @@ async function waitUntilPlayable(snapshot: PrivateRoomSnapshot): Promise<void> {
   );
   if (waitMs > 0) {
     await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+}
+
+// Holds the next SHA-256 digest until released. Credential hashing awaits
+// crypto rather than storage, so the room's input gate admits other requests
+// while it is pending; this makes that interleaving deterministic.
+function pauseNextDigest(): {
+  reached: () => Promise<void>;
+  release: () => void;
+} {
+  const digest = crypto.subtle.digest.bind(crypto.subtle);
+  let reached = false;
+  let released = false;
+  vi.spyOn(crypto.subtle, "digest").mockImplementationOnce(
+    async (algorithm, data) => {
+      reached = true;
+      await until(() => released);
+      return digest(algorithm, data);
+    },
+  );
+  return {
+    reached: () => until(() => reached),
+    release: () => {
+      released = true;
+    },
+  };
+}
+
+// Polls with timers instead of sharing a promise: workerd continues a promise
+// in the I/O context that resolved it, and the test and the room object must
+// each keep running in their own context.
+async function until(condition: () => boolean): Promise<void> {
+  while (!condition()) {
+    await new Promise((resolve) => setTimeout(resolve, 1));
   }
 }
 

@@ -48,12 +48,9 @@
 	</div>
 </header>
 
-<div
-	class="turn-chip top-center"
-	data-player={currentPlayer ?? undefined}
-	aria-label={currentLabel}
-	aria-live="polite"
->
+<!-- The board's own status region announces turn changes; announcing here too would make
+     screen readers speak every turn twice, so the chip only exposes its text for reading. -->
+<div class="turn-chip top-center" data-player={currentPlayer ?? undefined}>
 	<span class="turn-chip-label" aria-hidden="true">
 		{#key currentLabel}
 			<ShinyText
@@ -67,6 +64,7 @@
 			/>
 		{/key}
 	</span>
+	<span class="sr-only">{currentLabel}</span>
 </div>
 
 <style>

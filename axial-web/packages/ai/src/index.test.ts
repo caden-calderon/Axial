@@ -613,6 +613,75 @@ describe("Classic tactical lookahead", () => {
 });
 
 describe("Classic MCTS AI", () => {
+  it("searches a fork block only when the lookahead proves it lost", () => {
+    // Engine audit 2026-10-14: the fork-block shortcut chose row=3,col=2 here, which loses
+    // within five plies; row=3,col=4 is the only reply that survives.
+    const game = replayMoves([
+      { row: 3, col: 3 },
+      { row: 2, col: 4 },
+      { row: 3, col: 1 },
+    ]);
+    const searched = {
+      simulations: 60,
+      lookaheadDepth: 3,
+      lookaheadMaxMoves: 12,
+      lookaheadRootMaxMoves: 18,
+      lookaheadNodeLimit: 4_000,
+      tacticalMode: "forced-only" as const,
+      minimumSearchDepth: 2,
+      seed: 7,
+    };
+
+    const deep = analyzeMctsMove(game, searched)!;
+    expect(deep.reason).not.toBe("tactical");
+    expect(deep.move).toEqual({ row: 3, col: 4 });
+
+    // Hard's depth-2 lookahead can't see this loss, but the fork-block check runs at depth 3.
+    const hardLike = analyzeMctsMove(game, { ...searched, lookaheadDepth: 2 })!;
+    expect(hardLike.move).toEqual({ row: 3, col: 4 });
+
+    // Presets without a real lookahead (Easy, Medium) keep the instant reply.
+    const shallow = analyzeMctsMove(game, { ...searched, lookaheadDepth: 1 })!;
+    expect(shallow.reason).toBe("tactical");
+    expect(shallow.move).toEqual({ row: 3, col: 2 });
+  });
+
+  it("finds the Hard preset's surviving reply to the fork trap with controlled work", () => {
+    const game = replayMoves([
+      { row: 3, col: 3 },
+      { row: 2, col: 4 },
+      { row: 3, col: 1 },
+    ]);
+    const result = analyzeMctsMove(game, {
+      ...classicAiSearchOptionsForGame("hard", game),
+      maxTimeMs: undefined,
+      simulations: 128,
+      seed: 11,
+    })!;
+    expect(result.move).toEqual({ row: 3, col: 4 });
+  });
+
+  it("never returns a refuted fork block while another move is available", () => {
+    // With a one-move lookahead root, no lookahead candidate can replace the refuted block,
+    // so the veto must fall back to the tree search's candidates.
+    const game = replayMoves([
+      { row: 3, col: 3 },
+      { row: 2, col: 4 },
+      { row: 3, col: 1 },
+    ]);
+    const result = analyzeMctsMove(game, {
+      simulations: 40,
+      lookaheadDepth: 3,
+      lookaheadMaxMoves: 12,
+      lookaheadRootMaxMoves: 1,
+      lookaheadNodeLimit: 4_000,
+      tacticalMode: "forced-only",
+      minimumSearchDepth: 2,
+      seed: 7,
+    })!;
+    expect(result.move).not.toEqual({ row: 3, col: 2 });
+  });
+
   it("separates difficulty capabilities and scales custom-rule budgets", () => {
     const standard = createGame();
     const multiLine = createGame({ lineLength: 4, linesToWin: 2 });

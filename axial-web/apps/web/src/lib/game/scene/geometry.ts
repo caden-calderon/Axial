@@ -10,6 +10,12 @@ export const PIECE_SIZE = CELL_SPACING * 0.58;
 
 export type Vec3 = [number, number, number];
 
+export type LineFrontLight = {
+	position: Vec3;
+	color: string;
+	intensity: number;
+};
+
 export type FadedLineGeometryData = {
 	positions: number[];
 	alphas: number[];

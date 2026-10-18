@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { T, useTask, useThrelte } from '@threlte/core';
 	import type { BoardDimensions } from '@axial/core';
 	import type { ScenePalette, UiThemeName } from '../theming/sceneThemes';
 	import { boardSize, CELL_SPACING, cellPosition, type Vec3 } from './geometry';
 	import BillboardLabel from './BillboardLabel.svelte';
+	import { createLabelTextureCache, provideLabelTextureCache } from './labelTextures';
 
 	let {
 		visible = true,
@@ -12,7 +13,8 @@
 		uiTheme,
 		boardRotation,
 		dimensions,
-		compact = false
+		compact = false,
+		portrait = false
 	}: {
 		visible?: boolean;
 		palette: ScenePalette;
@@ -20,7 +22,15 @@
 		boardRotation: number;
 		dimensions: BoardDimensions;
 		compact?: boolean;
+		/** Portrait phones have no side margin, so height numbers keep the camera-nearest edge. */
+		portrait?: boolean;
 	} = $props();
+
+	// Labels are mounted once and fade through opacity: mounting them as the camera orbits drew
+	// a fresh canvas texture each time (37 in one full orbit in the experience audit).
+	const labelTextures = createLabelTextureCache();
+	provideLabelTextureCache(labelTextures);
+	onDestroy(() => labelTextures.dispose());
 
 	type PerimeterRailId = 'west-y' | 'south-x' | 'east-y' | 'north-x';
 	type Side = -1 | 1;
@@ -253,13 +263,36 @@
 		return smoothstep(0, 0.34, score);
 	}
 
+	// Height numbers stand on the board's left silhouette edge. The camera-nearest edge projects
+	// straight up through the middle of the board, so its numbers (drawn without depth testing)
+	// covered the pieces. A corner's "leftness" is how far it lies along the screen-left
+	// direction, (-cameraZ, cameraX) in board space. Looking squarely at a face, the two left
+	// corners tie at 0.71 and line up on screen; each stays at about 0.7 opacity there so the
+	// numbers remain legible while they hand over.
 	function zRailVisibility(candidate: ZRailCandidate): number {
+		if (portrait) return nearestZRailVisibility(candidate);
+		const leftness = (candidate.sideZ * cameraLocalX - candidate.sideX * cameraLocalZ) / Math.SQRT2;
+
+		return smoothstep(0.45, 0.85, leftness);
+	}
+
+	function nearestZRailVisibility(candidate: ZRailCandidate): number {
 		const xVisibility = zSideVisibility(cameraLocalX, candidate.sideX);
 		const zVisibility = zSideVisibility(cameraLocalZ, candidate.sideZ);
 		const xWeight = zSideCrossfade(cameraLocalX, candidate.sideX);
 		const zWeight = zSideCrossfade(cameraLocalZ, candidate.sideZ);
 
 		return Math.max(xVisibility, zVisibility) * xWeight * zWeight;
+	}
+
+	function zSideVisibility(value: number, side: Side): number {
+		return smoothstep(-0.08, 0.44, side * value);
+	}
+
+	function zSideCrossfade(value: number, side: Side): number {
+		const positiveSideWeight = smoothstep(-0.17, 0.17, value + 0.018);
+
+		return side === 1 ? positiveSideWeight : 1 - positiveSideWeight;
 	}
 
 	function zNumberPosition(candidate: ZRailCandidate, index: number): Vec3 {
@@ -280,16 +313,6 @@
 
 	function axisSideVisibility(value: number, side: Side): number {
 		return smoothstep(-0.2, 0.36, side * value);
-	}
-
-	function zSideVisibility(value: number, side: Side): number {
-		return smoothstep(-0.08, 0.44, side * value);
-	}
-
-	function zSideCrossfade(value: number, side: Side): number {
-		const positiveSideWeight = smoothstep(-0.17, 0.17, value + 0.018);
-
-		return side === 1 ? positiveSideWeight : 1 - positiveSideWeight;
 	}
 
 	function smoothstep(edge0: number, edge1: number, value: number): number {
@@ -327,10 +350,45 @@
 <T.Group {visible}>
 	{#each perimeterLabels as label (label.id)}
 		{@const visibility = perimeterNumberVisibility(label)}
-		{#if visibility > 0.01}
+		<BillboardLabel
+			text={label.text}
+			position={label.position}
+			fontSize={numberFontSize}
+			color={labelColor}
+			outlineColor={palette.gridEmissive}
+			fillOpacity={numberFillOpacity}
+			outlineOpacity={numberOutlineOpacity}
+			outlineWidth={numberOutlineWidth}
+			outlineGlow={numberOutlineGlow}
+			fillGlow={numberFillGlow}
+			opacity={visibility}
+		/>
+	{/each}
+
+	{#each axisLabelCandidates as label (label.id)}
+		{@const visibility = axisLabelVisibility(label)}
+		<BillboardLabel
+			text={label.text}
+			position={label.position}
+			fontSize={axisFontSize}
+			color={labelColor}
+			outlineColor={palette.gridEmissive}
+			fillOpacity={axisFillOpacity}
+			outlineOpacity={axisOutlineOpacity}
+			outlineWidth={axisOutlineWidth}
+			outlineGlow={axisOutlineGlow}
+			fillGlow={axisFillGlow}
+			opacity={visibility}
+		/>
+	{/each}
+
+	{#each zRailCandidates as candidate (candidate.id)}
+		{@const visibility = zRailVisibility(candidate)}
+		{#each zNumbers as number, index (`${candidate.id}-${number}`)}
 			<BillboardLabel
-				text={label.text}
-				position={label.position}
+				name={`z-number-${number}`}
+				text={number}
+				position={zNumberPosition(candidate, index)}
 				fontSize={numberFontSize}
 				color={labelColor}
 				outlineColor={palette.gridEmissive}
@@ -341,60 +399,20 @@
 				fillGlow={numberFillGlow}
 				opacity={visibility}
 			/>
-		{/if}
-	{/each}
+		{/each}
 
-	{#each axisLabelCandidates as label (label.id)}
-		{@const visibility = axisLabelVisibility(label)}
-		{#if visibility > 0.01}
-			<BillboardLabel
-				text={label.text}
-				position={label.position}
-				fontSize={axisFontSize}
-				color={labelColor}
-				outlineColor={palette.gridEmissive}
-				fillOpacity={axisFillOpacity}
-				outlineOpacity={axisOutlineOpacity}
-				outlineWidth={axisOutlineWidth}
-				outlineGlow={axisOutlineGlow}
-				fillGlow={axisFillGlow}
-				opacity={visibility}
-			/>
-		{/if}
-	{/each}
-
-	{#each zRailCandidates as candidate (candidate.id)}
-		{@const visibility = zRailVisibility(candidate)}
-		{#if visibility > 0.01}
-			{#each zNumbers as number, index (`${candidate.id}-${number}`)}
-				<BillboardLabel
-					text={number}
-					position={zNumberPosition(candidate, index)}
-					fontSize={numberFontSize}
-					color={labelColor}
-					outlineColor={palette.gridEmissive}
-					fillOpacity={numberFillOpacity}
-					outlineOpacity={numberOutlineOpacity}
-					outlineWidth={numberOutlineWidth}
-					outlineGlow={numberOutlineGlow}
-					fillGlow={numberFillGlow}
-					opacity={visibility}
-				/>
-			{/each}
-
-			<BillboardLabel
-				text="Z"
-				position={zAxisPosition(candidate)}
-				fontSize={axisFontSize}
-				color={labelColor}
-				outlineColor={palette.gridEmissive}
-				fillOpacity={axisFillOpacity}
-				outlineOpacity={axisOutlineOpacity}
-				outlineWidth={axisOutlineWidth}
-				outlineGlow={axisOutlineGlow}
-				fillGlow={axisFillGlow}
-				opacity={visibility}
-			/>
-		{/if}
+		<BillboardLabel
+			text="Z"
+			position={zAxisPosition(candidate)}
+			fontSize={axisFontSize}
+			color={labelColor}
+			outlineColor={palette.gridEmissive}
+			fillOpacity={axisFillOpacity}
+			outlineOpacity={axisOutlineOpacity}
+			outlineWidth={axisOutlineWidth}
+			outlineGlow={axisOutlineGlow}
+			fillGlow={axisFillGlow}
+			opacity={visibility}
+		/>
 	{/each}
 </T.Group>

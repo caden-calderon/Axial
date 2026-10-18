@@ -5,7 +5,6 @@
 	import { createGameAudio } from '$lib/game/audio/gameAudio';
 	import { hasSameMoveHistory, isSingleMoveAppend, sceneMoveKey } from '$lib/game/animation';
 	import { createAxialBridgeController } from '$lib/game/bridge/bridgeController';
-	import AxialScene from '$lib/game/scene/AxialScene.svelte';
 	import WelcomeTourOverlay from '$lib/game/onboarding/WelcomeTourOverlay.svelte';
 	import TourPracticeBanner from '$lib/game/onboarding/TourPracticeBanner.svelte';
 	import { createPracticeGame, PRACTICE_WINNING_MOVE } from '$lib/game/onboarding/practiceGame';
@@ -22,10 +21,18 @@
 	import OnlineMatchOverlay from '$lib/game/ui/OnlineMatchOverlay.svelte';
 	import GameStatusPanel from '$lib/game/ui/GameStatusPanel.svelte';
 	import MoveConfirmBar from '$lib/game/ui/MoveConfirmBar.svelte';
+	import ReviewBar from '$lib/game/ui/ReviewBar.svelte';
 	import {
 		createOnlineController,
 		type BoardDimensionKey
 	} from '$lib/multiplayer/onlineController.svelte';
+
+	// three.js and the scene are most of the page's JavaScript. Loading them as a separate chunk,
+	// started right away, lets the HUD, panel and tour render while the board downloads.
+	let sceneModule = $state(loadScene());
+	function loadScene() {
+		return import('$lib/game/scene/AxialScene.svelte');
+	}
 
 	const gameAudio = createGameAudio();
 	let soundEnabled = $state(false);
@@ -92,6 +99,26 @@
 	);
 	const activeCurrentPlayer = $derived(
 		playMode === 'online' ? online.currentPlayer : controller.currentPlayer
+	);
+	// While the final piece falls and its line draws, keep the turn indicator on the last
+	// in-play state so the result is revealed by the board, not announced ahead of it.
+	let lastInPlayTurn = $state<{
+		title: string;
+		label: string;
+		player: typeof activeCurrentPlayer;
+	} | null>(null);
+	$effect.pre(() => {
+		if (activeGame.status.state !== 'playing') return;
+		lastInPlayTurn = {
+			title: activeStatusTitle,
+			label: activeCurrentLabel,
+			player: activeCurrentPlayer
+		};
+	});
+	const displayedTurn = $derived(
+		presentationPending && lastInPlayTurn
+			? lastInPlayTurn
+			: { title: activeStatusTitle, label: activeCurrentLabel, player: activeCurrentPlayer }
 	);
 	const activeBoardDimensions = $derived(
 		playMode === 'online' ? online.boardDimensions : controller.boardDimensions
@@ -445,6 +472,8 @@
 		welcomeTourStartStep = resumeStepIndex;
 		welcomeTourActive = false;
 		practiceGame = createPracticeGame();
+		// Practice is taught from the default view, and play resumes from it afterwards.
+		viewResetKey += 1;
 		gameAudio.cancel();
 		welcomePracticeActive = true;
 		practiceHint = '';
@@ -454,6 +483,7 @@
 	}
 
 	function resumeWelcomeTour(): void {
+		viewResetKey += 1;
 		welcomePracticeActive = false;
 		practiceHint = '';
 		welcomePracticeHover = null;
@@ -462,6 +492,7 @@
 
 	function exitWelcomePractice(): void {
 		markWelcomeTourSeen(getBrowserStorage('localStorage'));
+		viewResetKey += 1;
 		welcomePracticeActive = false;
 		practiceHint = '';
 		welcomePracticeHover = null;
@@ -516,56 +547,66 @@
 	<ControlTooltip />
 	<div class="aurora"></div>
 	<svelte:boundary onerror={handleSceneBoundaryError}>
-		{#key `${sceneEpoch}:${welcomePracticeActive}`}
+		<!-- Only error recovery remounts the scene: every remount creates a new WebGL context, and
+		     practice swaps boards through the game prop with a camera reset instead. -->
+		{#key sceneEpoch}
 			{#if hydrated}
-				<AxialScene
-					game={sceneGame}
-					hoveredMove={activePreviewMove}
-					guidedMove={welcomePracticeActive && !practiceCompleted ? PRACTICE_WINNING_MOVE : null}
-					previewLocked={!welcomePracticeActive && activeLockedMove !== null}
-					labelsVisible={welcomePracticeActive || controller.labelsVisible}
-					gridLayersVisible={controller.gridLayersVisible}
-					uiTheme={controller.uiTheme}
-					boardColor={controller.boardColor}
-					pieceShape={controller.pieceShape}
-					pieceColors={controller.pieceColors}
-					placementMode={welcomePracticeActive || playMode === 'online'
-						? 'piece'
-						: controller.placementMode}
-					doubleAdjacentAnchor={welcomePracticeActive || playMode === 'online'
-						? null
-						: controller.pendingDoubleAdjacentOrigin}
-					{viewResetKey}
-					onHover={setSceneHover}
-					onPlay={playSceneMove}
-					onCancelSelection={cancelSceneMove}
-					onRecoverableError={handleRecoverableSceneError}
-					onLand={(move) => gameAudio.playImpact(move.player, move.height)}
-					onSettle={(move) => {
-						if (
-							!welcomePracticeActive &&
-							activeGame.status.state === 'draw' &&
-							activeGame.lastMove &&
-							sceneMoveKey(move, 0) === sceneMoveKey(activeGame.lastMove, 0)
-						)
-							void finishRenderedPresentation();
-					}}
-					onWinReveal={() => {
-						if (welcomePracticeActive) {
-							if (practiceGame.status.state === 'won')
-								gameAudio.playWin(practiceGame.status.winner);
-							return;
-						}
-						if (activeGame.status.state === 'won') {
-							gameAudio.playWin(activeGame.status.winner);
-							void finishRenderedPresentation();
-						}
-					}}
-					interactionLabel={welcomePracticeActive ? practiceLabel : activeCurrentLabel}
-					inputEnabled={welcomePracticeActive
-						? !practiceCompleted
-						: !welcomeTourActive && (playMode === 'online' ? online.yourTurn : controller.canPlay)}
-				/>
+				{#await sceneModule then { default: AxialScene }}
+					<AxialScene
+						game={sceneGame}
+						hoveredMove={activePreviewMove}
+						guidedMove={welcomePracticeActive && !practiceCompleted ? PRACTICE_WINNING_MOVE : null}
+						previewLocked={!welcomePracticeActive && activeLockedMove !== null}
+						labelsVisible={welcomePracticeActive || controller.labelsVisible}
+						gridLayersVisible={controller.gridLayersVisible}
+						uiTheme={controller.uiTheme}
+						boardColor={controller.boardColor}
+						pieceShape={controller.pieceShape}
+						pieceColors={controller.pieceColors}
+						placementMode={welcomePracticeActive || playMode === 'online'
+							? 'piece'
+							: controller.placementMode}
+						doubleAdjacentAnchor={welcomePracticeActive || playMode === 'online'
+							? null
+							: controller.pendingDoubleAdjacentOrigin}
+						{viewResetKey}
+						onHover={setSceneHover}
+						onPlay={playSceneMove}
+						onCancelSelection={cancelSceneMove}
+						onRecoverableError={handleRecoverableSceneError}
+						onLand={(move) => gameAudio.playImpact(move.player, move.height)}
+						onSettle={(move) => {
+							if (
+								!welcomePracticeActive &&
+								activeGame.status.state === 'draw' &&
+								activeGame.lastMove &&
+								sceneMoveKey(move, 0) === sceneMoveKey(activeGame.lastMove, 0)
+							)
+								void finishRenderedPresentation();
+						}}
+						onWinReveal={() => {
+							if (welcomePracticeActive) {
+								if (practiceGame.status.state === 'won')
+									gameAudio.playWin(practiceGame.status.winner);
+								return;
+							}
+							if (activeGame.status.state === 'won') {
+								gameAudio.playWin(activeGame.status.winner);
+								void finishRenderedPresentation();
+							}
+						}}
+						interactionLabel={welcomePracticeActive ? practiceLabel : activeCurrentLabel}
+						inputEnabled={welcomePracticeActive
+							? !practiceCompleted
+							: !welcomeTourActive &&
+								(playMode === 'online' ? online.yourTurn : controller.canPlay)}
+					/>
+				{:catch error}
+					<div class="scene-recovery" role="alert" aria-label={recoveryErrorLabel(error)}>
+						<strong>Board failed to load</strong>
+						<button type="button" onclick={() => (sceneModule = loadScene())}>Try again</button>
+					</div>
+				{/await}
 			{/if}
 		{/key}
 
@@ -583,8 +624,8 @@
 	</svelte:boundary>
 
 	<GameHud
-		currentLabel={welcomePracticeActive ? practiceLabel : activeCurrentLabel}
-		currentPlayer={welcomePracticeActive ? (practiceCompleted ? null : 1) : activeCurrentPlayer}
+		currentLabel={welcomePracticeActive ? practiceLabel : displayedTurn.label}
+		currentPlayer={welcomePracticeActive ? (practiceCompleted ? null : 1) : displayedTurn.player}
 		boardDimensions={sceneGame.dimensions}
 	/>
 
@@ -595,7 +636,7 @@
 			game={activeGame}
 			{soundEnabled}
 			onToggleSound={toggleSound}
-			statusTitle={activeStatusTitle}
+			statusTitle={displayedTurn.title}
 			moveCount={activeGame.moveHistory.length}
 			boardColor={controller.boardColor}
 			uiTheme={controller.uiTheme}
@@ -663,6 +704,18 @@
 			{controlsExpanded}
 			onConfirm={confirmSceneMove}
 			onCancel={cancelSceneMove}
+		/>
+	{/if}
+
+	{#if !welcomePracticeActive && !welcomeTourActive && playMode !== 'online' && controller.canRedo && !controlsExpanded && !activeLockedMove && !(controller.showGameOverModal && !presentationPending)}
+		<ReviewBar
+			moveNumber={controller.game.moveHistory.length}
+			totalMoves={controller.game.moveHistory.length + controller.redoMoveCount}
+			canStepBack={controller.canUndo}
+			canStepForward={controller.canRedo}
+			{controlsExpanded}
+			onStepBack={controller.undoMove}
+			onStepForward={controller.redoMove}
 		/>
 	{/if}
 
@@ -735,7 +788,7 @@
 	}
 
 	.scene-recovery button {
-		min-height: 2rem;
+		min-height: 2.75rem;
 		border: 1px solid color-mix(in oklab, var(--accent) 42%, transparent);
 		border-radius: 999px;
 		background: color-mix(in oklab, var(--accent) 18%, var(--surface));
@@ -748,7 +801,7 @@
 
 	.recovery-toast {
 		left: 50%;
-		bottom: 1rem;
+		bottom: calc(env(safe-area-inset-bottom) + 1rem);
 		max-width: min(22rem, calc(100vw - 2rem));
 		padding: 0.62rem 0.78rem;
 		border-radius: 999px;

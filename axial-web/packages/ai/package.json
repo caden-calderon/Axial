@@ -10,6 +10,8 @@
     "./presets": "./src/classic/presets.ts"
   },
   "scripts": {
+    "check": "tsc --noEmit",
+    "lint": "prettier --check . && eslint .",
     "eval:rules": "AXIAL_AI_RULE_EVAL=1 vitest run src/rules.eval.test.ts --reporter=verbose",
     "eval:rules:full": "AXIAL_AI_FULL_RULE_EVAL=1 vitest run src/rules.eval.test.ts --reporter=verbose",
     "eval:variants": "AXIAL_AI_VARIANT_EVAL=1 vitest run src/rules.eval.test.ts --reporter=verbose",
@@ -30,6 +32,14 @@
     "@axial/core": "workspace:*"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24",
+    "eslint": "^10.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.4.0",
+    "prettier": "^3.8.1",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.58.1",
     "vitest": "^4.1.11"
   }
 }

@@ -4,7 +4,16 @@ The active product lives in [`axial-web/`](../axial-web/). Start with its [engin
 
 ## Current work
 
-[Announcement readiness](active/axial-announcement-readiness/) is the current review and polish pass:
+[Opus review](active/axial-opus-review/) is a review-and-improve pass over the whole codebase after the announcement work (October 2026):
+
+- [Plan](active/axial-opus-review/plan.md): triage of both audits, decisions, deferrals and proposals for Caden.
+- [Tasks](active/axial-opus-review/tasks.md): every shipped commit and what it changes.
+- [Context](active/axial-opus-review/context.md): environment notes, baseline gates and before/after AI evidence.
+- Audit summaries: [experience](active/axial-opus-review/audit-experience.md) and [engine](active/axial-opus-review/audit-engine.md).
+
+## Announcement readiness
+
+[Announcement readiness](active/axial-announcement-readiness/) was the September review and polish pass:
 
 - [Plan](active/axial-announcement-readiness/plan.md): scope and review approach.
 - [Context](active/axial-announcement-readiness/context.md): current state and handoff.

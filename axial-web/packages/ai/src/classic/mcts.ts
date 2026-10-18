@@ -129,6 +129,13 @@ const DEFAULT_EARLY_EXIT_RATIO = 0.86;
 const DEFAULT_PROGRESSIVE_WIDENING_BASE = 6;
 const DEFAULT_PROGRESSIVE_WIDENING_EXPONENT = 0.45;
 const RAVE_K = 500;
+// Lookahead depth from which shallow shortcuts are checked against the search.
+const SEARCHED_DEFENSE_MIN_DEPTH = 2;
+// Depth of the one-move check on a fork block. The audit's fork traps lose within five plies,
+// which a depth-2 check (Hard's lookahead) cannot see; one root move at depth 3 is cheap.
+const FORK_BLOCK_CHECK_MIN_DEPTH = 3;
+// Lookahead scores at or below this are forced losses (terminal scores start at -10M).
+const PROVEN_LOSS_SCORE = -5_000_000;
 
 export function chooseMctsMove(
   game: GameSnapshot,
@@ -148,15 +155,43 @@ export function analyzeMctsMove(
   const rootState = ClassicSearchState.fromGame(game);
   const stateConversionMs = performanceNow() - stateStart;
   if (rootState.winner !== null) return null;
+  if (rootState.legalMoveIndices().length === 0) return null;
+
+  // Presets with a real lookahead (Hard, Max) check the shallow shortcuts against it. Blocking
+  // the cell an opponent's fork would use is often not the move that defuses the fork, and
+  // the engine audit of 2026-10-14 found Hard and Max returning fork blocks that their own
+  // lookahead scored as forced losses.
+  const verifiesWithLookahead =
+    (options.lookaheadDepth ?? 0) >= SEARCHED_DEFENSE_MIN_DEPTH;
 
   const tacticalStart = performanceNow();
   const criticalTactical = selectTacticalMove(
     rootState,
     game.currentPlayer,
     options.tacticalMode ?? "forced-only",
+    { scoreAlternatives: false },
   );
+  // A fork block keeps its instant reply unless the preset's own lookahead proves that block
+  // lost; only then does the move go through the full search. Checking the single move costs a
+  // fraction of a full lookahead, so most fork blocks still answer immediately.
+  const refutedForkBlock =
+    criticalTactical?.reason === "block-forcing" &&
+    verifiesWithLookahead &&
+    isProvenLoss(rootState, game.currentPlayer, criticalTactical.moveIndex, {
+      ...options,
+      lookaheadDepth: Math.max(
+        options.lookaheadDepth ?? 0,
+        FORK_BLOCK_CHECK_MIN_DEPTH,
+      ),
+      maxTimeMs:
+        options.maxTimeMs === undefined
+          ? undefined
+          : Math.max(0, options.maxTimeMs - (performanceNow() - decisionStart)),
+    })
+      ? criticalTactical.moveIndex
+      : null;
   const tacticalMs = performanceNow() - tacticalStart;
-  if (criticalTactical) {
+  if (criticalTactical && refutedForkBlock === null) {
     const totalMs = performanceNow() - decisionStart;
     return {
       move: publicMoveFromIndex(
@@ -190,10 +225,20 @@ export function analyzeMctsMove(
     };
   }
 
-  const heuristicStart = performanceNow();
-  const tactical = selectHeuristicMove(rootState, game.currentPlayer);
-  const heuristicMs = performanceNow() - heuristicStart;
-  if (!tactical) return null;
+  // The heuristic anchor is only needed when the search can't stand behind its own choice,
+  // so compute it lazily: scoring every legal move dominated large-board decisions.
+  let heuristicMs = 0;
+  let heuristicAnchor: MoveIndex | undefined;
+  const anchorMoveIndex = (): MoveIndex => {
+    if (heuristicAnchor === undefined) {
+      const heuristicStart = performanceNow();
+      heuristicAnchor =
+        selectHeuristicMove(rootState, game.currentPlayer)?.moveIndex ??
+        rootState.legalMoveIndices()[0]!;
+      heuristicMs += performanceNow() - heuristicStart;
+    }
+    return heuristicAnchor;
+  };
 
   const remainingDecisionTime =
     options.maxTimeMs === undefined
@@ -222,10 +267,19 @@ export function analyzeMctsMove(
     { ...boundedOptions, maxTimeMs: remainingSearchTime },
     lookahead,
   );
-  const result = search.run(
-    lookahead?.moveIndex ?? tactical.moveIndex,
-    tactical.moveIndex,
+  const searched = search.run(
+    () => lookahead?.moveIndex ?? anchorMoveIndex(),
+    anchorMoveIndex,
   );
+  const result = verifiesWithLookahead
+    ? vetoProvenLoss(
+        searched,
+        lookahead,
+        rootState.dimensions,
+        new Set(refutedForkBlock === null ? [] : [refutedForkBlock]),
+        () => [anchorMoveIndex(), ...rootState.legalMoveIndices()],
+      )
+    : searched;
   const totalMs = performanceNow() - decisionStart;
   return {
     ...result,
@@ -245,6 +299,72 @@ export function analyzeMctsMove(
       lookaheadCompletedCandidates:
         lookahead?.candidates.filter((candidate) => candidate.complete)
           .length ?? 0,
+    },
+  };
+}
+
+function isProvenLoss(
+  state: ClassicSearchState,
+  player: Player,
+  moveIndex: MoveIndex,
+  options: MctsOptions,
+): boolean {
+  const check = selectRootLookahead(state, player, options, [moveIndex]);
+  return (
+    check !== null &&
+    check.completedDepth >= 1 &&
+    check.score <= PROVEN_LOSS_SCORE
+  );
+}
+
+/**
+ * Replace a move proven lost (by the completed lookahead, or by the fork-block check) with the
+ * best lookahead candidate that is not. If the lookahead examined only the refuted move, fall
+ * back to the tree search's candidates and then any other legal move. The tree search and the
+ * heuristic anchor can both pick proven-lost moves when the search is shallow; a forced loss
+ * found by alpha-beta outranks them.
+ */
+function vetoProvenLoss(
+  result: MctsMoveResult,
+  lookahead: LookaheadMoveResult | null,
+  dimensions: BoardDimensions,
+  provenLost: ReadonlySet<MoveIndex>,
+  otherMoves: () => readonly MoveIndex[],
+): MctsMoveResult {
+  const candidates = lookahead?.candidates ?? [];
+  const isLost = (moveIndex: MoveIndex) =>
+    provenLost.has(moveIndex) ||
+    candidates.some(
+      (candidate) =>
+        candidate.moveIndex === moveIndex &&
+        candidate.completedDepth >= 1 &&
+        candidate.score <= PROVEN_LOSS_SCORE,
+    );
+  if (!isLost(result.moveIndex)) return result;
+
+  const candidate = candidates.find((entry) => !isLost(entry.moveIndex));
+  // Look past the lookahead only if it examined nothing but the refuted moves (a one-move root).
+  // When it examined alternatives and proved them all lost, an unexamined move is no safer, so
+  // the search's own choice stands.
+  const examinedOnlyRefuted = candidates.every((entry) =>
+    provenLost.has(entry.moveIndex),
+  );
+  const replacement =
+    candidate?.moveIndex ??
+    (examinedOnlyRefuted
+      ? (result.stats.find((stat) => !isLost(stat.moveIndex))?.moveIndex ??
+        otherMoves().find((moveIndex) => !isLost(moveIndex)))
+      : undefined);
+  if (replacement === undefined) return result;
+
+  return {
+    ...result,
+    move: publicMoveFromIndex(replacement, dimensions),
+    moveIndex: replacement,
+    reason: candidate ? "lookahead" : "search",
+    telemetry: {
+      ...result.telemetry,
+      selectedMoveDepth: candidate?.completedDepth ?? 0,
     },
   };
 }
@@ -305,8 +425,8 @@ class MctsSearch {
   }
 
   run(
-    fallbackMoveIndex: MoveIndex,
-    strategicAnchorMoveIndex: MoveIndex,
+    resolveFallbackMoveIndex: () => MoveIndex,
+    resolveStrategicAnchor: () => MoveIndex,
   ): MctsMoveResult {
     const start = performanceNow();
     const maxSimulations = this.options.simulations ?? DEFAULT_SIMULATIONS;
@@ -333,6 +453,7 @@ class MctsSearch {
     const selected = this.selectRootMove(stats);
 
     if (!selected) {
+      const fallbackMoveIndex = resolveFallbackMoveIndex();
       return {
         move: publicMoveFromIndex(fallbackMoveIndex, this.rootState.dimensions),
         moveIndex: fallbackMoveIndex,
@@ -356,6 +477,7 @@ class MctsSearch {
       this.options.minimumSearchDepth ?? 0,
     );
     if (selected.stat.maxDepth < minimumSearchDepth) {
+      const strategicAnchorMoveIndex = resolveStrategicAnchor();
       return {
         move: publicMoveFromIndex(
           strategicAnchorMoveIndex,
@@ -712,12 +834,14 @@ function selectRootLookahead(
   state: ClassicSearchState,
   player: Player,
   options: MctsOptions,
+  rootMoves?: readonly MoveIndex[],
 ): LookaheadMoveResult | null {
   const depth = options.lookaheadDepth ?? 0;
   if (depth <= 0) return null;
 
   return selectLookaheadMove(state, player, {
     depth,
+    rootMoves,
     maxMoves: options.lookaheadMaxMoves,
     rootMaxMoves: options.lookaheadRootMaxMoves,
     nodeLimit: options.lookaheadNodeLimit,

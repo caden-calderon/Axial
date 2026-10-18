@@ -235,8 +235,6 @@
 				clearcoat={1}
 				clearcoatRoughness={0.04}
 				ior={1.45}
-				transmission={uiTheme === 'dark' ? 0.18 : 0.04}
-				thickness={0.18}
 				transparent
 				opacity={shellOpacity}
 				depthWrite={false}

@@ -5,6 +5,23 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<meta name="text-scale" content="scale" />
 		<title>Axial</title>
+		<!-- Static head tags live here, not in svelte:head: the app renders client-side only, so
+		     these must be in the initial HTML for browsers, installers and link previews. -->
+		<link rel="icon" href="%sveltekit.assets%/favicon.png" type="image/png" />
+		<link rel="apple-touch-icon" href="%sveltekit.assets%/icons/apple-touch-icon.png" />
+		<link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
+		<link
+			rel="preload"
+			href="%sveltekit.assets%/fonts/InterVariable.woff2"
+			as="font"
+			type="font/woff2"
+			crossorigin="anonymous"
+		/>
+		<meta name="theme-color" content="#071012" />
+		<meta name="mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-title" content="Axial" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 		<meta
 			name="description"
 			content="Connect four in three dimensions. Play Axial in your browser against AI, with a friend locally, or in a private online room."

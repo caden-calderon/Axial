@@ -5,6 +5,7 @@ declare global {
 	interface Window {
 		__practiceScene: { pieces: number; lines: number };
 		__practiceTarget: number[] | null;
+		__webglContexts: number;
 	}
 }
 
@@ -36,6 +37,16 @@ test('practice wins on its own board and restores the saved match', async ({ pag
 				})
 			);
 		}
+		// Each scene remount creates a WebGL context; practice must reuse the existing one.
+		window.__webglContexts = 0;
+		const getContext = HTMLCanvasElement.prototype.getContext;
+		HTMLCanvasElement.prototype.getContext = function (
+			this: HTMLCanvasElement,
+			...args: Parameters<HTMLCanvasElement['getContext']>
+		) {
+			if (String(args[0]).startsWith('webgl')) window.__webglContexts += 1;
+			return getContext.apply(this, args);
+		} as HTMLCanvasElement['getContext'];
 		window.__THREE_DEVTOOLS__ = new EventTarget();
 		window.__practiceScene = { pieces: 0, lines: 0 };
 		window.__THREE_DEVTOOLS__.addEventListener('observe', (event) => {
@@ -105,6 +116,7 @@ test('practice wins on its own board and restores the saved match', async ({ pag
 		.toEqual({ pieces: 24, lines: 0 });
 	await page.getByRole('button', { name: 'Exit tutorial' }).click();
 	await expect.poll(() => page.evaluate(() => window.__practiceScene.pieces)).toBe(2);
+	expect(await page.evaluate(() => window.__webglContexts)).toBe(1);
 	await page.reload();
 	await expect.poll(() => page.evaluate(() => window.__practiceScene.pieces)).toBe(2);
 	expect(await page.evaluate(() => localStorage.getItem('axial-active-match'))).toBe(saved);

@@ -1,9 +1,9 @@
 import {
   BLOCKER_CELL,
+  DIRECTIONS,
   DEFAULT_BOARD_DIMENSIONS,
   DEFAULT_WIN_CONDITION,
   cellCount,
-  cellFromIndex,
   indexOf,
   normalizeBoardDimensions,
   normalizeWinCondition,
@@ -15,7 +15,6 @@ import {
   type WinCondition,
 } from "@axial/core";
 import {
-  cellToMoveIndex,
   getSegmentTable,
   moveCountForDimensions,
   moveFromIndex,
@@ -28,8 +27,6 @@ type StackEntry = {
   moveIndex: MoveIndex;
   player: Player;
   previousWinner: Player | null;
-  previousWinningLine: readonly number[] | null;
-  previousWinningLines: readonly (readonly number[])[] | null;
   previousPlayerOneLineCount: number;
   previousPlayerTwoLineCount: number;
 };
@@ -46,8 +43,6 @@ export class ClassicSearchState {
   readonly moveStack: StackEntry[];
   occupiedCells: number;
   winner: Player | null;
-  winningLine: readonly number[] | null;
-  winningLines: readonly (readonly number[])[] | null;
   playerOneLineCount: number;
   playerTwoLineCount: number;
   hashA: number;
@@ -77,14 +72,24 @@ export class ClassicSearchState {
     this.moveStack = [];
     this.occupiedCells = 0;
     this.winner = null;
-    this.winningLine = null;
-    this.winningLines = null;
     this.playerOneLineCount = 0;
     this.playerTwoLineCount = 0;
     this.hashA = 0;
     this.hashB = 0;
 
     this.rebuildDerivedState();
+  }
+
+  /** The winner's completed lines. Only diagnostics read them, so they are built on demand. */
+  get winningLines(): readonly (readonly number[])[] | null {
+    return this.winner === null
+      ? null
+      : this.completedLinesForPlayer(this.winner);
+  }
+
+  get winningLine(): readonly number[] | null {
+    const lines = this.winningLines;
+    return lines ? mergeLineCells(lines) : null;
   }
 
   static fromGame(game: GameSnapshot): ClassicSearchState {
@@ -109,8 +114,6 @@ export class ClassicSearchState {
     next.moveStack.push(...this.moveStack);
     next.occupiedCells = this.occupiedCells;
     next.winner = this.winner;
-    next.winningLine = this.winningLine;
-    next.winningLines = this.winningLines;
     next.playerOneLineCount = this.playerOneLineCount;
     next.playerTwoLineCount = this.playerTwoLineCount;
     next.hashA = this.hashA;
@@ -140,27 +143,29 @@ export class ClassicSearchState {
     return this.winner === null && this.occupiedCells >= this.cellCount;
   }
 
+  // The index helpers below run in the search's innermost loops, so they use plain arithmetic
+  // rather than the validating, allocating helpers from @axial/core.
   dropCellIndex(moveIndex: MoveIndex): number {
     if (!this.isLegalMove(moveIndex)) {
       throw new Error(`Move index ${moveIndex} is not legal`);
     }
 
-    const move = moveFromIndex(moveIndex, this.dimensions);
-    return indexOf(
-      this.heights[moveIndex],
-      move.row,
-      move.col,
-      this.dimensions,
-    );
+    const { height, rows, columns } = this.dimensions;
+    const row = Math.floor(moveIndex / columns);
+    const col = moveIndex - row * columns;
+    return this.heights[moveIndex] + row * height + col * height * rows;
   }
 
   isPlayableCell(cellIndex: number): boolean {
     if (this.board[cellIndex] !== 0) return false;
 
-    const moveIndex = cellToMoveIndex(cellIndex, this.dimensions);
-    const { height } = cellFromIndex(cellIndex, this.dimensions);
-
-    return height === this.heights[moveIndex] && this.isLegalMove(moveIndex);
+    const { height, rows, columns } = this.dimensions;
+    const cellHeight = cellIndex % height;
+    const column = Math.floor(cellIndex / height);
+    const row = column % rows;
+    const col = Math.floor(column / rows);
+    // An empty cell at its column's drop height is necessarily below the top, so it is legal.
+    return cellHeight === this.heights[row * columns + col];
   }
 
   makeMove(moveIndex: MoveIndex, player: Player): StackEntry {
@@ -170,8 +175,6 @@ export class ClassicSearchState {
       moveIndex,
       player,
       previousWinner: this.winner,
-      previousWinningLine: this.winningLine,
-      previousWinningLines: this.winningLines,
       previousPlayerOneLineCount: this.playerOneLineCount,
       previousPlayerTwoLineCount: this.playerTwoLineCount,
     };
@@ -183,6 +186,14 @@ export class ClassicSearchState {
     this.moveStack.push(entry);
 
     this.addCellToSegments(cellIndex, player);
+    const lineDelta = this.completedLineDelta(cellIndex, player);
+    if (lineDelta !== 0) {
+      if (player === 1) this.playerOneLineCount += lineDelta;
+      else this.playerTwoLineCount += lineDelta;
+      if (this.completedLineCount(player) >= this.winCondition.linesToWin) {
+        this.winner = player;
+      }
+    }
     return entry;
   }
 
@@ -196,8 +207,6 @@ export class ClassicSearchState {
     this.heights[entry.moveIndex] -= 1;
     this.occupiedCells -= 1;
     this.winner = entry.previousWinner;
-    this.winningLine = entry.previousWinningLine;
-    this.winningLines = entry.previousWinningLines;
     this.playerOneLineCount = entry.previousPlayerOneLineCount;
     this.playerTwoLineCount = entry.previousPlayerTwoLineCount;
 
@@ -233,8 +242,6 @@ export class ClassicSearchState {
     this.blockedCounts.fill(0);
     this.occupiedCells = 0;
     this.winner = null;
-    this.winningLine = null;
-    this.winningLines = null;
     this.playerOneLineCount = 0;
     this.playerTwoLineCount = 0;
     this.hashA = 0;
@@ -261,24 +268,90 @@ export class ClassicSearchState {
 
       this.heights[moveIndex] = firstEmptyHeight;
     }
+
+    this.playerOneLineCount = this.completedLinesForPlayer(1).length;
+    this.playerTwoLineCount = this.completedLinesForPlayer(2).length;
+    if (this.playerOneLineCount >= this.winCondition.linesToWin) {
+      this.winner = 1;
+    } else if (this.playerTwoLineCount >= this.winCondition.linesToWin) {
+      this.winner = 2;
+    }
   }
 
   private addCellToSegments(cellIndex: number, cell: Cell): void {
+    const counts =
+      cell === 1
+        ? this.playerOneCounts
+        : cell === 2
+          ? this.playerTwoCounts
+          : cell === BLOCKER_CELL
+            ? this.blockedCounts
+            : null;
+    if (!counts) return;
     for (const segmentId of this.segmentTable.cellSegments[cellIndex]) {
-      if (cell === 1) {
-        this.playerOneCounts[segmentId] += 1;
-        if (this.isCompletedSegment(segmentId, 1)) {
-          this.recomputeCompletedLines(1);
-        }
-      } else if (cell === 2) {
-        this.playerTwoCounts[segmentId] += 1;
-        if (this.isCompletedSegment(segmentId, 2)) {
-          this.recomputeCompletedLines(2);
-        }
-      } else if (cell === BLOCKER_CELL) {
-        this.blockedCounts[segmentId] += 1;
-      }
+      counts[segmentId] += 1;
     }
+  }
+
+  /**
+   * Change in `player`'s completed-line count from the piece just placed at `cellIndex`.
+   * A line is a maximal straight run of at least lineLength, so in each direction the new
+   * piece either creates a run, extends one (no change), or joins two runs into one (-1).
+   * Only the 13 runs through the new cell can change, which replaces rescanning every segment.
+   */
+  private completedLineDelta(cellIndex: number, player: Player): number {
+    const { height, rows, columns } = this.dimensions;
+    const lineLength = this.winCondition.lineLength;
+    const cellHeight = cellIndex % height;
+    const column = Math.floor(cellIndex / height);
+    const cellRow = column % rows;
+    const cellCol = Math.floor(column / rows);
+    let delta = 0;
+
+    for (const [dh, dr, dc] of DIRECTIONS) {
+      const stride = dh + dr * height + dc * height * rows;
+      let before = 0;
+      for (
+        let h = cellHeight - dh,
+          r = cellRow - dr,
+          c = cellCol - dc,
+          index = cellIndex - stride;
+        h >= 0 &&
+        h < height &&
+        r >= 0 &&
+        r < rows &&
+        c >= 0 &&
+        c < columns &&
+        this.board[index] === player;
+        h -= dh, r -= dr, c -= dc, index -= stride
+      ) {
+        before += 1;
+      }
+      let after = 0;
+      for (
+        let h = cellHeight + dh,
+          r = cellRow + dr,
+          c = cellCol + dc,
+          index = cellIndex + stride;
+        h >= 0 &&
+        h < height &&
+        r >= 0 &&
+        r < rows &&
+        c >= 0 &&
+        c < columns &&
+        this.board[index] === player;
+        h += dh, r += dr, c += dc, index += stride
+      ) {
+        after += 1;
+      }
+
+      const runsBefore =
+        (before >= lineLength ? 1 : 0) + (after >= lineLength ? 1 : 0);
+      const runsAfter = before + after + 1 >= lineLength ? 1 : 0;
+      delta += runsAfter - runsBefore;
+    }
+
+    return delta;
   }
 
   private toggleCellHash(cellIndex: number, cell: Cell): void {
@@ -304,24 +377,6 @@ export class ClassicSearchState {
           this.playerTwoCounts[segmentId] === 0
       : this.playerTwoCounts[segmentId] === this.winCondition.lineLength &&
           this.playerOneCounts[segmentId] === 0;
-  }
-
-  private recomputeCompletedLines(player: Player): void {
-    const lines = this.completedLinesForPlayer(player);
-
-    if (player === 1) {
-      this.playerOneLineCount = lines.length;
-    } else {
-      this.playerTwoLineCount = lines.length;
-    }
-
-    if (lines.length < this.winCondition.linesToWin) {
-      return;
-    }
-
-    this.winner = player;
-    this.winningLines = lines;
-    this.winningLine = mergeLineCells(lines);
   }
 
   private completedLinesForPlayer(

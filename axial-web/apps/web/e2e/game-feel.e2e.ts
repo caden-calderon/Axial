@@ -1,5 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
-import { replayMoves, type GameSnapshot, type Move, type WinCondition } from '@axial/core';
+import {
+	applyMove,
+	createGame,
+	legalMoves,
+	replayMoves,
+	type GameSnapshot,
+	type Move,
+	type WinCondition
+} from '@axial/core';
 import type { PrivateRoomSnapshot } from '@axial/multiplayer-protocol';
 import type { Material, Mesh, Object3D, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
 
@@ -16,12 +24,15 @@ type SceneFrame = {
 	time: number;
 	objects: ObjectSample[];
 	resultVisible: boolean;
+	turnText: string;
+	programIds: number[];
 	cameraPosition: number[];
 	cameraQuaternion: number[];
 };
 type SceneProbe = {
 	frames: SceneFrame[];
 	camera: PerspectiveCamera | null;
+	scene?: Scene;
 	resultAtAppearance: SceneFrame | null;
 };
 
@@ -32,6 +43,8 @@ declare global {
 		__axialOscillatorStarts: number[];
 		__axialRoomSocket: EventTarget;
 		__axialObservedNames?: string[];
+		__axialCanvases: number;
+		__axialCompileCalls?: number;
 	}
 }
 
@@ -59,11 +72,17 @@ test.beforeEach(async ({ page }) => {
 			const renderer = (event as CustomEvent<WebGLRenderer>).detail;
 			if (!renderer.isWebGLRenderer) return;
 			const render = renderer.render.bind(renderer);
+			const compile = renderer.compile.bind(renderer);
+			renderer.compile = (...args: Parameters<WebGLRenderer['compile']>) => {
+				window.__axialCompileCalls = (window.__axialCompileCalls ?? 0) + 1;
+				return compile(...args);
+			};
 			renderer.render = (scene, camera) => {
 				render(scene, camera);
 				if (!(scene as Scene).isScene || !(camera as PerspectiveCamera).isPerspectiveCamera) return;
 				const probe = window.__axialSceneProbe;
 				probe.camera = camera as PerspectiveCamera;
+				probe.scene = scene as Scene;
 				const objects: ObjectSample[] = [];
 				scene.traverse((object: Object3D) => {
 					if (!/^(piece-|completed-line-|drop-preview$)/.test(object.name)) return;
@@ -103,6 +122,8 @@ test.beforeEach(async ({ page }) => {
 					time: performance.now(),
 					objects,
 					resultVisible: document.querySelector(resultSelector) !== null,
+					turnText: document.querySelector('.turn-chip')?.textContent ?? '',
+					programIds: (renderer.info.programs ?? []).map((program) => program.id),
 					cameraPosition: camera.position.toArray(),
 					cameraQuaternion: camera.quaternion.toArray()
 				});
@@ -174,6 +195,14 @@ test('a winning drop lands before its line is drawn and the result is revealed',
 	expect(objectNamed(firstLineFrame!, 'piece-3-3-0')!.position[1]).toBeCloseTo(landingY(0), 4);
 	expect(objectNamed(firstLineFrame!, 'piece-3-3-0')!.scale).toEqual([1, 1, 1]);
 	expect(firstLineFrame!.resultVisible).toBe(false);
+	// The turn indicator must not announce the result while the piece falls or the line draws.
+	const drawingFrames = freshFrames.filter((frame) => {
+		const line = frame.objects.find((object) => object.name.startsWith('completed-line-'));
+		return !line || !line.visible || line.children[1].scale[1] < 0.999;
+	});
+	expect(drawingFrames.length).toBeGreaterThan(3);
+	for (const frame of drawingFrames) expect(frame.turnText).not.toContain('wins');
+	await expect(page.locator('.turn-chip')).toContainText('Player 1 wins');
 	const resultFrame = freshFrames.find((frame) => frame.resultVisible);
 	expect(resultFrame).toBeDefined();
 	const line = resultFrame!.objects.find((object) => object.name.startsWith('completed-line-'))!;
@@ -481,6 +510,240 @@ test('an idle empty board stops submitting GPU renders until the camera changes'
 	await expect
 		.poll(() => page.evaluate(() => window.__axialSceneProbe.frames.length))
 		.toBeGreaterThan(0);
+});
+
+test('the last-move pulse settles to a steady glow and the idle board stops rendering', async ({
+	page
+}) => {
+	await openBoard(page);
+	await page.locator('.scene-shell').press('Enter');
+	// Clear the keyboard cursor; its drop preview animates for as long as it is shown.
+	await page.locator('.scene-shell').press('Escape');
+	await expect.poll(async () => (await latestFrame(page))?.objects.filter(isPiece).length).toBe(1);
+	// LAST_MOVE_PULSE_SECONDS is 5.6 s from placement.
+	await page.waitForTimeout(6_500);
+	const settledFrame = (await latestFrame(page))!;
+	const glow = objectNamed(settledFrame, 'piece-3-3-0')!.children.find(
+		(child) => child.intensity !== undefined
+	);
+	// Steady highlight light: 0.58 + 0.68 * 0.52.
+	expect(glow?.intensity).toBeCloseTo(0.9336, 3);
+	await clearFrames(page);
+	await page.waitForTimeout(1_000);
+	expect(await page.evaluate(() => window.__axialSceneProbe.frames.length)).toBeLessThanOrEqual(2);
+});
+
+test('an empty board compiles its shaders once at startup and none on the first move', async ({
+	page
+}) => {
+	await openBoard(page);
+	await page.waitForTimeout(800);
+	await page.locator('.scene-shell').press('ArrowLeft');
+	await expect
+		.poll(async () => (await latestFrame(page))?.programIds.length ?? 0)
+		.toBeGreaterThan(0);
+	const newestWarmed = Math.max(...(await latestFrame(page))!.programIds);
+
+	await clearFrames(page);
+	await page.locator('.scene-shell').press('Enter');
+	await expect.poll(async () => (await latestFrame(page))?.objects.filter(isPiece).length).toBe(1);
+	// Let the drop and the last-move pulse run for a while: the warm-up must not repeat per frame.
+	await page.waitForTimeout(1_000);
+	const frames = await page.evaluate(() => window.__axialSceneProbe.frames);
+	expect(frames.length).toBeGreaterThan(10);
+	expect(frames.flatMap((frame) => frame.programIds).filter((id) => id > newestWarmed)).toEqual([]);
+	expect(await page.evaluate(() => window.__axialCompileCalls)).toBe(1);
+});
+
+test('the first move, a winning line and a new match compile no new shaders', async ({ page }) => {
+	await seedMatch(page, [
+		{ row: 3, col: 0 },
+		{ row: 5, col: 0 },
+		{ row: 3, col: 1 },
+		{ row: 5, col: 1 },
+		{ row: 3, col: 2 },
+		{ row: 5, col: 2 }
+	]);
+	await openBoard(page);
+	// Let the startup shader warm-up finish, then force a frame to read the compiled programs.
+	await page.waitForTimeout(800);
+	await page.locator('.scene-shell').press('ArrowLeft');
+	await expect
+		.poll(async () => (await latestFrame(page))?.programIds.length ?? 0)
+		.toBeGreaterThan(0);
+	const warmedIds = (await latestFrame(page))!.programIds;
+	const newestWarmed = Math.max(...warmedIds);
+	// three.js gives every compiled program a new id; any id above the warm-up set is a stall.
+	const compiledLater = (frames: SceneFrame[]) => [
+		...new Set(frames.flatMap((frame) => frame.programIds).filter((id) => id > newestWarmed))
+	];
+
+	await clearFrames(page);
+	await page.locator('.scene-shell').press('ArrowRight');
+	await page.locator('.scene-shell').press('Enter');
+	await expect(page.locator('.game-over-dialog')).toBeVisible({ timeout: 8_000 });
+	expect(compiledLater(await page.evaluate(() => window.__axialSceneProbe.frames))).toEqual([]);
+
+	await page.getByRole('button', { name: 'New match' }).click();
+	await clearFrames(page);
+	await page.locator('.scene-shell').press('Enter');
+	await expect.poll(async () => (await latestFrame(page))?.objects.filter(isPiece).length).toBe(1);
+	expect(compiledLater(await page.evaluate(() => window.__axialSceneProbe.frames))).toEqual([]);
+});
+
+test('the drop preview returns under a resting mouse and hides during the AI turn', async ({
+	page
+}) => {
+	const hasPreview = async () => Boolean(objectNamed((await latestFrame(page))!, 'drop-preview'));
+	const board = { x: 683, y: 560 };
+	await openBoard(page);
+	await page.mouse.move(board.x, board.y);
+	await expect.poll(hasPreview).toBe(true);
+
+	// A drop clears the hover; the preview must come back without leaving the cell.
+	await page.mouse.click(board.x, board.y);
+	await expect.poll(async () => (await latestFrame(page))?.objects.filter(isPiece).length).toBe(1);
+	await expect.poll(hasPreview).toBe(true);
+
+	await page.getByRole('button', { name: 'Reset game' }).click();
+	await page
+		.getByRole('group', { name: 'Opponent mode' })
+		.getByRole('button', { name: 'AI', exact: true })
+		.click();
+	await page.mouse.move(board.x, board.y);
+	await expect.poll(hasPreview).toBe(true);
+	await page.mouse.click(board.x, board.y);
+	await clearFrames(page);
+	await page.mouse.move(board.x + 3, board.y + 2);
+	await page.waitForTimeout(350);
+	const thinkingFrames = await page.evaluate(() => window.__axialSceneProbe.frames);
+	expect(thinkingFrames.length).toBeGreaterThan(0);
+	expect(thinkingFrames.some((frame) => objectNamed(frame, 'drop-preview'))).toBe(false);
+	await expect
+		.poll(async () => (await latestFrame(page))?.objects.filter(isPiece).length, { timeout: 8_000 })
+		.toBe(2);
+	await expect.poll(hasPreview).toBe(true);
+});
+
+test('height numbers stay clear of the pieces on a crowded desktop board', async ({ page }) => {
+	// A dense, still-playing position: columns filled round-robin, skipping any winning move.
+	let game = createGame({ lineLength: 4, linesToWin: 3 });
+	const moves: Move[] = [];
+	for (let step = 0; moves.length < 40; step += 1) {
+		const options = legalMoves(game.board, game.dimensions);
+		for (let offset = 0; offset < options.length; offset += 1) {
+			const move = options[(step * 7 + offset) % options.length];
+			const next = applyMove(game, move);
+			if (next.status.state !== 'playing') continue;
+			game = next;
+			moves.push(move);
+			break;
+		}
+	}
+	await seedMatch(page, moves, { lineLength: 4, linesToWin: 3 });
+	await openBoard(page);
+	await page.locator('.scene-shell').press('ArrowLeft');
+	await expect.poll(() => page.evaluate(() => Boolean(window.__axialSceneProbe.scene))).toBe(true);
+
+	const closest = await page.evaluate(() => {
+		const { scene, camera } = window.__axialSceneProbe;
+		const canvas = document.querySelector('canvas')!.getBoundingClientRect();
+		const toScreen = (object: Object3D) => {
+			const point = object.getWorldPosition(object.position.clone()).project(camera!);
+			return [((point.x + 1) / 2) * canvas.width, ((1 - point.y) / 2) * canvas.height];
+		};
+		const numbers: number[][] = [];
+		const pieces: number[][] = [];
+		scene!.traverse((object) => {
+			const opacity = ((object as Mesh).material as Material | undefined)?.opacity ?? 0;
+			if (object.name.startsWith('z-number-') && object.visible && opacity > 0.5)
+				numbers.push(toScreen(object));
+			if (object.name.startsWith('piece-')) pieces.push(toScreen(object));
+		});
+		return {
+			numbers: numbers.length,
+			distance: Math.min(
+				...numbers.flatMap(([x, y]) => pieces.map(([px, py]) => Math.hypot(x - px, y - py)))
+			)
+		};
+	});
+	expect(closest.numbers).toBe(6);
+	expect(closest.distance).toBeGreaterThan(30);
+});
+
+test('clicking a stack drops into that column, not the floor tile behind it', async ({ page }) => {
+	await seedMatch(page, [
+		{ row: 3, col: 3 },
+		{ row: 3, col: 3 },
+		{ row: 3, col: 3 }
+	]);
+	await openBoard(page);
+	await page.locator('.scene-shell').press('ArrowLeft');
+	await expect.poll(async () => (await latestFrame(page))?.objects.filter(isPiece).length).toBe(3);
+	const top = objectNamed((await latestFrame(page))!, 'piece-3-3-2')!;
+	const viewport = page.viewportSize()!;
+	await page.mouse.click(
+		((top.screenPosition[0] + 1) / 2) * viewport.width,
+		((1 - top.screenPosition[1]) / 2) * viewport.height
+	);
+	await expect
+		.poll(async () => Boolean(objectNamed((await latestFrame(page))!, 'piece-3-3-3')))
+		.toBe(true);
+	expect((await latestFrame(page))!.objects.filter(isPiece)).toHaveLength(4);
+});
+
+test('orbiting the board draws no new label textures', async ({ page }) => {
+	await page.addInitScript(() => {
+		const createElement = document.createElement.bind(document);
+		window.__axialCanvases = 0;
+		document.createElement = ((tagName: string, options?: ElementCreationOptions) => {
+			if (tagName.toLowerCase() === 'canvas') window.__axialCanvases += 1;
+			return createElement(tagName, options);
+		}) as typeof document.createElement;
+	});
+	await openBoard(page);
+	await page.evaluate(() => document.fonts.ready);
+	await page.waitForTimeout(500);
+	await page.evaluate(() => (window.__axialCanvases = 0));
+
+	// Two long drags turn the camera most of the way around the board.
+	for (let drag = 0; drag < 2; drag += 1) {
+		await page.mouse.move(250, 200);
+		await page.mouse.down();
+		await page.mouse.move(1000, 200, { steps: 30 });
+		await page.mouse.up();
+	}
+	await page.waitForTimeout(400);
+	expect(await page.evaluate(() => window.__axialCanvases)).toBe(0);
+});
+
+test('arrow keys follow the camera after it orbits around the board', async ({ page }) => {
+	await openBoard(page);
+	const previewX = async () => {
+		await expect
+			.poll(async () => Boolean(objectNamed((await latestFrame(page))!, 'drop-preview')))
+			.toBe(true);
+		return objectNamed((await latestFrame(page))!, 'drop-preview')!.screenPosition[0];
+	};
+	const rightStep = async () => {
+		await page.locator('.scene-shell').press('ArrowRight');
+		const before = await previewX();
+		await page.locator('.scene-shell').press('ArrowRight');
+		await expect.poll(previewX).not.toBeCloseTo(before, 3);
+		return (await previewX()) - before;
+	};
+
+	expect(await rightStep()).toBeGreaterThan(0);
+	await page.locator('.scene-shell').press('Escape');
+
+	// About half a turn around the board.
+	await page.mouse.move(300, 200);
+	await page.mouse.down();
+	await page.mouse.move(1040, 200, { steps: 30 });
+	await page.mouse.up();
+	await page.waitForTimeout(600);
+	await page.locator('.scene-shell').focus();
+	expect(await rightStep()).toBeGreaterThan(0);
 });
 
 test('sound is opt-in, follows fresh landings, stays silent on restore, and mutes immediately', async ({

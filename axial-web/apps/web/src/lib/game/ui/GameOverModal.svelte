@@ -73,7 +73,7 @@
 				<button
 					class="modal-button primary"
 					type="button"
-					aria-label="Start a new match with an empty board"
+					aria-label="New match with an empty board"
 					onclick={onNewMatch}
 				>
 					<RotateCcw size={17} strokeWidth={1.9} /><span>New match</span>
@@ -82,7 +82,7 @@
 					<button
 						class="modal-button"
 						type="button"
-						aria-label="Rewind this match to the start and step through it with redo"
+						aria-label="Review match from the start, one move at a time"
 						onclick={onReviewFromStart}
 					>
 						<Play size={15} strokeWidth={1.9} /><span>Review match</span>
@@ -90,7 +90,7 @@
 					<button
 						class="modal-button"
 						type="button"
-						aria-label="Dismiss the result and keep the final board visible"
+						aria-label="Keep board visible and dismiss the result"
 						onclick={onKeepBoard}
 					>
 						<Eye size={16} strokeWidth={1.9} /><span>Keep board</span>

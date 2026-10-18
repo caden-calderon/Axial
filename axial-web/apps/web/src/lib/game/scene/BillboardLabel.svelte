@@ -1,8 +1,16 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { T, useThrelte } from '@threlte/core';
-	import { CanvasTexture, LinearFilter, Sprite, SpriteMaterial, SRGBColorSpace } from 'three';
+	import {
+		CanvasTexture,
+		LinearFilter,
+		Sprite,
+		SpriteMaterial,
+		SRGBColorSpace,
+		type Texture
+	} from 'three';
 	import type { Vec3 } from './geometry';
+	import { useLabelTextureCache } from './labelTextures';
 
 	let {
 		text,
@@ -16,7 +24,8 @@
 		outlineWidth = 0.1,
 		outlineGlow = 0.09,
 		fillGlow = 0.02,
-		renderOrder = 9
+		renderOrder = 9,
+		name = ''
 	}: {
 		text: string;
 		position: Vec3;
@@ -30,6 +39,7 @@
 		outlineGlow?: number;
 		fillGlow?: number;
 		renderOrder?: number;
+		name?: string;
 	} = $props();
 
 	const { invalidate } = useThrelte();
@@ -40,7 +50,9 @@
 		toneMapped: false
 	});
 
-	let texture: CanvasTexture | null = null;
+	const textureCache = useLabelTextureCache();
+	let texture: Texture | null = null;
+	let textureKey: string | null = null;
 	let fontsReady = $state(false);
 
 	onMount(() => {
@@ -57,7 +69,7 @@
 
 	$effect(() => {
 		if (!fontsReady) return;
-		const nextTexture = createLabelTexture({
+		const style = {
 			text,
 			color,
 			outlineColor,
@@ -66,12 +78,16 @@
 			outlineWidth,
 			outlineGlow,
 			fillGlow
-		});
-		const previousTexture = texture;
+		};
+		const nextKey = JSON.stringify(style);
+		const nextTexture = textureCache
+			? textureCache.acquire(nextKey, () => createLabelTexture(style))
+			: createLabelTexture(style);
+		releaseTexture();
 		texture = nextTexture;
+		textureKey = nextKey;
 		material.map = nextTexture;
 		material.needsUpdate = true;
-		previousTexture?.dispose();
 		invalidate();
 	});
 
@@ -81,9 +97,16 @@
 	});
 
 	onDestroy(() => {
-		texture?.dispose();
+		releaseTexture();
 		material.dispose();
 	});
+
+	function releaseTexture(): void {
+		if (textureCache && textureKey !== null) textureCache.release(textureKey);
+		else texture?.dispose();
+		texture = null;
+		textureKey = null;
+	}
 
 	function createLabelTexture({
 		text,
@@ -145,4 +168,13 @@
 	}
 </script>
 
-<T is={Sprite} args={[material]} {position} {scale} {renderOrder} visible={fontsReady} />
+<!-- Labels stay mounted and fade through opacity; a fully faded one is skipped by the renderer. -->
+<T
+	is={Sprite}
+	args={[material]}
+	{name}
+	{position}
+	{scale}
+	{renderOrder}
+	visible={fontsReady && opacity > 0.01}
+/>

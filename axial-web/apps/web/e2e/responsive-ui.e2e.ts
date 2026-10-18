@@ -201,7 +201,7 @@ test('new touch users stage a move and explicitly confirm it', async ({ browser 
 		const panel = await page.locator('.control-panel').boundingBox();
 		expect(panel).not.toBeNull();
 		expect(panel!.y + panel!.height).toBeLessThan(confirmBar!.y);
-		await page.getByRole('button', { name: 'Confirm selected move' }).click();
+		await page.getByRole('button', { name: 'Drop selected move' }).click();
 		await expect(page.getByText('1 move', { exact: true }).first()).toBeVisible();
 	} finally {
 		await context.close();

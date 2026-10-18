@@ -21,10 +21,10 @@ The frontend uses port `8787` for the room service on localhost. The command-lin
 
 ## Playing
 
-- Choose a floor square to drop a piece into its column. Pieces stack from the bottom.
+- Choose a floor square, or point at a stack, to drop a piece into that column. Pieces stack from the bottom.
 - Connect four of your pieces in a straight line across, up, or diagonally through the board. All 13 spatial directions count.
 - Before the first move, choose Connect 4 or 5, a board size, and one, two or three lines needed to win. A longer extension of one straight run remains one scored line; crossing lines count separately.
-- Drag to orbit and scroll/pinch to zoom. Reset view restores the initial angle. Keyboard: arrows select a column, Enter/Space place or confirm, Escape clears the selection. Holding Enter cannot place repeated turns.
+- Drag to orbit and scroll/pinch to zoom. Reset view restores the initial angle. Keyboard: arrows select a column (relative to the current camera view), Enter/Space place or confirm, Escape clears the selection. Holding Enter cannot place repeated turns.
 - Confirm drop provides a staged preview; it is the default for new touch users. Moving the keyboard cursor clears an older staged selection.
 - Players are distinguished by their piece colors. Grid layers can be enabled to inspect height.
 - How to play includes a safe preview exercise. Sound is optional, off by default, and can be enabled or muted in Appearance. Motion follows the operating system preference.

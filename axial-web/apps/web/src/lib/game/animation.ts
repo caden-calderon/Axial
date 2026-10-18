@@ -5,6 +5,10 @@ export const PIECE_DROP_DURATION_MAX_SECONDS = 0.5;
 export const PIECE_IMPACT_DURATION_SECONDS = 0.18;
 export const COMPLETED_LINE_DRAW_DURATION_SECONDS = 0.72;
 export const COMPLETED_LINE_SETTLE_DURATION_SECONDS = 0.24;
+// The newest piece pulses for about two beats, then holds a steady glow. A pulse that never
+// ends would keep the on-demand renderer drawing every frame for as long as the page is open.
+export const LAST_MOVE_PULSE_SECONDS = 5.6;
+const LAST_MOVE_PULSE_FADE_SECONDS = 1.4;
 
 // A result never covers the final landing or the line that explains the win.
 export const GAME_OVER_MODAL_DELAY_MS = Math.round(
@@ -41,6 +45,15 @@ export function samplePieceDrop(elapsed: number, duration: number, reducedMotion
 		impact: elapsed >= duration ? Math.pow(1 - impactProgress, 2) : 0,
 		settled: false
 	};
+}
+
+/** Pulse strength for the newest piece: full at first, then easing out to a steady glow. */
+export function lastMovePulseAmplitude(elapsed: number): number {
+	const fadeStart = LAST_MOVE_PULSE_SECONDS - LAST_MOVE_PULSE_FADE_SECONDS;
+	if (elapsed <= fadeStart) return 1;
+	if (elapsed >= LAST_MOVE_PULSE_SECONDS) return 0;
+	const progress = (elapsed - fadeStart) / LAST_MOVE_PULSE_FADE_SECONDS;
+	return 1 - progress * progress * (3 - 2 * progress);
 }
 
 export function sceneMoveKey(move: PlacedMove, index: number): string {
