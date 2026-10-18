@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="common.css" />
+</head>
+<body>
+	<h1>Learning by playing out the future</h1>
+	<p class="sub">Every dot is one quick imaginary game. Moves that keep winning get more of them.</p>
+	<div class="stage">
+		<svg id="svg" width="1440" height="680"></svg>
+	</div>
+	<script type="module">
+		import { el } from './hand.js';
+		const svg = document.getElementById('svg');
+		const TEAL = '#73f5d8';
+		const PINK = '#ff7a96';
+		const MUTED = '#92aca4';
+
+		// A real UCT run over five candidate moves with made-up true win chances.
+		// The visit counts and outcomes below come from this simulation, not hand-picked numbers.
+		const TRUE_WIN = [0.42, 0.66, 0.55, 0.3, 0.5];
+		const GAMES = 400;
+		const C = Math.SQRT2;
+		let seed = 7;
+		const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+		const moves = TRUE_WIN.map(() => ({ wins: 0, visits: 0, outcomes: [] }));
+		for (let t = 1; t <= GAMES; t++) {
+			let best = 0;
+			let bestScore = -Infinity;
+			moves.forEach((m, i) => {
+				const score = m.visits === 0 ? Infinity : m.wins / m.visits + C * Math.sqrt(Math.log(t) / m.visits);
+				if (score > bestScore) { bestScore = score; best = i; }
+			});
+			const won = rand() < TRUE_WIN[best];
+			const m = moves[best];
+			m.visits++;
+			m.wins += won ? 1 : 0;
+			m.outcomes.push(won);
+		}
+		const chosen = moves.reduce((b, m, i) => (m.visits > moves[b].visits ? i : b), 0);
+
+		// Root node.
+		const ROOT = [70, 330];
+		el('circle', { cx: ROOT[0], cy: ROOT[1], r: 34, fill: 'rgba(168,140,255,0.18)', stroke: '#a88cff', 'stroke-width': 4 }, svg);
+		const rt = el('text', { x: ROOT[0], y: ROOT[1] + 72, 'font-size': 22, 'text-anchor': 'middle', fill: MUTED }, svg);
+		rt.textContent = 'now';
+		rt.setAttribute('font-size', 30);
+
+		const DOT = 12;
+		const PER_LINE = 66;
+		const X0 = 400;
+		moves.forEach((m, i) => {
+			const y = 20 + i * 126;
+			const isChosen = i === chosen;
+			el('path', {
+				d: `M ${ROOT[0] + 34} ${ROOT[1]} C 170 ${ROOT[1]}, 150 ${y + 18}, 210 ${y + 18}`,
+				fill: 'none', stroke: isChosen ? TEAL : 'rgba(146,172,164,0.35)', 'stroke-width': isChosen ? 5 : 3
+			}, svg);
+			const label = el('text', { x: 222, y: y + 30, 'font-size': 36, 'font-weight': isChosen ? 700 : 500, fill: isChosen ? TEAL : '#ecf8f3' }, svg);
+			label.textContent = `Move ${String.fromCharCode(65 + i)}`;
+			m.outcomes.forEach((won, k) => {
+				const row = Math.floor(k / PER_LINE);
+				const col = k % PER_LINE;
+				el('circle', { cx: X0 + col * (DOT + 2) + DOT / 2, cy: y + row * (DOT + 2) + 4, r: DOT / 2 - 0.5, fill: won ? TEAL : PINK, opacity: won ? 0.95 : 0.55 }, svg);
+			});
+			const lines = Math.max(1, Math.ceil(m.visits / PER_LINE));
+			const stat = el('text', { x: X0, y: y + lines * (DOT + 2) + 36, 'font-size': 30, fill: isChosen ? TEAL : MUTED }, svg);
+			stat.textContent = `${m.visits} games · won ${Math.round((100 * m.wins) / m.visits)}%${isChosen ? '  ← plays this one' : ''}`;
+		});
+
+		const key = el('text', { x: X0, y: 676, 'font-size': 28, fill: MUTED }, svg);
+		key.innerHTML = `<tspan fill="${TEAL}">●</tspan> imaginary win   <tspan fill="${PINK}">●</tspan> imaginary loss   ·   illustrative odds`;
+		document.body.dataset.ready = '1';
+	</script>
+</body>
+</html>

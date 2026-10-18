@@ -1,0 +1,79 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="common.css" />
+</head>
+<body>
+	<h1>Why a fist “teleported” the piece</h1>
+	<p class="sub">Same hand, same distance from the camera. Only the fingers moved.</p>
+	<div class="stage">
+		<svg id="svg" width="1440" height="680"></svg>
+	</div>
+	<script type="module">
+		import { OPEN_HAND, FIST, WRIST, MIDDLE_BASE, MIDDLE_TIP, drawHand, el } from './hand.js';
+		const svg = document.getElementById('svg');
+		const SIZE = 320;
+		const BASE_Y = 570;
+		const PINK = '#ff7a96';
+		const TEAL = '#73f5d8';
+
+		// Pink and teal bars match the gauge titles on the right, so they need no labels of their own.
+		function dimension(x, y1, y2, color) {
+			const g = el('g', {}, svg);
+			el('line', { x1: x, y1, x2: x, y2, stroke: color, 'stroke-width': 5 }, g);
+			for (const y of [y1, y2]) el('line', { x1: x - 14, y1: y, x2: x + 14, y2: y, stroke: color, 'stroke-width': 5 }, g);
+		}
+
+		function panel(points, cx, title, tipX, palmX) {
+			drawHand(svg, points, { cx, cy: BASE_Y, size: SIZE });
+			const wristY = BASE_Y + points[WRIST][1] * SIZE;
+			const tipY = BASE_Y + points[MIDDLE_TIP][1] * SIZE;
+			const knuckleY = BASE_Y + points[MIDDLE_BASE][1] * SIZE;
+			dimension(cx + tipX, wristY, tipY, PINK);
+			dimension(cx + palmX, wristY, knuckleY, TEAL);
+			const t = el('text', { x: cx, y: BASE_Y + 92, 'font-size': 40, 'font-weight': 600, 'text-anchor': 'middle' }, svg);
+			t.textContent = title;
+		}
+
+		panel(OPEN_HAND, 340, 'Open hand', -290, 190);
+		panel(FIST, 810, 'Fist', -200, 165);
+
+		// Depth gauges: apparent size shrinks as distance grows, so estimated depth ~ 1 / size.
+		const fingertip = (p) => Math.hypot(p[MIDDLE_TIP][0], p[MIDDLE_TIP][1]);
+		const palm = (p) => Math.hypot(p[MIDDLE_BASE][0], p[MIDDLE_BASE][1]);
+		const NEAR = 0.3;
+		const gauges = [
+			{ label: 'Using the fingertips', color: PINK, open: NEAR, fist: NEAR * fingertip(OPEN_HAND) / fingertip(FIST), note: 'Fist reads as far away' },
+			{ label: 'Using only the palm', color: TEAL, open: NEAR, fist: NEAR * palm(OPEN_HAND) / palm(FIST), note: 'Stays put' }
+		];
+
+		const GX = 1050;
+		const GW = 370;
+		gauges.forEach((g, i) => {
+			const y = 90 + i * 260;
+			const title = el('text', { x: GX, y, 'font-size': 36, 'font-weight': 650, fill: g.color }, svg);
+			title.textContent = g.label;
+			const ty = y + 70;
+			el('line', { x1: GX, y1: ty, x2: GX + GW, y2: ty, stroke: 'rgba(146,172,164,0.35)', 'stroke-width': 6, 'stroke-linecap': 'round' }, svg);
+			for (const [x, label, anchor] of [[GX, 'near', 'start'], [GX + GW, 'far', 'end']]) {
+				const t = el('text', { x, y: ty + 52, 'font-size': 30, fill: '#92aca4', 'text-anchor': anchor }, svg);
+				t.textContent = label;
+			}
+			const ox = GX + g.open * GW;
+			const fx = GX + Math.min(1, g.fist) * GW;
+			if (Math.abs(fx - ox) > 30) {
+				el('line', { x1: ox + 18, y1: ty - 30, x2: fx - 26, y2: ty - 30, stroke: g.color, 'stroke-width': 4, 'stroke-dasharray': '8 8' }, svg);
+				el('polygon', { points: `${fx - 14},${ty - 30} ${fx - 30},${ty - 40} ${fx - 30},${ty - 20}`, fill: g.color }, svg);
+			}
+			el('circle', { cx: ox, cy: ty, r: 15, fill: 'none', stroke: g.color, 'stroke-width': 5 }, svg);
+			el('circle', { cx: fx, cy: ty, r: 11, fill: g.color }, svg);
+			const n = el('text', { x: GX, y: ty + 108, 'font-size': 34, fill: g.color, 'font-weight': 500 }, svg);
+			n.textContent = g.note;
+		});
+		const key = el('text', { x: GX, y: 660, 'font-size': 30, fill: '#92aca4' }, svg);
+		key.textContent = '○ open hand    ● fist';
+		document.body.dataset.ready = '1';
+	</script>
+</body>
+</html>

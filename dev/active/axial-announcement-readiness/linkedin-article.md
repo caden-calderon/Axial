@@ -1,106 +1,100 @@
 # Axial: From a Hand-Controlled Unity Game to the Browser
 
-Hey, it's been a while, but I thought I'd hop back on here and share a fun project I was working on a little while back.
+[VIDEO: browser trailer]
 
-This is Axial.
+Hey, it's been a while. I wanted to come back on here with a project I finished a while ago and never actually shared.
 
-I finished the original version without ever really posting about it. Recently, I rebuilt it for the browser so more people could try it. Revisiting the project reminded me how much went into the original hand tracking and AI, and I wanted to share that story too.
+This is Axial: Connect Four in three dimensions. You drop pieces into a 3D board, gravity pulls them to the bottom of their column, and you try to line up four: across, up through a stack, or diagonally straight through the volume. Rotate the board and a position that looked harmless suddenly has a threat you completely missed.
 
-You can play the browser version at [playaxial.dev](https://playaxial.dev).
+The first version was a Unity game you played with your hands. No mouse, no keyboard, just a regular webcam. Pinch a piece to pick it up, move it over the board, and let go to drop it. Hold the board with one hand and drag with the other to spin it around.
 
-Axial started as a random idea: Connect 4 in three dimensions.
+[VIDEO: ../../../docs/media/article/unity-grab-drop.mp4] *Grabbing a piece with a pinch and dropping it into the board, from my original class demo. The red skeleton is the tracked hand.*
 
-You take turns dropping pieces into a board, where gravity pulls them down to the lowest available space. The goal is to connect four of your pieces in a straight line, across the board, vertically through a stack, or diagonally through the volume. Rotate the board and a position that looked harmless can suddenly reveal a threat you completely missed.
+I recently rebuilt it for the browser so anyone can play from a link: [playaxial.dev](https://playaxial.dev). Coming back to it reminded me how much went into the original, so this is the story of both.
 
-The original board had a 6 × 7 footprint, with each column holding up to six pieces. That meant 252 spaces, with winning lines possible in 13 directions. That gave me a spatial game to build an interface around, and a much larger search problem for the AI.
+## Reaching into a webcam
 
-I built that first version in Unity and C#, with a Python program running the opponent. For the controls, I experimented with playing entirely through hand gestures captured by a regular webcam.
+[VIDEO: ../../../docs/media/article/unity-rotate.mp4] *Holding the board with one hand and rotating it with the other.*
 
-## Building the hand controls
+The hand tracking comes from Google's [MediaPipe](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/python), which finds 21 points on each hand in the webcam image: the wrist, the knuckles and the fingertips. Picture a moving skeleton drawn over the video. MediaPipe tells you where the hand is. Turning that into something that feels like reaching into a board and picking up a piece was my job.
 
-Using MediaPipe hand tracking, you could bring your hand near a piece, pinch your thumb and index finger to grab it, move it over the board, and release to drop it. You could also hold the board with one hand and pinch and drag with the other to rotate it. The interaction was meant to make the board feel like something you could reach into and manipulate.
+![The 21 hand landmarks, with the wrist and base knuckles highlighted](../../../docs/media/article/landmarks.png)
 
-Getting that to work involved a lot more than recognizing a pinch.
+Left and right were easy. Up and down were easy. Depth was the hard part.
 
-[MediaPipe](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/python) gave me 21 tracked points on each hand, including the wrist, knuckles and fingertips. You can picture them as a moving skeleton laid over the webcam image. My job was to turn those points into controls for reaching into the board, picking something up and putting it where you intended.
+A webcam gives you a flat image. To reach the back rows of the board you move your hand toward or away from the camera, and the image doesn't directly tell you how far away your hand is. MediaPipe does give each point a depth, but it's measured relative to the wrist, so it describes the shape of the hand, not where the hand is.
 
-One of the hardest parts was depth. Moving left and right in the camera image is straightforward to map onto a screen. Moving toward and away from the camera is trickier. MediaPipe's image landmarks include depth relative to the wrist, but that is different from knowing where to place the whole hand in the game.
+My idea was to use apparent size. A hand close to the camera looks big, and a hand farther away looks small. Simple, right?
 
-I used apparent hand size as a rough depth signal: a hand generally looks larger when it is closer to the camera and smaller when it is farther away. But the hand can also look smaller without moving away at all.
+Not quite. A hand can also look smaller without moving at all. Curl your fingers and the distance from your wrist to your fingertips shrinks. Make a fist and the whole outline gets smaller. My early versions couldn't tell the difference, so making a fist would "teleport" your hand to the back of the board. The exact motion you used to grab a piece could send it flying away from you.
 
-Curl your fingers and the distance from your wrist to a fingertip shrinks. Close an open hand into a fist and its outline takes up less space in the image. Early measurements confused those changes with movement in depth. The gesture meant to grab a piece could also make it jump away from you.
+![Open hand versus fist: the fingertip measurement shrinks, the palm measurement does not](../../../docs/media/article/fist.png)
 
-The first part of the solution was to measure the palm using wrist and knuckle landmarks. Those points change much less when you bend your fingers. That separated the measurement used for depth from the fingers used to grab and release.
+I tried eight different ways of measuring hand size before one held up.
 
-Rotation introduced another problem. Imagine holding a ruler horizontally in front of a camera, then turning it upright without moving it farther away. Its left-to-right span shrinks to almost nothing, even though the ruler itself has not become shorter. Its length now runs vertically through the image. The same thing can happen when you tilt your hand side to side in a wave, with your palm still facing the camera. A measurement that only watches horizontal palm width can mistake that rotation for a change in depth.
+The first fix was to stop measuring the fingers. The wrist and the knuckles at the base of each finger barely move when you curl your fingers, so I measured the palm from those points only. That separated the part of the hand used for depth from the part used for grabbing.
 
-My solution, PalmMaxDimension, combined three measurements: the horizontal span between the index and little-finger knuckles, the vertical span between those same points, and the distance from the wrist to the middle-finger knuckle.
+Then rotation caused a second problem. Imagine holding a ruler horizontally in front of a camera, then turning it upright without moving it any farther away. Its left-to-right width shrinks to almost nothing, even though the ruler didn't get any shorter. Its length just runs vertically now. The same thing happens when you tilt your hand side to side in a wave, palm still facing the camera. A measurement that only watches horizontal palm width reads that tilt as your hand moving away.
 
-Each measurement had its own expected size range. I converted them onto a common 0-to-1 scale, so a naturally longer measurement would not automatically dominate, then took the largest of those normalized readings as the depth signal.
+The version that worked, which I called PalmMaxDimension, takes three measurements of the palm: the horizontal span between the index and pinky knuckles, the vertical span between those same two knuckles, and the distance from the wrist to the middle knuckle. Each has its own expected range, so I scaled them all onto the same 0-to-1 scale, which keeps a naturally longer measurement from winning automatically. Then I took the largest.
 
-You can think of it as giving the system several rulers to work with. If one reading collapses as the hand turns, another can still provide a useful sense of its size. Taking the maximum lets that reading carry the estimate instead of averaging the collapsed measurement into it. Using the palm also keeps finger curls from changing the estimate as much.
+It's like giving the system several rulers. If one collapses as you turn your hand, another still gives a good reading, and taking the maximum lets that one carry the estimate instead of averaging the collapsed one in.
 
-This did not make the hand a perfect depth sensor. Turning your hand edge-on can still hide dimensions, just as a card looks thinner when viewed from the side. Hand size and calibration still matter, too. But it made turning the hand and moving the fingers less likely to cause unwanted jumps in depth, which gave me a workable control scheme using a regular webcam.
+![Three palm measurements at three hand angles; width alone collapses while the maximum holds](../../../docs/media/article/rulers.png)
 
-Even a relatively still hand produces small frame-to-frame changes in the tracked points. I blended new readings with recent ones and smoothed how a held piece followed the hand. The balance mattered: too little smoothing let the piece shake, while too much made it lag behind deliberate movement.
+It isn't a perfect depth sensor. Turn your hand completely edge-on and dimensions can still disappear, the same way a playing card looks paper-thin from the side, and different hand sizes still need calibrating. But it made turning your hand and moving your fingers far less likely to send a piece jumping, and that was enough to build a control scheme around a regular webcam.
 
-Brief tracking losses remained a separate limitation. If the tracker lost sight of the hand, it could release a held piece. That smoothing could reduce noisy movement, but it could not fill in a missing detection. I cover these limits and the interaction details in the original technical report.
+The rest was about feel. The tracked points jitter a little even when your hand is still, so I blended each new reading with recent ones. Too little smoothing and the piece shakes; too much and it lags behind you. A grab starts when your fingers come close together but only ends once they separate farther apart, so a pinch sitting right at the edge doesn't flicker between grab and release. Pieces glow when they're in reach, and a ghost piece shows where yours will land.
+
+It had limits. If the tracker lost sight of your hand for a moment, it dropped whatever you were holding. Smoothing can calm a noisy signal, but it can't fill in one that's missing.
 
 ## Building the opponent
 
-The other major part of the original project was the AI.
+The other half of the original project was the AI, a Python program running alongside the Unity game.
 
-On the original board, a player could have up to 42 columns to choose from on a turn. Each move opens up possible replies, and each reply leads to more choices. The number of paths grows quickly. I used Monte Carlo Tree Search (MCTS), aka the GOAT of search algorithms, to focus the AI's limited thinking time on promising moves.
+On the default board you can have up to 42 legal moves on a turn, and every one of them opens up dozens of replies. There's no checking everything, so I used Monte Carlo Tree Search (MCTS), aka the GOAT of search algorithms.
 
-You can think of MCTS as giving the AI a scratch board. It tries possible continuations of the match, keeps track of how they turn out, and uses that experience to decide which options deserve a closer look.
+MCTS learns by playing out the future. The AI plays hundreds or thousands of quick imaginary games from the current position, keeps track of which moves tend to lead to wins, and spends more of its time on the ones that keep looking good. It still checks in on moves it has barely tried, so it doesn't lock onto the first decent idea it finds. (The formula that balances those two pulls is called UCT.) When it's done, it plays the move it explored the most, which favors moves that held up over many games instead of one lucky result.
 
-Technically, those possibilities form a tree, with each branch representing a move. The search follows a path through known positions, adds a new one, and plays out a simulated continuation, called a rollout. It then carries the outcome back through the positions that led there, updating their visit counts and results.
+![Imaginary games split across five candidate moves by UCT](../../../docs/media/article/mcts.png)
 
-The search faces a familiar choice: spend more time on options that already look promising, or investigate ones it has barely tried. UCT is the rule I used to balance those choices, combining previous results with an exploration bonus. That helps keep the AI from settling too quickly on the first decent option it finds.
+Pure randomness has a blind spot, though. If the opponent is one move from winning, a random imaginary game probably won't bother to block, and the AI concludes the position is lost when it really just needs a block. So I gave it tactical sense: it checks for immediate wins and forced blocks before searching, tries the most promising moves first, and plays its imaginary games with a bias toward winning, blocking and building threats.
 
-After searching, the original engine chose the move it had visited most. Because the search tends to return to promising moves, this favors sustained evidence over a good result from only a few trials.
+All of that only works if the AI can play a lot of imaginary games quickly. I stored the 3D board as a flat strip of bytes in a NumPy array, one byte per cell with each column stored together, and used Numba to compile the busiest loops (dropping pieces, checking wins, playing out games) into machine code instead of running them step by step in Python.
 
-The simulated games also needed some tactical awareness. For example, if the opponent can win on the next turn, a simulated game that ignores the necessary block is not a useful model of careful play. Completely random rollouts can miss these situations and give misleading evidence about a position. I added checks for wins and threats before the main search, prioritized promising moves during expansion, and used guided rollouts that looked for wins, blocks and developing threats.
+It also didn't throw away its homework. If you played a move the AI had already explored, it kept that part of its search and picked up from there on the next turn. Think of it as keeping your notes on the position you actually reached instead of tossing the whole notebook after every move.
 
-Making all of those simulations practical was another piece of the work. A single move or win check is small, but the search repeats those operations throughout many imagined games. Their cost adds up quickly.
+Unity handled the scene and the hands, and Python handled the AI and the official game state. They talked over a local connection, so the game kept running smoothly while the opponent thought.
 
-I represented the 3D board as a numbered strip of cells in a NumPy array, with each vertical column stored together. Each cell needed just one byte to identify whether it was empty or occupied by either player. Numba compiled the repeatedly used board operations and simulations into machine code, letting those busy loops run without interpreting each step as Python.
+## Bringing it to the browser
 
-I also kept useful search work between turns. If the move actually played was one the AI had already explored, I could keep that branch and its statistics as the starting point for the next search. This is subtree reuse: keeping the notes for the position you reached instead of throwing away the whole notebook after every move. If that position had not been explored, the search started fresh.
+The catch with the original was that nobody could just try it. You needed the Unity game, the Python server and a webcam all set up. So I came back to Axial with one goal: open a link and play.
 
-Unity handled the scene and hand interaction while the Python process handled the AI and game-state validation. The two exchanged moves over a local TCP connection. Keeping that computation separate allowed the interface to continue updating while the opponent searched.
+The browser version is a full rebuild in SvelteKit, TypeScript, Three.js and Threlte. It uses mouse and touch instead of hand tracking (the hands stayed with the Unity version). You can play the AI, take turns with someone on the same device, or invite a friend to a private online game. Browser play and online multiplayer were both on the "future work" list in my original report, so it's satisfying to finally check them off.
 
-## Bringing Axial to the browser
+[IMAGE: match settings / multi-line match]
 
-Recently, I came back to Axial with a more practical goal: make it easier for someone else to try.
+It also gives you more ways to play. You can grow the board up to 10 spaces in any direction, switch to connect five, or require two or three lines to win. In a multi-line match your first line doesn't end the game. You keep playing on the same board, building your next line while stopping your opponent's.
 
-The result is a browser rebuild using SvelteKit, TypeScript, Three.js and Threlte. You can open a link and play. This version uses mouse and touch controls; the webcam gesture interface belongs to the original Unity game.
+The AI is rebuilt in TypeScript around the same MCTS-plus-tactics core, with some real upgrades:
 
-The browser version gives you more ways to play. You can switch from connect four to connect five, change the board size, or require two or three completed lines to win. With multiple lines required, making your first connection does not end the match. You keep building on the same board, trying to create the next line while defending against your opponent. Extending an already completed line still counts as that same line; you need to form another distinct one.
+- **It looks ahead more directly.** Alongside the imaginary games, it uses alpha-beta search, which works through specific sequences of moves while assuming you'll pick your best reply. Think: "this looks good, but what's their best answer?" It skips branches once they can't change its decision.
+- **It understands the new rules.** In a three-line match, finishing one line is progress, not a win, so it has to weigh that against what it hands you next. Gravity adds traps too: a useful piece can also be the support your opponent needs to land a winning piece right on top of it.
+- **It knows when to stop.** Long matches make full imaginary games expensive, so it can stop one partway, judge the unfinished position, and spend the time it saved exploring other options.
 
-The AI carries forward the original idea of MCTS with tactical checks, rebuilt in TypeScript. The most meaningful changes are how it looks ahead and how it understands those expanded rules.
+The AI also runs in a Web Worker, separate from the page itself, so you can keep rotating and inspecting the board while it thinks. Same idea as the separate Python process, just inside your browser.
 
-The browser engine also adds alpha-beta lookahead. Alongside the evidence from simulated games, it compares selected sequences of moves while assuming the opponent will choose the strongest reply it examines. Think: “This move looks promising, but what is their best answer?” It searches within limits on depth and computation, and skips branches once they cannot change a decision in that search.
+## Try it
 
-Requiring multiple lines changes what the AI needs to value. In a three-line match, completing one line is progress rather than victory, so it has to weigh that progress against the opponent’s next opportunities. Gravity adds another trap: a useful piece can also provide the support an opponent needs to land a winning piece directly above it.
+Across both versions the hard part was the same: making the technical work disappear into something that feels good to play. Hands that stay steady without feeling sluggish, and an opponent that thinks hard without freezing the game.
 
-Longer matches also make full simulations more expensive. The browser engine can stop a simulation after a set number of moves and evaluate the unfinished position, leaving time to explore other possibilities.
+If you want the full details, I wrote two papers on the original project:
 
-The computation now runs in a Web Worker, which handles the search separately from the browser interface. You can keep rotating and inspecting the board while the opponent thinks. It brings the same separation I needed in the original Unity/Python version into an experience someone can try through a link.
+- [**Axial: A 3D Strategy Game with Gesture-Based Hand Tracking Controls**](https://github.com/caden-calderon/Axial/blob/main/docs/papers/01-Axial-Game-and-Hand-Tracking.pdf): the Unity game, the depth experiments, gestures, smoothing and interaction design.
+- [**Monte Carlo Tree Search for 3D Connect Four**](https://github.com/caden-calderon/Axial/blob/main/docs/papers/02-Axial-AI-and-MCTS.pdf): the original Python opponent, its search, tactics and optimization.
 
-You can play against the AI, take turns with someone on the same device, or invite a friend to a private online game. Looking back at the original report, browser play and online multiplayer were both listed as future work. It is satisfying to return to the project and see those ideas become part of it.
+They cover the 2025 Unity/Python version; the browser rebuild came later.
 
-Across both versions, the challenge was making the technical work translate into something that felt good to play: hand controls that stayed steady without feeling sluggish, and an opponent that could think without freezing the game.
+Play at [playaxial.dev](https://playaxial.dev), and the code is on [GitHub](https://github.com/caden-calderon/Axial).
 
-For anyone interested in the original implementation, I wrote two companion papers:
-
-- [**Axial: A 3D Strategy Game with Gesture-Based Hand Tracking Controls**](https://github.com/caden-calderon/Axial/blob/main/docs/papers/01-Axial-Game-and-Hand-Tracking.pdf) covers the Unity game, the depth-estimation experiments, gesture detection, smoothing and interaction design.
-- [**Monte Carlo Tree Search for 3D Connect Four: Tackling Combinatorial Explosion with Intelligent Sampling**](https://github.com/caden-calderon/Axial/blob/main/docs/papers/02-Axial-AI-and-MCTS.pdf) covers the original Python opponent, search design, tactical heuristics, optimization and the evaluation I wrote up at the time.
-
-These are the original reports from the 2025 Unity/Python project. They document that version; the browser rebuild came later.
-
-You can try the current game at [playaxial.dev](https://playaxial.dev), and explore the code on [GitHub](https://github.com/caden-calderon/Axial).
-
-I'd love to hear what you think, whether you try a match or take a look at the technical side. I've got lots of other projects and cool things I've been working on that I'll be sharing soon, too.
-
-Feel free to connect with me here, or follow me on X/Twitter at [@caden_calderon](https://x.com/caden_calderon). I post over there too, and I'm looking to grow my connections with people building interesting things.
+I'd love to hear what you think, whether you play a match or dig into the code. I've got a bunch of other projects I'll be sharing soon, too. Feel free to connect here, or follow me on X at [@caden_calderon](https://x.com/caden_calderon).

@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="common.css" />
+<style>
+	.legend {
+		position: absolute;
+		left: 760px;
+		top: 110px;
+		display: grid;
+		gap: 44px;
+		font-size: 42px;
+		line-height: 1.25;
+		max-width: 700px;
+	}
+	.legend div {
+		display: grid;
+		grid-template-columns: 56px 1fr;
+		align-items: start;
+	}
+	.dot {
+		width: 30px;
+		height: 30px;
+		border-radius: 50%;
+		margin-top: 8px;
+	}
+	.legend small {
+		display: block;
+		color: var(--muted);
+		font-size: 32px;
+		margin-top: 10px;
+	}
+</style>
+</head>
+<body>
+	<h1>21 tracked points per hand</h1>
+	<p class="sub">MediaPipe finds the wrist, knuckles and fingertips in every webcam frame.</p>
+	<div class="stage">
+		<svg id="svg" width="1440" height="680"></svg>
+		<div class="legend">
+			<div>
+				<span class="dot" style="background: var(--azure); box-shadow: 0 0 0 6px rgba(115,245,216,.3)"></span>
+				<span>Wrist and base knuckles
+					<small>Barely move when you curl your fingers. Used to judge depth.</small></span>
+			</div>
+			<div>
+				<span class="dot" style="background: var(--solar)"></span>
+				<span>Finger joints and tips
+					<small>Move with every gesture. Used for pinching to grab and release.</small></span>
+			</div>
+		</div>
+	</div>
+	<script type="module">
+		import { OPEN_HAND, drawHand } from './hand.js';
+		drawHand(document.getElementById('svg'), OPEN_HAND, { cx: 360, cy: 640, size: 410 });
+		document.body.dataset.ready = '1';
+	</script>
+</body>
+</html>

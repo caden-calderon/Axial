@@ -353,3 +353,78 @@ After SHA-256: `19f0e7beec7580ece3948bac8e8d3b63133f456dcc1061c8d344ef53aaa23e21
 `https://github.com/caden-calderon/Axial/blob/main/docs/papers/02-Axial-AI-and-MCTS.pdf`
 
 **Reason:** The LinkedIn article needs links readers can open after the repository update. `docs/papers/README.md` records the archived PDFs' provenance and unresolved differences.
+
+## Revision 6: full editorial rewrite (October 14)
+
+Caden asked for a full editorial pass ("your call") and then preferred the rewrite to the previous draft. Because this was a restructure rather than sentence-level edits, there is no per-sentence before/after here. The complete previous article is preserved in git at commit `793e0db` (`dev/active/axial-announcement-readiness/linkedin-article.md`).
+
+Article length: 2123 words before; 1795 words after.
+
+Before SHA-256: `19f0e7beec7580ece3948bac8e8d3b63133f456dcc1061c8d344ef53aaa23e21`
+
+After SHA-256: `e63f250c58b03e608437414677d99feb9370e6a83708231ab01772a4feddf719`
+
+What changed:
+
+- **Hook first.** The opening now gets to Connect Four in 3D, played with bare hands through a webcam, within the first few paragraphs, and drops the meta paragraph about revisiting the project.
+- **Voice.** Contractions and plainer phrasing throughout. Removed setup lines such as "Getting that to work involved a lot more than recognizing a pinch" and "The balance mattered:".
+- **The failed attempts are back.** Added the report's eight measurement methods and the fist "teleport" failure (Game report, Table 3). Caden confirmed both are accurate.
+- **Depth section kept whole.** The palm-only measurement, the ruler analogy, the three normalized measurements, the maximum and the edge-on card limitation all remain, with tighter wording.
+- **Pinch hysteresis** returns as one plain sentence; the column-snapping hysteresis stays out.
+- **AI section shortened.** MCTS is explained as "learning by playing out the future," with UCT named in a single parenthetical. Subtree reuse is kept as the notebook analogy.
+- **Browser section has a reason.** It opens with why: the original needed the Unity game, the Python server and a webcam set up (confirmed by Caden). The three AI differences are now bold-labelled bullets.
+- **Media placeholders** `[VIDEO]`, `[CLIP]` and `[IMAGE]` mark where visuals go.
+
+## Revision 7: restore original title
+
+Before SHA-256: `e63f250c58b03e608437414677d99feb9370e6a83708231ab01772a4feddf719`
+
+After SHA-256: `74425fd20bba5220e9fc2da04184311b9bef4e5c9f0afab0bcf17b4bd0a6e46a`
+
+**Before**
+
+I Built 3D Connect Four You Play With Your Hands. Then I Rebuilt It for the Browser.
+
+**After**
+
+Axial: From a Hand-Controlled Unity Game to the Browser
+
+**Reason:** Caden prefers the original title.
+
+## Revision 8: figures and Unity clips
+
+Caden asked for pictures and graphics to help explain the article. Only placement lines were inserted; no article prose changed. Each item below is a new line placed directly after the quoted sentence.
+
+Before SHA-256: `74425fd20bba5220e9fc2da04184311b9bef4e5c9f0afab0bcf17b4bd0a6e46a`
+
+After SHA-256: `3454fbb3f810558991ffabe3bbda402064a06516c5702cff40c4d76657f4f022`
+
+| After the sentence | Inserted media |
+| --- | --- |
+| "Hold the board with one hand and drag with the other to spin it around." | `unity-grab-drop.mp4`, 16 s from Caden's original class demo (0:19–0:35), cropped to the game view, no audio |
+| `## Reaching into a webcam` (replaces the `[CLIP: Unity hand-tracking gameplay]` placeholder) | `unity-rotate.mp4`, 10 s two-hand rotation (1:03–1:13) |
+| "…picking up a piece was my job." | `landmarks.png`: 21 landmarks, with palm points highlighted |
+| "…could send it flying away from you." | `fist.png`: open hand versus fist, with fingertip and palm measurements and the depth each one implies |
+| "…instead of averaging the collapsed one in." | `rulers.png`: three hand angles; bar lengths come from `HandTracker3D.CalculateHandSize`'s formula and normalization ranges applied to an illustrative hand |
+| "…instead of one lucky result." | `mcts.png`: a seeded 480-game UCT run over five moves with made-up win chances (labelled illustrative) |
+| "Same idea as the separate Python process, just inside your browser." | `architecture.png`: Unity ⇄ Python versus page ⇄ Web Worker |
+
+Media lives in `docs/media/article/`. The diagram sources are in `src/` and are re-rendered with `render.sh`. The MP4 clips and the source video in `axial-video/source/` are git-ignored. The remaining `[VIDEO: browser trailer]` and `[IMAGE: match settings]` placeholders wait on the code review and the new trailer.
+
+## Revision 9: remove architecture figure
+
+Before SHA-256: `3454fbb3f810558991ffabe3bbda402064a06516c5702cff40c4d76657f4f022`
+
+After SHA-256: `8485cee4412062ed8db0e48503ff4857096bb3182f9b1f2e683cba14468db589`
+
+**Before**
+
+…Same idea as the separate Python process, just inside your browser.
+
+![Unity and Python in the original, page and Web Worker in the browser](../../../docs/media/article/architecture.png)
+
+**After**
+
+…Same idea as the separate Python process, just inside your browser.
+
+**Reason:** Caden decided the "Keep the thinking off the screen" figure isn't needed. Its image and source file were deleted; the other four figures and both clips stay.

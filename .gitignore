@@ -57,3 +57,7 @@ venv/
 
 # Generated and recovered local publication outputs. Selected papers live in docs/papers/.
 /output/
+
+# Article/video media: large binaries stay local
+axial-video/source/
+docs/media/article/*.mp4

@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="common.css" />
+</head>
+<body>
+	<h1>Several rulers, keep the biggest</h1>
+	<p class="sub">Same hand, same distance, just tilted. Width alone collapses; the max holds up.</p>
+	<div class="stage">
+		<svg id="svg" width="1440" height="680"></svg>
+	</div>
+	<script type="module">
+		import { OPEN_HAND, INDEX_BASE, PINKY_BASE, WRIST, MIDDLE_BASE, rotate, palmMax, drawHand, el } from './hand.js';
+		const svg = document.getElementById('svg');
+		const PINK = '#ff7a96';
+		const TEAL = '#73f5d8';
+		const VIOLET = '#a88cff';
+		const MUTED = '#92aca4';
+		const SIZE = 165;
+
+		const poses = [
+			{ angle: 0, label: 'Upright' },
+			{ angle: 45, label: 'Tilted' },
+			{ angle: 90, label: 'Sideways' }
+		];
+
+		const COLW = 480;
+		poses.forEach((pose, i) => {
+			// Rotate about the palm's centre so every pose sits in the same spot.
+			const PIVOT = [0.05, -0.55];
+			const points = rotate(OPEN_HAND.map(([x, y]) => [x - PIVOT[0], y - PIVOT[1]]), pose.angle);
+			const cx = i * COLW + COLW / 2;
+			const cy = 290;
+			const at = (k) => [cx + points[k][0] * SIZE, cy + points[k][1] * SIZE];
+			drawHand(svg, points, { cx, cy, size: SIZE });
+
+			// Projected spans between the index and pinky knuckles, and the wrist-to-middle-knuckle length.
+			const [ix, iy] = at(INDEX_BASE);
+			const [px, py] = at(PINKY_BASE);
+			el('line', { x1: Math.min(ix, px), y1: Math.max(iy, py) + 26, x2: Math.max(ix, px), y2: Math.max(iy, py) + 26, stroke: PINK, 'stroke-width': 5, 'stroke-linecap': 'round' }, svg);
+			el('line', { x1: Math.max(ix, px) + 26, y1: Math.min(iy, py), x2: Math.max(ix, px) + 26, y2: Math.max(iy, py), stroke: VIOLET, 'stroke-width': 5, 'stroke-linecap': 'round' }, svg);
+			const [wx, wy] = at(WRIST);
+			const [mx, my] = at(MIDDLE_BASE);
+			el('line', { x1: wx, y1: wy, x2: mx, y2: my, stroke: TEAL, 'stroke-width': 6, 'stroke-linecap': 'round', 'stroke-dasharray': '2 10' }, svg);
+
+			const title = el('text', { x: cx, y: 30, 'font-size': 40, 'font-weight': 600, 'text-anchor': 'middle' }, svg);
+			title.textContent = pose.label;
+
+			// Bars use the original normalization ranges from HandTracker3D.cs.
+			const m = palmMax(points);
+			const rows = [
+				{ name: 'width', v: m.x, color: PINK },
+				{ name: 'height', v: m.y, color: VIOLET },
+				{ name: 'palm', v: m.h, color: TEAL }
+			];
+			const bx = cx - 120;
+			const BW = 220;
+			rows.forEach((r, k) => {
+				const y = 452 + k * 50;
+				const isMax = r.v === m.max;
+				const t = el('text', { x: bx - 14, y: y + 11, 'font-size': 30, fill: MUTED, 'text-anchor': 'end' }, svg);
+				t.textContent = r.name;
+				el('rect', { x: bx, y: y - 12, width: BW, height: 26, rx: 13, fill: 'rgba(146,172,164,0.14)' }, svg);
+				el('rect', { x: bx, y: y - 12, width: Math.max(22, r.v * BW), height: 26, rx: 13, fill: r.color, opacity: isMax ? 1 : 0.35 }, svg);
+				if (isMax) {
+					const s = el('text', { x: bx + BW + 12, y: y + 11, 'font-size': 30, 'font-weight': 700, fill: r.color }, svg);
+					s.textContent = 'max';
+				}
+			});
+			const verdicts = ['Width alone: correct', 'Width alone: “moved back”', 'Width alone: “far away”'];
+			const reading = el('text', { x: cx, y: 650, 'font-size': 32, 'text-anchor': 'middle', fill: i === 0 ? MUTED : PINK }, svg);
+			reading.textContent = verdicts[i];
+		});
+		document.body.dataset.ready = '1';
+	</script>
+</body>
+</html>
