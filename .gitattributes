@@ -1,0 +1,2 @@
+# The archived course reports are documents, not source code; keep them out of GitHub's language stats.
+archive/original-project/reports/*.tex linguist-documentation
