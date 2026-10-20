@@ -2,7 +2,7 @@
 
 A 3D gravity strategy game by Caden Calderon. Drop pieces into a shared board and build lines across its width, height, and depth. Play against the AI, pass the device to a friend, or invite someone to a private online match.
 
-**[Play Axial](https://playaxial.dev)** · [Run locally](#run-locally) · [Engineering guide](axial-web/README.md)
+**[Play Axial](https://playaxial.dev)** · [Run locally](#run-locally) · [Engineering guide](axial-web/README.md) · [How it started](#how-it-started)
 
 ![A live Axial match with completed lines and a two-to-two line score](docs/media/axial-gameplay.webp)
 
@@ -20,15 +20,30 @@ Classic is the playable ruleset. Tactical is marked “Coming soon” in the int
 
 ## Engineering
 
-The active application is a TypeScript workspace built with **SvelteKit, Svelte 5, Three.js, and Threlte**. The frontend runs on Cloudflare Pages; private multiplayer uses a separate Cloudflare Worker with a Durable Object per room.
+The application is a TypeScript workspace built with **SvelteKit, Svelte 5, Three.js, and Threlte**. The frontend runs on Cloudflare Pages; private multiplayer uses a separate Cloudflare Worker with a Durable Object per room.
+
+```mermaid
+flowchart LR
+    subgraph Browser
+        UI["SvelteKit UI<br/>Threlte 3D board"] --> Controller["Local, AI and online<br/>controllers"]
+        Controller <-->|cancellable messages| Worker["AI Web Worker<br/>@axial/ai"]
+    end
+    subgraph Cloudflare
+        Room["Room Durable Object<br/>one per match"]
+    end
+    Controller --> Core["@axial/core<br/>rules, gravity, scoring"]
+    Worker --> Core
+    Room --> Core
+    Controller <-->|"WebSocket<br/>@axial/multiplayer-protocol"| Room
+```
 
 The implementation separates three concerns:
 
-- **Rules are shared.** A pure TypeScript core owns gravity, legal moves, line scoring, and replay. Both the browser and multiplayer server use it.
-- **AI stays off the UI thread.** A cancellable Web Worker runs a hybrid of Monte Carlo tree search, bounded alpha-beta lookahead, and threat evaluation. Difficulty changes the search budget and tactical behavior. The browser AI does not require an LLM or a hosted inference service.
+- **Rules are shared.** A pure TypeScript core owns gravity, legal moves, line scoring, and replay. The browser, the AI, and the multiplayer server all use it.
+- **AI stays off the UI thread.** A cancellable Web Worker runs a hybrid of Monte Carlo tree search, bounded alpha-beta lookahead, and threat evaluation. Difficulty changes the search budget and tactical behavior. The AI runs entirely in the browser: no LLM and no hosted inference.
 - **Online matches have one authority.** The room server validates moves and broadcasts ordered snapshots; clients recover through reconnect and state synchronization.
 
-For a code tour, start with the [rules engine](axial-web/packages/core/src/index.ts), [AI search](axial-web/packages/ai/src/classic/mcts.ts), [game controller](axial-web/apps/web/src/lib/game/state/gameController.svelte.ts), and [multiplayer room](axial-web/apps/multiplayer-worker/src/roomObject.ts). The [product brief](PRODUCT.md) describes the interaction and visual priorities.
+For a code tour, start with the [rules engine](axial-web/packages/core/src/index.ts), [AI search](axial-web/packages/ai/src/classic/mcts.ts), [game controller](axial-web/apps/web/src/lib/game/state/gameController.svelte.ts), and [multiplayer room](axial-web/apps/multiplayer-worker/src/roomObject.ts). The [product brief](PRODUCT.md) describes the interaction and visual priorities, and the [engineering notes](dev/README.md) record the design decisions, audits, and evaluation behind each development pass.
 
 ## Run locally
 
@@ -58,18 +73,24 @@ The test command runs unit tests and Playwright browser tests against a producti
 
 ## Repository map
 
-| Path                                              | Contents                                                                      |
-| ------------------------------------------------- | ----------------------------------------------------------------------------- |
-| [`axial-web/`](axial-web/)                        | Active web application, shared game/AI packages, and multiplayer service      |
-| [`dev/`](dev/README.md)                           | Index of current work, engineering decisions, and dated verification evidence |
-| [`main/`](main/)                                  | Preserved Python AI engine and Unity-facing server from the original version  |
-| [`Training/`](Training/) and [`Old/`](Old/)       | Earlier AI training experiments and implementations                           |
-| [`Context/`](Context/) and [`Reports/`](Reports/) | Original project background and academic reports                              |
+| Path                            | Contents                                                                         |
+| ------------------------------- | -------------------------------------------------------------------------------- |
+| [`axial-web/`](axial-web/)      | The web application, shared rules and AI packages, and the multiplayer service   |
+| [`axial-video/`](axial-video/)  | Remotion project for the game's overview video, recorded from the real web app   |
+| [`docs/`](docs/)                | Gameplay media and the compiled reports from the original project                |
+| [`dev/`](dev/README.md)         | Engineering notes: plans, decisions, audits, and dated verification evidence     |
+| [`archive/`](archive/README.md) | The original Unity-era project: proposal, report sources, and the Python MCTS AI |
 
-Axial began as a Unity game with hand-tracking input and a Python AI opponent. The browser version is the current product. Historical Python experiments are retained for reference and are not dependencies of the web app. The original Unity project is preserved separately and is not included in a Git clone of this repository.
+## How it started
 
-The [original Unity and AI reports](docs/papers/README.md) document that earlier version.
+Axial began in late 2025 as a Unity desktop game, built for a game design course and an AI course at the same time. Players dropped pieces with hand-tracking gestures through MediaPipe, against a Monte Carlo tree search opponent written in Python with Numba. The browser version is a ground-up rebuild of that game; none of the original code is a dependency of it.
 
-## Credits and licensing
+- [Gameplay video of the Unity version](https://youtu.be/uuLK-gQ7Y54)
+- Reports: [game design and hand tracking](docs/papers/01-Axial-Game-and-Hand-Tracking.pdf) and [AI and MCTS](docs/papers/02-Axial-AI-and-MCTS.pdf)
+- [The original Python AI](archive/python-ai/README.md), still runnable with `uv`
 
-Created by [Caden Calderon](https://github.com/caden-calderon). The interface uses the locally bundled [Inter typeface](axial-web/apps/web/static/fonts/README.md), with its SIL Open Font License included. Third-party dependencies retain their own licenses. A project-wide license has not yet been selected.
+The Unity project itself is not in this repository.
+
+## License
+
+Axial is released under the [MIT License](LICENSE). The interface uses the locally bundled [Inter typeface](axial-web/apps/web/static/fonts/README.md) under the SIL Open Font License, included alongside it. Third-party dependencies keep their own licenses.

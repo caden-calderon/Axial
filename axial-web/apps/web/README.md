@@ -44,4 +44,4 @@ pnpm --filter @axial/web test:e2e
 pnpm --filter @axial/web build
 ```
 
-Playwright builds and serves a production preview and starts the local multiplayer Worker; see [the workspace verification notes](../../README.md#verification) for ports and browser prerequisites. The SvelteKit Cloudflare adapter is already configured. Hosting details and historical deployment notes are in [deployment.md](../../../dev/active/axial-web-rebuild/deployment.md).
+Playwright builds and serves a production preview and starts the local multiplayer Worker; see [the workspace verification notes](../../README.md#verification) for ports and browser prerequisites. The SvelteKit Cloudflare adapter is already configured. Hosting details and historical deployment notes are in [deployment.md](../../../dev/archive/axial-web-rebuild/deployment.md).
