@@ -51,9 +51,13 @@ venv/
 *.onnx
 *.pkl
 /Training/checkpoints*/
+/archive/python-ai/training/checkpoints*/
 
 # Legacy Unity project stays local for reference.
 /axial-unity/
+
+# Local-only notes and drafts kept out of the public repository
+/private/
 
 # Generated and recovered local publication outputs. Selected papers live in docs/papers/.
 /output/

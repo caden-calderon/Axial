@@ -29,7 +29,7 @@ The read-only request to `https://playaxial.dev/` returned successfully but had 
 1. Creation and retention decisions were delegated and implemented in the follow-up below. Verify the actual deployed binding and expiry behavior after authorized release; untouched legacy expired objects still need an operational inventory if a complete historical purge is desired. See [room resource policy](room-resource-policy.md).
 2. Review the **8 residual audit reports** (3 high, 4 moderate, 1 low). They concern pinned Kit cookie and local emulator sharp/undici dependencies; no compatible forced replacement was applied. Audit remains nonzero. See [dependency review](dependency-review.md).
 3. Review prepared GitHub description/homepage/topics and licensing intent. Archive moves remain proposals. See [repository review](repository-review.md).
-4. Review [announcement text](social-post-drafts.md), then capture gameplay/video and social-preview imagery when Caden asks.
+4. Review the announcement text (kept outside the repository), then capture gameplay/video and social-preview imagery when Caden asks.
 5. Complete physical-device/audio acceptance, authorize the release, and verify the deployed game and actual platform link previews before posting.
 
 Local gate logs are in `/tmp/axial-announcement-final-{check,lint,unit,browser}.log`; audit details are in `/tmp/axial-announcement-audit-after.json`. Temporary logs are supplemental evidence, not required project files.
@@ -46,4 +46,4 @@ Logs: `/tmp/axial-policy-{check,lint,worker-tests,dry-run}.log` and `/tmp/axial-
 
 With the same local web/Worker changes still uncommitted, fresh `CI=1 pnpm check`, `CI=1 pnpm lint`, `CI=1 pnpm test:unit`, and `CI=1 pnpm build` all exited 0. Svelte reported zero errors/warnings. Unit totals are now **388 passed**: core 147, AI 65, web 147, Worker 29; 43 optional AI evaluations skipped. The prior complete **66/66 browser** result is still the latest full browser-suite evidence; the new video/docs/CI preparation did not change web runtime source. The new GitHub workflow mirrors the local check/lint/unit/build commands but has not run on GitHub.
 
-The separate Remotion workspace passed `pnpm lint` and `pnpm build` after the final composition changes. Both 44-second MP4s were probed and sampled; details are in [video production](video-production.md). `git diff --check` and Prettier checks on new public README/paper/video/workflow files passed. No current production deployment or physical-device/audio acceptance was performed.
+The separate Remotion workspace passed `pnpm lint` and `pnpm build` after the final composition changes. Both 44-second MP4s were probed and sampled; details were recorded in video production notes kept outside the repository. `git diff --check` and Prettier checks on new public README/paper/video/workflow files passed. No current production deployment or physical-device/audio acceptance was performed.
