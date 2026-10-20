@@ -2,13 +2,14 @@
 	import { onMount, untrack } from 'svelte';
 	import { useThrelte } from '@threlte/core';
 	import { getDropHeight, type GameSnapshot, type Move } from '@axial/core';
-	import { Raycaster, Vector2 } from 'three';
+	import { Raycaster, Vector2, Vector3 } from 'three';
 	import {
 		floorPointFromBoardLocalRay,
 		moveFromBoardLocalPoint,
 		moveFromBoardLocalRay,
 		type BoardLocalRay
 	} from './picking';
+	import { CELL_SPACING } from './geometry';
 	import { createPlacementGesture } from './placementGesture';
 
 	let {
@@ -71,6 +72,68 @@
 			placementGesture.reset();
 		};
 	});
+
+	// Development only: the trailer recorder (axial-video/scripts) asks where to point so that
+	// this picker chooses a given column through the current view, then moves a real mouse there.
+	// Compiled out of production builds.
+	if (import.meta.env.DEV) {
+		onMount(() => {
+			const probe = { aim: aimPointFor };
+			const devWindow = window as Window & { __axialScene?: typeof probe };
+			devWindow.__axialScene = probe;
+			return () => {
+				if (devWindow.__axialScene === probe) delete devWindow.__axialScene;
+			};
+		});
+	}
+
+	/** A screen point a player would naturally aim at that picks (row, col), or null. */
+	function aimPointFor(row: number, col: number): { x: number; y: number } | null {
+		const { height, rows, columns } = game.dimensions;
+		const filled = stackHeight({ row, col });
+		const x = (col + 0.5 - columns / 2) * CELL_SPACING;
+		const z = (row + 0.5 - rows / 2) * CELL_SPACING;
+		const floor = (-height / 2) * CELL_SPACING;
+		const top = floor + filled * CELL_SPACING;
+		const offsets = [0, -0.3, 0.3].map((offset) => offset * CELL_SPACING);
+		// The stack's top face first (or the open floor tile), then its sides from the top down.
+		const candidates: [number, number, number][] = [];
+		for (const dx of offsets)
+			for (const dz of offsets) candidates.push([x + dx, top - 0.02, z + dz]);
+		const edge = CELL_SPACING * 0.42;
+		for (const level of [0.9, 0.7, 0.5, 0.3, 0.1]) {
+			const y = floor + filled * CELL_SPACING * level;
+			if (filled === 0) break;
+			for (const along of offsets) {
+				candidates.push(
+					[x - edge, y, z + along],
+					[x + edge, y, z + along],
+					[x + along, y, z - edge],
+					[x + along, y, z + edge]
+				);
+			}
+		}
+		const rect = canvas.getBoundingClientRect();
+		const cos = Math.cos(boardRotation);
+		const sin = Math.sin(boardRotation);
+		camera.current.updateMatrixWorld();
+		for (const [lx, ly, lz] of candidates) {
+			const point = new Vector3(
+				boardScale * (cos * lx + sin * lz),
+				boardScale * ly,
+				boardScale * (-sin * lx + cos * lz)
+			).project(camera.current);
+			if (Math.abs(point.x) > 0.98 || Math.abs(point.y) > 0.98 || point.z > 1) continue;
+			const screen = {
+				clientX: rect.left + ((point.x + 1) / 2) * rect.width,
+				clientY: rect.top + ((1 - point.y) / 2) * rect.height
+			};
+			const picked = pickMove(screen);
+			if (picked?.row === row && picked.col === col)
+				return { x: screen.clientX, y: screen.clientY };
+		}
+		return null;
+	}
 
 	function handlePointerDown(event: PointerEvent): void {
 		placementGesture.down(event, performance.now());
