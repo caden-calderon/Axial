@@ -16,18 +16,18 @@
 
 Desktop takes record 1920×1080 at 2× density (3840×2160 frames); the phone take records 414×736 at 3× (1242×2208).
 
-| Take | Shows |
-| --- | --- |
-| `desktop-reveal` | Opening (axis numbers off): the board square from the front reads as a Connect 4 rack; a drop, then an orbit shows the rows behind |
-| `desktop-controls` | Against the AI on the staged match at move 16: aim, click to drop, the reply, drag to orbit, scroll to zoom |
-| `desktop-modes` | The opponent switch (Local, Online, AI) and the AI's four levels (the game only allows these before a match starts) |
-| `desktop-ai` | Against Max (`'nightmare'` in storage) on a staged position (`stage-ai-win.ts`): orange ignores blue's climbing diagonal and the AI completes it (not in the current cut) |
-| `desktop-twists` | A fresh board: open settings, grow the board to 9×9×9, connect five, three lines to win (a marker on each click) |
-| `desktop-match` | A local match restored at move 24 and played out: blocks, a fork, a staircase win |
-| `desktop-settings` | AI levels, growing the board, connect five, lines to win (not in the current cut) |
-| `desktop-bigboard` | 9×9×9 connect-five finish: the board turning slowly (settings closed off camera), the winning drop, a turn side-on so the staircase reads as five in a row, then Keep board and a look around |
-| `desktop-multiline` | Three-lines-to-win finish (3-2), then a look around |
-| `phone-play` | Portrait phone, staged match at move 20 against the AI: finger orbit, tap to aim, Drop, the AI's reply |
+| Take                | Shows                                                                                                                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `desktop-reveal`    | Opening (axis numbers off): the board square from the front reads as a Connect 4 rack; a drop, then an orbit shows the rows behind                                                            |
+| `desktop-controls`  | Against the AI on the staged match at move 16: aim, click to drop, the reply, drag to orbit, scroll to zoom                                                                                   |
+| `desktop-modes`     | The opponent switch (Local, Online, AI) and the AI's four levels (the game only allows these before a match starts)                                                                           |
+| `desktop-ai`        | Against Max (`'nightmare'` in storage) on a staged position (`stage-ai-win.ts`): orange ignores blue's climbing diagonal and the AI completes it (not in the current cut)                     |
+| `desktop-twists`    | A fresh board: open settings, grow the board to 9×9×9, connect five, three lines to win (a marker on each click)                                                                              |
+| `desktop-match`     | A local match restored at move 24 and played out: blocks, a fork, a staircase win                                                                                                             |
+| `desktop-settings`  | AI levels, growing the board, connect five, lines to win (not in the current cut)                                                                                                             |
+| `desktop-bigboard`  | 9×9×9 connect-five finish: the board turning slowly (settings closed off camera), the winning drop, a turn side-on so the staircase reads as five in a row, then Keep board and a look around |
+| `desktop-multiline` | Three-lines-to-win finish (3-2), then a look around                                                                                                                                           |
+| `phone-play`        | Portrait phone, staged match at move 20 against the AI: finger orbit, tap to aim, Drop, the AI's reply                                                                                        |
 
 Match material lives in `scripts/takes/matches.mjs`. The opening position is staged with `scripts/stage-reveal.ts` and the classic match with `scripts/stage-game.ts` (legal moves, nobody passes up a win, a real fork); the big-board and three-line games are the shipped AI playing itself (`scripts/find-games.ts`). Bundle either TypeScript script with the workspace esbuild, aliasing `@axial/core`/`@axial/ai` to `../axial-web/packages/*/src/index.ts`.
 
@@ -35,24 +35,27 @@ Match material lives in `scripts/takes/matches.mjs`. The opening position is sta
 
 ## Run
 
-```bash
-# 1. The game, in development mode
-cd ../axial-web/apps/web && pnpm dev --host 127.0.0.1 --port 5173
+Recording needs `ffmpeg` on `PATH` and Google Chrome (headless Chrome's WebGL). The recorder looks for
+Chrome at `/run/current-system/sw/bin/google-chrome`; set `AXIAL_RECORD_CHROME` to its path elsewhere.
 
-# 2. Footage and sounds (ffmpeg via nix on this machine)
+```bash
+# 1. The game, in development mode (separate terminal)
+cd axial-web/apps/web && pnpm dev --host 127.0.0.1 --port 5173
+
+# 2. Dependencies, footage and sounds
 cd axial-video
-nix shell nixpkgs#ffmpeg -c node scripts/record.mjs desktop-controls            # full quality
-nix shell nixpkgs#ffmpeg -c node scripts/record.mjs desktop-controls --preview  # 1x, 30 fps
+pnpm install --frozen-lockfile
+node scripts/record.mjs desktop-controls            # full quality
+node scripts/record.mjs desktop-controls --preview  # 1x, 30 fps
 node scripts/render-game-sounds.mjs
 
-# Music: "A Solitary Pulse (Future Garage Motive)" by 9JackJack8, Pixabay Content License
-# (https://pixabay.com/music/soft-house-a-solitary-pulse-future-garage-motive-463685/)
+# 3. Music: "A Solitary Pulse (Future Garage Motive)" by 9JackJack8, Pixabay Content License
+#    (https://pixabay.com/music/soft-house-a-solitary-pulse-future-garage-motive-463685/)
 mkdir -p public/audio/music
 curl -L -o public/audio/music/solitary-pulse.mp3 \
   'https://cdn.pixabay.com/download/audio/2026/01/09/audio_6488410046.mp3?filename=9jackjack8-a-solitary-pulse-future-garage-motive-463685.mp3'
 
-# 3. Edit and render
-pnpm install --frozen-lockfile
+# 4. Edit and render
 pnpm dev                 # Remotion Studio on :3333
 pnpm render:overview     # out/axial-overview-1080p60.mp4
 ```
@@ -61,7 +64,7 @@ Footage, audio and renders are local and ignored by Git. Rebuild them with the c
 
 ## Edit
 
-`src/overview/Overview.tsx` is the cut, following the script in `dev/active/axial-cinematic-video/script.md`: an ordered list of segments, each a slice of a take between two markers, with optional punch-ins (the footage is 2× density, so up to 2× stays sharp) and captions keyed to markers. Lines of the script are set large over the board (`Title`); control and feature labels use the game's pill styling (`Caption`), both in the game's typeface. The game's sounds play at each move's landing and at the win reveal.
+`src/overview/Overview.tsx` is the cut, following the script in `dev/archive/axial-cinematic-video/script.md`: an ordered list of segments, each a slice of a take between two markers, with optional punch-ins (the footage is 2× density, so up to 2× stays sharp) and captions keyed to markers. Lines of the script are set large over the board (`Title`); control and feature labels use the game's pill styling (`Caption`), both in the game's typeface. The game's sounds play at each move's landing and at the win reveal.
 
 Segments are built with `shot(take, from, to, options, build)`. `options.beats` retimes a shot against the take's own frames (`{ source, rate }` changes speed from a source frame; `{ freeze, seconds }` holds a freeze frame), and `build` gets `local()`, which maps a source frame to the frame where it appears after retiming, so cues and pushes stay on their actions. `Shot` also does impact pulses (`kick`) and `hideChrome`, which keeps the game's top bar entirely out of frame; the edit's rule is that the top bar is either whole or gone, never cut in half. A win shot ends on its freeze frame, and `shot()` throws if one runs past the moment the game's result card appears. `Devices` shows a desktop take in a browser window beside the phone take.
 

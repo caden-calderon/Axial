@@ -2,7 +2,7 @@
   "name": "axial-video",
   "version": "1.0.0",
   "description": "Axial gameplay overview video: frame-exact recordings of the real game, edited in Remotion",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "private": true,
   "dependencies": {
     "@remotion/cli": "4.0.526",

@@ -31,7 +31,12 @@ export const TAKES = {
 export type TakeName = keyof typeof TAKES;
 
 /** Source frame of the nth occurrence of `label` in a take, shifted by `offset` seconds. */
-export function at(take: TakeName, label: string, offset = 0, occurrence = 0): number {
+export function at(
+  take: TakeName,
+  label: string,
+  offset = 0,
+  occurrence = 0,
+): number {
   const data: Markers = TAKES[take];
   const hits = data.markers.filter((marker) => marker.label === label);
   const hit = hits[occurrence];
@@ -41,24 +46,40 @@ export function at(take: TakeName, label: string, offset = 0, occurrence = 0): n
 
 export const lengthOf = (take: TakeName) => TAKES[take].frames;
 
-type LoggedMove = { frame: number; row: number; col: number; height: number; player: 1 | 2 };
+type LoggedMove = {
+  frame: number;
+  row: number;
+  col: number;
+  height: number;
+  player: 1 | 2;
+};
 
 // Mirrors the game's timing (apps/web/src/lib/game/animation.ts): a piece lands after its drop;
 // the completed line finishes drawing after the impact settles.
 const IMPACT_SECONDS = 0.18;
 const LINE_DRAW_SECONDS = 0.72 + 0.24;
 const dropSeconds = (boardHeight: number, height: number) =>
-  Math.min(0.5, Math.max(0.26, 0.17 + Math.sqrt(Math.max(1, boardHeight - height)) * 0.11));
+  Math.min(
+    0.5,
+    Math.max(0.26, 0.17 + Math.sqrt(Math.max(1, boardHeight - height)) * 0.11),
+  );
 
 export function movesOf(take: TakeName): LoggedMove[] {
-  return ((TAKES[take] as { moves?: LoggedMove[] }).moves ?? []) as LoggedMove[];
+  return ((TAKES[take] as { moves?: LoggedMove[] }).moves ??
+    []) as LoggedMove[];
 }
 
 /** Source frames where each recorded move's piece lands, in order. */
 export function landings(take: TakeName): number[] {
-  const data = TAKES[take] as { fps: number; match?: { dimensions: { height: number } } | null };
+  const data = TAKES[take] as {
+    fps: number;
+    match?: { dimensions: { height: number } } | null;
+  };
   const boardHeight = data.match?.dimensions.height ?? 6;
-  return movesOf(take).map((move) => move.frame + Math.round(dropSeconds(boardHeight, move.height) * data.fps));
+  return movesOf(take).map(
+    (move) =>
+      move.frame + Math.round(dropSeconds(boardHeight, move.height) * data.fps),
+  );
 }
 
 /** Source frame where the winning line (completed by the take's last move) finishes drawing. */
@@ -66,7 +87,9 @@ export function lineDrawn(take: TakeName): number {
   const all = landings(take);
   if (!all.length) throw new Error(`${take} has no moves`);
   const last = all[all.length - 1];
-  return last + Math.round((IMPACT_SECONDS + LINE_DRAW_SECONDS) * TAKES[take].fps);
+  return (
+    last + Math.round((IMPACT_SECONDS + LINE_DRAW_SECONDS) * TAKES[take].fps)
+  );
 }
 
 // apps/web/src/lib/game/animation.ts GAME_OVER_MODAL_DELAY_MS: the result card starts to fade in
@@ -77,5 +100,8 @@ const RESULT_CARD_SECONDS = 0.5 + 0.18 + 0.72 + 0.24 + 0.12;
 export function resultCardAt(take: TakeName): number {
   const moves = movesOf(take);
   if (!moves.length) throw new Error(`${take} has no moves`);
-  return moves[moves.length - 1].frame + Math.round(RESULT_CARD_SECONDS * TAKES[take].fps);
+  return (
+    moves[moves.length - 1].frame +
+    Math.round(RESULT_CARD_SECONDS * TAKES[take].fps)
+  );
 }

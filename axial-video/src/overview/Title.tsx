@@ -15,27 +15,65 @@ export const Title: React.FC<{
   position?: "left" | "centre" | "top" | "top-left";
   size?: number;
   slam?: boolean;
-}> = ({ text, accent, sub, duration, position = "left", size = 104, slam = false }) => {
+}> = ({
+  text,
+  accent,
+  sub,
+  duration,
+  position = "left",
+  size = 104,
+  slam = false,
+}) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const exit = interpolate(frame, [duration - 12, duration], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const exit = interpolate(frame, [duration - 12, duration], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
   const accentWords = new Set(accent?.split(" ") ?? []);
   const words = text.split(" ");
   const stagger = slam ? 0 : 3;
-  const subIn = spring({ frame: frame - words.length * stagger - 6, fps, config: { damping: 200 }, durationInFrames: 18 });
-  const land = spring({ frame, fps, config: { damping: 16, stiffness: 260, mass: 0.6 } });
+  const subIn = spring({
+    frame: frame - words.length * stagger - 6,
+    fps,
+    config: { damping: 200 },
+    durationInFrames: 18,
+  });
+  const land = spring({
+    frame,
+    fps,
+    config: { damping: 16, stiffness: 260, mass: 0.6 },
+  });
 
   const placement: React.CSSProperties =
     position === "centre"
-      ? { inset: 0, alignItems: "center", justifyContent: "center", textAlign: "center" }
+      ? {
+          inset: 0,
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+        }
       : position === "top"
-        ? { top: 120, left: 0, right: 0, justifyContent: "center", textAlign: "center" }
+        ? {
+            top: 120,
+            left: 0,
+            right: 0,
+            justifyContent: "center",
+            textAlign: "center",
+          }
         : position === "top-left"
           ? { top: 84, left: 150 }
-        : { top: 0, bottom: 0, left: 130, width: 940, alignItems: "center" };
+          : { top: 0, bottom: 0, left: 130, width: 940, alignItems: "center" };
 
   return (
-    <div style={{ position: "absolute", display: "flex", ...placement, opacity: exit }}>
+    <div
+      style={{
+        position: "absolute",
+        display: "flex",
+        ...placement,
+        opacity: exit,
+      }}
+    >
       <div
         style={{
           position: "relative",
@@ -45,19 +83,35 @@ export const Title: React.FC<{
           transformOrigin: position === "left" ? "0 50%" : "50% 50%",
         }}
       >
-        <div style={{ fontSize: size, fontWeight: 700, letterSpacing: "-0.035em", lineHeight: 1.04 }}>
+        <div
+          style={{
+            fontSize: size,
+            fontWeight: 700,
+            letterSpacing: "-0.035em",
+            lineHeight: 1.04,
+          }}
+        >
           {words.map((word, index) => {
             const rise = slam
               ? Math.min(1, frame / 4)
-              : spring({ frame: frame - index * stagger, fps, config: { damping: 200 }, durationInFrames: 16 });
+              : spring({
+                  frame: frame - index * stagger,
+                  fps,
+                  config: { damping: 200 },
+                  durationInFrames: 16,
+                });
             return (
               <span
                 key={index}
                 style={{
                   display: "inline-block",
                   opacity: rise,
-                  transform: slam ? undefined : `translateY(${(1 - rise) * 0.32 * size}px)`,
-                  color: accentWords.has(word.replace(/[.,…]/g, "")) ? theme.accent : undefined,
+                  transform: slam
+                    ? undefined
+                    : `translateY(${(1 - rise) * 0.32 * size}px)`,
+                  color: accentWords.has(word.replace(/[.,…]/g, ""))
+                    ? theme.accent
+                    : undefined,
                   marginRight: "0.24em",
                 }}
               >

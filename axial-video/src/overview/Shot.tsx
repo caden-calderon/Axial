@@ -1,4 +1,12 @@
-import { AbsoluteFill, Easing, Freeze, interpolate, OffthreadVideo, staticFile, useCurrentFrame } from "remotion";
+import {
+  AbsoluteFill,
+  Easing,
+  Freeze,
+  interpolate,
+  OffthreadVideo,
+  staticFile,
+  useCurrentFrame,
+} from "remotion";
 import type { TakeName } from "./footage";
 
 /** A punch-in keyframe: at local frame `at`, magnify by `scale` around `focus` (1920x1080 space). */
@@ -29,7 +37,8 @@ export function localLength(sourceFrames: number, speed: Speed[] = []): number {
   let frame = 0;
   while (sourceOffset(frame, speed) < sourceFrames - 1e-6) {
     frame++;
-    if (frame > 100_000) throw new Error(`Speed keys never reach source frame ${sourceFrames}`);
+    if (frame > 100_000)
+      throw new Error(`Speed keys never reach source frame ${sourceFrames}`);
   }
   return frame;
 }
@@ -54,13 +63,22 @@ export const Shot: React.FC<{
   hideChrome?: boolean;
 }> = ({ take, from, push = [], speed, kicks = [], hideChrome = false }) => {
   const frame = useCurrentFrame();
-  const keys = push.length ? push : [{ at: 0, scale: 1, focus: [960, 540] as [number, number] }];
+  const keys = push.length
+    ? push
+    : [{ at: 0, scale: 1, focus: [960, 540] as [number, number] }];
   const times = keys.map((key) => key.at);
-  const ease = { easing: Easing.inOut(Easing.cubic), extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
-  const pick = (values: number[]) => (keys.length === 1 ? values[0] : interpolate(frame, times, values, ease));
+  const ease = {
+    easing: Easing.inOut(Easing.cubic),
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  } as const;
+  const pick = (values: number[]) =>
+    keys.length === 1 ? values[0] : interpolate(frame, times, values, ease);
   const kick = kicks.reduce((total, at) => {
     const t = frame - at;
-    return t < 0 || t > 16 ? total : total + 0.03 * Math.exp(-t / 4.5) * Math.min(1, t / 2);
+    return t < 0 || t > 16
+      ? total
+      : total + 0.03 * Math.exp(-t / 4.5) * Math.min(1, t / 2);
   }, 0);
   const scale = pick(keys.map((key) => key.scale)) * (1 + kick);
   const fx = pick(keys.map((key) => key.focus[0]));
@@ -68,11 +86,29 @@ export const Shot: React.FC<{
   const tx = Math.min(0, Math.max(1920 - 1920 * scale, 960 - fx * scale));
   const top = hideChrome ? -CHROME_HEIGHT * scale : 0;
   const ty = Math.min(top, Math.max(1080 - 1080 * scale, 540 - fy * scale));
-  const video = <OffthreadVideo src={staticFile(`footage/${take}.mp4`)} trimBefore={from} muted style={{ width: "100%", height: "100%" }} />;
+  const video = (
+    <OffthreadVideo
+      src={staticFile(`footage/${take}.mp4`)}
+      trimBefore={from}
+      muted
+      style={{ width: "100%", height: "100%" }}
+    />
+  );
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
-      <AbsoluteFill style={{ transformOrigin: "0 0", transform: `translate(${tx}px, ${ty}px) scale(${scale})` }}>
-        {speed ? <Freeze frame={Math.round(sourceOffset(frame, speed))}>{video}</Freeze> : video}
+      <AbsoluteFill
+        style={{
+          transformOrigin: "0 0",
+          transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
+        }}
+      >
+        {speed ? (
+          <Freeze frame={Math.round(sourceOffset(frame, speed))}>
+            {video}
+          </Freeze>
+        ) : (
+          video
+        )}
       </AbsoluteFill>
     </AbsoluteFill>
   );

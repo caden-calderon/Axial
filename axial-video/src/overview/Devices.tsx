@@ -1,4 +1,12 @@
-import { AbsoluteFill, interpolate, OffthreadVideo, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import {
+  AbsoluteFill,
+  interpolate,
+  OffthreadVideo,
+  spring,
+  staticFile,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion";
 import { Backdrop } from "./Backdrop";
 import type { TakeName } from "./footage";
 import { Title } from "./Title";
@@ -18,9 +26,20 @@ export const Devices: React.FC<{
 }> = ({ desktop, phoneFrom, duration, title, accent, sub }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const windowIn = spring({ frame, fps, config: { damping: 18, stiffness: 140 } });
-  const phoneIn = spring({ frame: frame - 6, fps, config: { damping: 18, stiffness: 140 } });
-  const out = interpolate(frame, [duration - 10, duration], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const windowIn = spring({
+    frame,
+    fps,
+    config: { damping: 18, stiffness: 140 },
+  });
+  const phoneIn = spring({
+    frame: frame - 6,
+    fps,
+    config: { damping: 18, stiffness: 140 },
+  });
+  const out = interpolate(frame, [duration - 10, duration], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
   const drift = interpolate(frame, [0, duration], [0, 1]);
 
   const windowWidth = 1120;
@@ -50,16 +69,55 @@ export const Devices: React.FC<{
           transform: `translateX(${(1 - windowIn) * -140}px)`,
         }}
       >
-        <div style={{ position: "absolute", top: 14, left: 18, display: "flex", gap: 9 }}>
+        <div
+          style={{
+            position: "absolute",
+            top: 14,
+            left: 18,
+            display: "flex",
+            gap: 9,
+          }}
+        >
           {[0, 1, 2].map((dot) => (
-            <div key={dot} style={{ width: 11, height: 11, borderRadius: 99, background: "rgba(237, 247, 242, 0.18)" }} />
+            <div
+              key={dot}
+              style={{
+                width: 11,
+                height: 11,
+                borderRadius: 99,
+                background: "rgba(237, 247, 242, 0.18)",
+              }}
+            />
           ))}
         </div>
-        <div style={{ position: "absolute", top: 9, left: 0, right: 0, textAlign: "center", fontFamily: theme.font, fontSize: 17, color: theme.muted }}>
+        <div
+          style={{
+            position: "absolute",
+            top: 9,
+            left: 0,
+            right: 0,
+            textAlign: "center",
+            fontFamily: theme.font,
+            fontSize: 17,
+            color: theme.muted,
+          }}
+        >
           playaxial.dev
         </div>
-        <div style={{ width: windowWidth, height: windowHeight, borderRadius: 12, overflow: "hidden" }}>
-          <OffthreadVideo src={staticFile(`footage/${desktop.take}.mp4`)} trimBefore={desktop.from} muted style={{ width: "100%", height: "100%" }} />
+        <div
+          style={{
+            width: windowWidth,
+            height: windowHeight,
+            borderRadius: 12,
+            overflow: "hidden",
+          }}
+        >
+          <OffthreadVideo
+            src={staticFile(`footage/${desktop.take}.mp4`)}
+            trimBefore={desktop.from}
+            muted
+            style={{ width: "100%", height: "100%" }}
+          />
         </div>
       </div>
       <div
@@ -75,11 +133,30 @@ export const Devices: React.FC<{
           transform: `translateY(${(1 - phoneIn) * 160}px)`,
         }}
       >
-        <div style={{ width: phoneWidth, height: phoneHeight, borderRadius: 44, overflow: "hidden" }}>
-          <OffthreadVideo src={staticFile("footage/phone-play.mp4")} trimBefore={phoneFrom} muted style={{ width: "100%", height: "100%" }} />
+        <div
+          style={{
+            width: phoneWidth,
+            height: phoneHeight,
+            borderRadius: 44,
+            overflow: "hidden",
+          }}
+        >
+          <OffthreadVideo
+            src={staticFile("footage/phone-play.mp4")}
+            trimBefore={phoneFrom}
+            muted
+            style={{ width: "100%", height: "100%" }}
+          />
         </div>
       </div>
-      <Title text={title} accent={accent} sub={sub} duration={duration} position="top-left" size={84} />
+      <Title
+        text={title}
+        accent={accent}
+        sub={sub}
+        duration={duration}
+        position="top-left"
+        size={84}
+      />
     </AbsoluteFill>
   );
 };

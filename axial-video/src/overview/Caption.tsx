@@ -14,8 +14,16 @@ export const Caption: React.FC<{
 }> = ({ text, accent, duration, position = "bottom", size = 52 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const enter = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 14 });
-  const exit = interpolate(frame, [duration - 10, duration], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const enter = spring({
+    frame,
+    fps,
+    config: { damping: 200 },
+    durationInFrames: 14,
+  });
+  const exit = interpolate(frame, [duration - 10, duration], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
   const parts = accent ? text.split(accent) : [text];
   const placement: React.CSSProperties =
     position === "top"
