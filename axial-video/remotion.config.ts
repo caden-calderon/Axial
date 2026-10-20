@@ -9,7 +9,9 @@ import { Config } from "@remotion/cli/config";
 
 Config.setRspack(true);
 Config.setVideoImageFormat("png");
-// This workstation already has Chromium; the bundled browser download failed TLS.
+// Use the system Chrome (NixOS path) rather than Remotion's browser download.
 Config.setBrowserExecutable(
-  process.env.REMOTION_BROWSER_EXECUTABLE ?? "/usr/bin/chromium",
+  process.env.REMOTION_BROWSER_EXECUTABLE ??
+    "/run/current-system/sw/bin/google-chrome",
 );
+Config.setChromeMode("chrome-for-testing");

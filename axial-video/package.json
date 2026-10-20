@@ -1,7 +1,7 @@
 {
   "name": "axial-video",
   "version": "1.0.0",
-  "description": "Axial gameplay trailer and video editing workspace",
+  "description": "Axial gameplay overview video: frame-exact recordings of the real game, edited in Remotion",
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
@@ -26,10 +26,7 @@
     "upgrade": "remotion upgrade",
     "lint": "eslint src && tsc",
     "check": "tsc --noEmit",
-    "render:landscape": "remotion render src/index.ts TrailerLandscape out/axial-trailer-landscape.mp4 --codec=h264",
-    "render:portrait": "remotion render src/index.ts TrailerPortrait out/axial-trailer-portrait.mp4 --codec=h264",
-    "render:storyboard:landscape": "remotion render src/index.ts TrailerStoryboardLandscape out/storyboard-landscape.mp4 --codec=h264",
-    "render:storyboard:portrait": "remotion render src/index.ts TrailerStoryboardPortrait out/storyboard-portrait.mp4 --codec=h264"
+    "render:overview": "remotion render src/index.ts Overview out/axial-overview-1080p60.mp4 --codec=h264 --crf=16"
   },
   "sideEffects": [
     "*.css"
