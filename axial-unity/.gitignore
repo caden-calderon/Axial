@@ -1,0 +1,27 @@
+# Unity generates these on open.
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+*.csproj
+*.sln
+*.pidb.meta
+*.pdb.meta
+mono_crash.*
+.vscode/
+
+# Unity's crash-recovery autosaves.
+/Assets/_Recovery/
+/Assets/_Recovery.meta
+
+# The MediaPipe Unity Plugin (homuler, MIT, v0.16.2) is embedded here locally but is 390 MB of
+# someone else's native libraries and models. See README.md to install it.
+/Packages/com.github.homuler.mediapipe/
+
+# An unused third-party character model that isn't ours to publish.
+/Assets/MediaPipeUnity/Mii_Maker_for_4.1_v2.fbx
+/Assets/MediaPipeUnity/Mii_Maker_for_4.1_v2.fbx.meta

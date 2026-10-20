@@ -73,13 +73,14 @@ The test command runs unit tests and Playwright browser tests against a producti
 
 ## Repository map
 
-| Path                            | Contents                                                                         |
-| ------------------------------- | -------------------------------------------------------------------------------- |
-| [`axial-web/`](axial-web/)      | The web application, shared rules and AI packages, and the multiplayer service   |
-| [`axial-video/`](axial-video/)  | Remotion project for the game's overview video, recorded from the real web app   |
-| [`docs/`](docs/)                | Gameplay media and the compiled reports from the original project                |
-| [`dev/`](dev/README.md)         | Engineering notes: plans, decisions, audits, and dated verification evidence     |
-| [`archive/`](archive/README.md) | The original Unity-era project: proposal, report sources, and the Python MCTS AI |
+| Path                                    | Contents                                                                            |
+| --------------------------------------- | ----------------------------------------------------------------------------------- |
+| [`axial-web/`](axial-web/)              | The web application, shared rules and AI packages, and the multiplayer service      |
+| [`axial-video/`](axial-video/)          | Remotion project for the game's overview video, recorded from the real web app      |
+| [`axial-unity/`](axial-unity/README.md) | The original Unity game: hand-tracked play through MediaPipe, against the Python AI |
+| [`docs/`](docs/)                        | Gameplay media and the compiled reports from the original project                   |
+| [`dev/`](dev/README.md)                 | Engineering notes: plans, decisions, audits, and dated verification evidence        |
+| [`archive/`](archive/README.md)         | The original Unity-era project: proposal, report sources, and the Python MCTS AI    |
 
 ## How it started
 
@@ -88,8 +89,7 @@ Axial began in late 2025 as a Unity desktop game, built for a game design course
 - [Gameplay video of the Unity version](https://youtu.be/uuLK-gQ7Y54)
 - Reports: [game design and hand tracking](docs/papers/01-Axial-Game-and-Hand-Tracking.pdf) and [AI and MCTS](docs/papers/02-Axial-AI-and-MCTS.pdf)
 - [The original Python AI](archive/python-ai/README.md), still runnable with `uv`
-
-The Unity project itself is not in this repository.
+- [The Unity project](axial-unity/README.md), minus the 390 MB MediaPipe plugin it embeds
 
 ## License
 
