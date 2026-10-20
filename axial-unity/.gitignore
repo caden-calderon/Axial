@@ -25,3 +25,11 @@ mono_crash.*
 # An unused third-party character model that isn't ours to publish.
 /Assets/MediaPipeUnity/Mii_Maker_for_4.1_v2.fbx
 /Assets/MediaPipeUnity/Mii_Maker_for_4.1_v2.fbx.meta
+
+# Scratch scenes and scripts that nothing in the game references.
+/Assets/ahh.unity
+/Assets/ahh.unity.meta
+/Assets/Scenes/Backup.unity
+/Assets/Scenes/Backup.unity.meta
+/Assets/MediaPipeUnity/Playerfff.cs
+/Assets/MediaPipeUnity/Playerfff.cs.meta

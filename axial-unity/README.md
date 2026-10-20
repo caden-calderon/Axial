@@ -33,5 +33,5 @@ in that sample's folder:
    `AxialGameController` connects.
 4. Open `Assets/Scenes/main.unity` and press Play with a webcam connected.
 
-Not included: Unity's generated folders, crash-recovery autosaves, and an unused third-party character
-model.
+Not included: Unity's generated folders, crash-recovery autosaves, a few scratch scenes and scripts
+that nothing references, and an unused third-party character model.
