@@ -6,54 +6,83 @@
 <style>
 	.legend {
 		position: absolute;
-		left: 760px;
-		top: 110px;
+		left: 740px;
+		top: 70px;
 		display: grid;
-		gap: 44px;
-		font-size: 42px;
-		line-height: 1.25;
-		max-width: 700px;
+		gap: 56px;
+		font-size: 52px;
+		font-weight: 600;
+		line-height: 1.2;
+		max-width: 716px;
 	}
 	.legend div {
 		display: grid;
-		grid-template-columns: 56px 1fr;
+		grid-template-columns: 66px 1fr;
 		align-items: start;
 	}
 	.dot {
-		width: 30px;
-		height: 30px;
+		width: 36px;
+		height: 36px;
 		border-radius: 50%;
-		margin-top: 8px;
+		margin-top: 14px;
 	}
 	.legend small {
 		display: block;
 		color: var(--muted);
-		font-size: 32px;
-		margin-top: 10px;
+		font-size: 46px;
+		font-weight: 450;
+		line-height: 1.25;
+		margin-top: 12px;
 	}
 </style>
 </head>
 <body>
 	<h1>21 tracked points per hand</h1>
-	<p class="sub">MediaPipe finds the wrist, knuckles and fingertips in every webcam frame.</p>
+	<p class="sub">MediaPipe finds them in every webcam frame.</p>
 	<div class="stage">
 		<svg id="svg" width="1440" height="680"></svg>
 		<div class="legend">
 			<div>
 				<span class="dot" style="background: var(--azure); box-shadow: 0 0 0 6px rgba(115,245,216,.3)"></span>
 				<span>Wrist and base knuckles
-					<small>Barely move when you curl your fingers. Used to judge depth.</small></span>
+					<small>Barely move when you curl your fingers. Used for depth.</small></span>
 			</div>
 			<div>
 				<span class="dot" style="background: var(--solar)"></span>
 				<span>Finger joints and tips
-					<small>Move with every gesture. Used for pinching to grab and release.</small></span>
+					<small>Move with every gesture. Used for the pinch.</small></span>
 			</div>
 		</div>
 	</div>
 	<script type="module">
-		import { OPEN_HAND, drawHand } from './hand.js';
-		drawHand(document.getElementById('svg'), OPEN_HAND, { cx: 360, cy: 640, size: 410 });
+		import { OPEN_HAND, PALM_POINTS, drawHand, el } from './hand.js';
+		const svg = document.getElementById('svg');
+		const { at } = drawHand(svg, OPEN_HAND, { cx: 380, cy: 615, size: 430 });
+
+		// MediaPipe's own landmark indices, set just outside each point, away from the palm centre.
+		const [ox, oy] = at(9).map((v, k) => (v + at(0)[k]) / 2);
+		OPEN_HAND.forEach((_, i) => {
+			const [x, y] = at(i);
+			const d = Math.hypot(x - ox, y - oy) || 1;
+			const r = PALM_POINTS.includes(i) ? 40 : 30;
+			// The wrist sits on the bottom edge, so its number goes beside it.
+			// Finger joints and tips get their number straight beside them, so none drifts toward the
+			// next joint up; the thumb and knuckles spread outward from the palm instead.
+			const [lx, ly] = i === 0
+				? [x + 44, y + 12]
+				: i > 4 && !PALM_POINTS.includes(i)
+				? [x + 34, y + 11]
+				: [x + ((x - ox) / d) * r + (i > 4 && !PALM_POINTS.includes(i) ? 26 : 0), y + ((y - oy) / d) * r + 10];
+			const t = el('text', {
+				x: lx,
+				y: ly,
+				'font-size': 30,
+				'font-weight': 600,
+				'text-anchor': 'middle',
+				fill: PALM_POINTS.includes(i) ? '#73f5d8' : '#92aca4'
+			}, svg);
+			t.textContent = i;
+		});
 		document.body.dataset.ready = '1';
 	</script>
 </body>

@@ -2,7 +2,7 @@
 // Units are "hand units"; HAND_SCALE converts them to normalized image coordinates.
 export const OPEN_HAND = [
 	[0, 0],
-	[-0.28, -0.12], [-0.48, -0.3], [-0.62, -0.48], [-0.74, -0.64],
+	[-0.28, -0.1], [-0.5, -0.22], [-0.66, -0.34], [-0.8, -0.44],
 	[-0.22, -0.62], [-0.26, -0.92], [-0.28, -1.1], [-0.3, -1.26],
 	[-0.02, -0.66], [-0.02, -0.99], [-0.02, -1.19], [-0.02, -1.36],
 	[0.17, -0.61], [0.2, -0.9], [0.22, -1.08], [0.23, -1.23],
@@ -34,8 +34,12 @@ export const MIDDLE_BASE = 9;
 export const PINKY_BASE = 17;
 export const MIDDLE_TIP = 12;
 
-// Normalized image size of one hand unit for a hand at a comfortable mid-range distance.
-export const HAND_SCALE = 0.14;
+// Normalized image size of one hand unit, horizontally, at a comfortable mid-range distance.
+// MediaPipe normalizes x by image width and y by image height, so on the 1280 x 720 webcam the
+// same length reads 16/9 larger vertically. Together these reproduce the neutral hand measured in
+// HandTracker3D_Documentation.md: index-to-pinky width 0.0585, wrist-to-middle-knuckle 0.1241.
+export const HAND_SCALE = 0.106;
+export const IMAGE_ASPECT = 16 / 9;
 
 export function rotate(points, degrees) {
 	const r = (degrees * Math.PI) / 180;
@@ -44,11 +48,16 @@ export function rotate(points, degrees) {
 	return points.map(([x, y]) => [x * c - y * s, x * s + y * c]);
 }
 
+// Squashes a pose about the wrist, as a camera sees a hand turned away (x) or tipped toward it (y).
+export function foreshorten(points, sx, sy) {
+	return points.map(([x, y]) => [x * sx, y * sy]);
+}
+
 const inverseLerp = (a, b, v) => Math.min(1, Math.max(0, (v - a) / (b - a)));
 
 // Mirrors HandTracker3D.CalculateHandSize (PalmMaxDimension), including its normalization ranges.
 export function palmMax(points, scale = HAND_SCALE) {
-	const p = (i) => [points[i][0] * scale, points[i][1] * scale];
+	const p = (i) => [points[i][0] * scale, points[i][1] * scale * IMAGE_ASPECT];
 	const [ix, iy] = p(INDEX_BASE);
 	const [px, py] = p(PINKY_BASE);
 	const [wx, wy] = p(WRIST);
@@ -56,6 +65,31 @@ export function palmMax(points, scale = HAND_SCALE) {
 	const x = inverseLerp(0.03, 0.12, Math.abs(ix - px));
 	const y = inverseLerp(0.01, 0.15, Math.abs(iy - py));
 	const h = inverseLerp(0.06, 0.2, Math.hypot(wx - mx, wy - my));
+	return { x, y, h, max: Math.max(x, y, h) };
+}
+
+// The tops of HandTracker3D.cs's normalization ranges (width 0.12, height 0.15, palm length 0.20),
+// converted to hand units: x is normalized by image width and y by image height, so vertical
+// lengths read IMAGE_ASPECT larger. Palm length is converted as vertical, the way it usually sits.
+const RANGE_TOP = {
+	x: 0.12 / HAND_SCALE,
+	y: 0.15 / (HAND_SCALE * IMAGE_ASPECT),
+	h: 0.2 / (HAND_SCALE * IMAGE_ASPECT)
+};
+
+// Illustrative scores for the rulers figure: each ruler's on-screen span over the top of its own
+// range, so every bar stays proportional to the ruler drawn above it. Palm length is shown by the
+// height it spans: in camera coordinates vertical distance counts 16/9 more, so the code's palm
+// length also drops when the palm tilts. Unlike the code, this skips subtracting each range's bottom.
+// In each of the figure's poses it picks the same winner as palmMax.
+export function rulerScores(points) {
+	const [ix, iy] = points[INDEX_BASE];
+	const [px, py] = points[PINKY_BASE];
+	const [wx, wy] = points[WRIST];
+	const [mx, my] = points[MIDDLE_BASE];
+	const x = Math.min(1, Math.abs(ix - px) / RANGE_TOP.x);
+	const y = Math.min(1, Math.abs(iy - py) / RANGE_TOP.y);
+	const h = Math.min(1, Math.abs(wy - my) / RANGE_TOP.h);
 	return { x, y, h, max: Math.max(x, y, h) };
 }
 

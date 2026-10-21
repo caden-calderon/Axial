@@ -35,21 +35,21 @@ body {
 	background:
 		radial-gradient(120% 90% at 50% 0%, var(--field-b) 0%, var(--field) 70%),
 		var(--field);
-	padding: 56px 72px;
+	padding: 50px 72px;
 	display: flex;
 	flex-direction: column;
 }
 
 h1 {
-	font-size: 60px;
+	font-size: 76px;
 	font-weight: 650;
 	letter-spacing: -0.02em;
 	line-height: 1.1;
 }
 
 .sub {
-	margin-top: 12px;
-	font-size: 34px;
+	margin-top: 10px;
+	font-size: 44px;
 	color: var(--muted);
 	font-weight: 450;
 }

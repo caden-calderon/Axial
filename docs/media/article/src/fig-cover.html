@@ -1,0 +1,87 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="common.css" />
+<style>
+	body {
+		padding: 0;
+		background: #05050b;
+	}
+	.half {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		width: 50%;
+		background-size: cover;
+	}
+	.unity {
+		left: 0;
+		background-image: url('unity-cover.jpg');
+		background-position: 18% 50%;
+		/* Fade into the centre so the two eras meet instead of butting together. */
+		mask-image: linear-gradient(90deg, #000 70%, transparent);
+	}
+	.browser {
+		right: 0;
+		background-color: #05080f;
+		background-image: url('cover-browser.jpg');
+		background-size: auto 72%;
+		background-repeat: no-repeat;
+		background-position: 50% 62%;
+		mask-image: linear-gradient(270deg, #000 70%, transparent);
+	}
+	/* Darken the bottom so the captions stay readable over either scene. */
+	.scrim {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		height: 300px;
+		background: linear-gradient(transparent, rgba(5, 5, 11, 0.92) 70%);
+	}
+	.mark {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 64px;
+		text-align: center;
+		font-size: 96px;
+		font-weight: 300;
+		letter-spacing: 0.42em;
+		text-indent: 0.42em;
+		text-shadow: 0 4px 40px rgba(0, 0, 0, 0.8);
+	}
+	.era {
+		position: absolute;
+		bottom: 56px;
+		font-size: 40px;
+		font-weight: 500;
+		color: var(--text);
+		text-shadow: 0 2px 20px rgba(0, 0, 0, 0.9);
+	}
+	.era small {
+		display: block;
+		font-size: 30px;
+		color: var(--muted);
+		font-weight: 450;
+		margin-top: 4px;
+	}
+</style>
+</head>
+<body>
+	<div class="half unity"></div>
+	<div class="half browser"></div>
+	<div class="scrim"></div>
+	<div class="mark">AXIAL</div>
+	<div class="era" style="left: 64px">Played with your hands<small>Unity + webcam, 2025</small></div>
+	<div class="era" style="right: 64px; text-align: right">Played in your browser<small>playaxial.dev, 2026</small></div>
+	<script>
+		Promise.all(['unity-cover.jpg', 'cover-browser.jpg'].map((src) => {
+			const img = new Image();
+			img.src = src;
+			return img.decode();
+		})).then(() => (document.body.dataset.ready = '1'));
+	</script>
+</body>
+</html>

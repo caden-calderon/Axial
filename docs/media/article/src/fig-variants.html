@@ -1,0 +1,69 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="common.css" />
+<style>
+	.panels {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 48px;
+		height: 100%;
+	}
+	figure {
+		display: flex;
+		flex-direction: column;
+		margin: 0;
+	}
+	figure img {
+		width: 100%;
+		height: 470px;
+		object-fit: cover;
+		border-radius: 24px;
+		border: 2px solid var(--line);
+	}
+	figcaption {
+		margin-top: 22px;
+		font-size: 50px;
+		font-weight: 600;
+	}
+	figcaption small {
+		display: block;
+		margin-top: 6px;
+		font-size: 42px;
+		font-weight: 450;
+		color: var(--muted);
+	}
+	.pip {
+		display: inline-block;
+		width: 30px;
+		height: 30px;
+		border-radius: 50%;
+		margin: 0 10px 0 2px;
+		vertical-align: -2px;
+	}
+</style>
+</head>
+<body>
+	<h1>More ways to play</h1>
+	<p class="sub">Real boards from the browser version.</p>
+	<div class="stage">
+		<div class="panels">
+			<figure>
+				<img src="board-big.jpg" alt="" />
+				<figcaption>9 × 9 × 9, connect five
+					<small>Boards grow up to 10 a side</small></figcaption>
+			</figure>
+			<figure>
+				<img src="board-lines.jpg" alt="" />
+				<figcaption>Three lines to win
+					<small><span class="pip" style="background:#d98b5f"></span>2 lines
+						&nbsp;<span class="pip" style="background:#5b9bc4"></span>1 line, game on</small></figcaption>
+			</figure>
+		</div>
+	</div>
+	<script>
+		Promise.all([...document.images].map((img) => img.decode())).then(() => (document.body.dataset.ready = '1'));
+	</script>
+</body>
+</html>

@@ -6,71 +6,105 @@
 </head>
 <body>
 	<h1>Several rulers, keep the biggest</h1>
-	<p class="sub">Same hand, same distance, just tilted. Width alone collapses; the max holds up.</p>
+	<p class="sub">Three rulers, each on its own scale: <span style="color:#ff7a96">width</span>, <span style="color:#a88cff">height</span>, <span style="color:#73f5d8">palm length</span>.</p>
 	<div class="stage">
-		<svg id="svg" width="1440" height="680"></svg>
+		<svg id="svg" width="1456" height="630"></svg>
 	</div>
 	<script type="module">
-		import { OPEN_HAND, INDEX_BASE, PINKY_BASE, WRIST, MIDDLE_BASE, rotate, palmMax, drawHand, el } from './hand.js';
+		import { OPEN_HAND, INDEX_BASE, PINKY_BASE, WRIST, MIDDLE_BASE, rotate, foreshorten, rulerScores, drawHand, el } from './hand.js';
 		const svg = document.getElementById('svg');
 		const PINK = '#ff7a96';
 		const TEAL = '#73f5d8';
 		const VIOLET = '#a88cff';
-		const MUTED = '#92aca4';
-		const SIZE = 165;
+		const SIZE = 178;
 
+		// Each pose is one the original design notes describe: bending the wrist toward the camera
+		// shortens the palm, waving tips the knuckle line, and turning edge-on stacks the knuckles.
 		const poses = [
-			{ angle: 0, label: 'Upright' },
-			{ angle: 45, label: 'Tilted' },
-			{ angle: 90, label: 'Sideways' }
+			{ label: 'Facing', points: OPEN_HAND },
+			{ label: 'Wrist bent', points: foreshorten(OPEN_HAND, 1, 0.5) },
+			{ label: 'Waving', points: rotate(OPEN_HAND, 50) },
+			{ label: 'Edge-on', points: foreshorten(OPEN_HAND, 0.34, 1) }
+		];
+		const rulers = [
+			{ key: 'x', name: 'width', color: PINK },
+			{ key: 'y', name: 'height', color: VIOLET },
+			{ key: 'h', name: 'palm length', color: TEAL }
 		];
 
-		const COLW = 480;
-		poses.forEach((pose, i) => {
-			// Rotate about the palm's centre so every pose sits in the same spot.
-			const PIVOT = [0.05, -0.55];
-			const points = rotate(OPEN_HAND.map(([x, y]) => [x - PIVOT[0], y - PIVOT[1]]), pose.angle);
-			const cx = i * COLW + COLW / 2;
-			const cy = 290;
-			const at = (k) => [cx + points[k][0] * SIZE, cy + points[k][1] * SIZE];
-			drawHand(svg, points, { cx, cy, size: SIZE });
+		// A measured span with a bar across each end, so a short span still reads as "from here to here".
+		function dimension(x1, y1, x2, y2, color, bar = 15) {
+			const len = Math.hypot(x2 - x1, y2 - y1);
+			// Perpendicular unit vector; a near-zero span falls back to the bars' default orientation.
+			const [nx, ny] = len > 1 ? [-(y2 - y1) / len, (x2 - x1) / len] : [x1 === x2 ? 1 : 0, x1 === x2 ? 0 : 1];
+			const g = el('g', { stroke: color, 'stroke-width': 6, 'stroke-linecap': 'round' }, svg);
+			el('line', { x1, y1, x2, y2 }, g);
+			for (const [x, y] of [[x1, y1], [x2, y2]]) {
+				el('line', { x1: x - nx * bar, y1: y - ny * bar, x2: x + nx * bar, y2: y + ny * bar }, g);
+			}
+		}
+		function extension(x1, y1, x2, y2, color) {
+			el('line', { x1, y1, x2, y2, stroke: color, 'stroke-width': 2.5, 'stroke-dasharray': '5 7', opacity: 0.55 }, svg);
+		}
 
-			// Projected spans between the index and pinky knuckles, and the wrist-to-middle-knuckle length.
+		const COLW = 1456 / poses.length;
+		poses.forEach((pose, i) => {
+			// Centre each pose on its palm so the hands line up across the row.
+			const [px, py] = [(pose.points[0][0] + pose.points[MIDDLE_BASE][0]) / 2, (pose.points[0][1] + pose.points[MIDDLE_BASE][1]) / 2];
+			const points = pose.points.map(([x, y]) => [x - px, y - py]);
+			const cx = i * COLW + COLW / 2;
+			const cy = 262;
+			const at = (k) => [cx + points[k][0] * SIZE, cy + points[k][1] * SIZE];
+			const xs = points.map((_, k) => at(k)[0]);
+			const ys = points.map((_, k) => at(k)[1]);
 			const [ix, iy] = at(INDEX_BASE);
-			const [px, py] = at(PINKY_BASE);
-			el('line', { x1: Math.min(ix, px), y1: Math.max(iy, py) + 26, x2: Math.max(ix, px), y2: Math.max(iy, py) + 26, stroke: PINK, 'stroke-width': 5, 'stroke-linecap': 'round' }, svg);
-			el('line', { x1: Math.max(ix, px) + 26, y1: Math.min(iy, py), x2: Math.max(ix, px) + 26, y2: Math.max(iy, py), stroke: VIOLET, 'stroke-width': 5, 'stroke-linecap': 'round' }, svg);
+			const [kx, ky] = at(PINKY_BASE);
 			const [wx, wy] = at(WRIST);
 			const [mx, my] = at(MIDDLE_BASE);
-			el('line', { x1: wx, y1: wy, x2: mx, y2: my, stroke: TEAL, 'stroke-width': 6, 'stroke-linecap': 'round', 'stroke-dasharray': '2 10' }, svg);
 
-			const title = el('text', { x: cx, y: 30, 'font-size': 40, 'font-weight': 600, 'text-anchor': 'middle' }, svg);
+			// Width below the hand and height to its right, each tied back to the index and pinky knuckles.
+			const below = Math.max(...ys) + 30;
+			const right = Math.max(...xs) + 30;
+			// Palm length to the left: an upright ruler spanning the height between the wrist and the middle
+			// knuckle, with level leaders, matching how its bar is scored (see rulerScores).
+			const left = Math.min(...xs) - 30;
+
+			// Dotted leaders go under the hand, so where one passes a joint it tucks behind it.
+			extension(ix, iy, ix, below, PINK);
+			extension(kx, ky, kx, below, PINK);
+			extension(ix, iy, right, iy, VIOLET);
+			extension(kx, ky, right, ky, VIOLET);
+			extension(wx, wy, left, wy, TEAL);
+			extension(mx, my, left, my, TEAL);
+			drawHand(svg, points, { cx, cy, size: SIZE });
+			// Ring the two points palm length runs between; its top leader passes along the knuckle row,
+			// so the ring says which knuckle it starts from.
+			for (const [x, y] of [[wx, wy], [mx, my]]) {
+				el('circle', { cx: x, cy: y, r: 21, fill: 'none', stroke: TEAL, 'stroke-width': 3.5 }, svg);
+			}
+			dimension(ix, below, kx, below, PINK);
+			dimension(right, iy, right, ky, VIOLET);
+			dimension(left, wy, left, my, TEAL);
+
+			const title = el('text', { x: cx, y: 42, 'font-size': 48, 'font-weight': 600, 'text-anchor': 'middle' }, svg);
 			title.textContent = pose.label;
 
-			// Bars use the original normalization ranges from HandTracker3D.cs.
-			const m = palmMax(points);
-			const rows = [
-				{ name: 'width', v: m.x, color: PINK },
-				{ name: 'height', v: m.y, color: VIOLET },
-				{ name: 'palm', v: m.h, color: TEAL }
-			];
-			const bx = cx - 120;
-			const BW = 220;
-			rows.forEach((r, k) => {
-				const y = 452 + k * 50;
-				const isMax = r.v === m.max;
-				const t = el('text', { x: bx - 14, y: y + 11, 'font-size': 30, fill: MUTED, 'text-anchor': 'end' }, svg);
-				t.textContent = r.name;
-				el('rect', { x: bx, y: y - 12, width: BW, height: 26, rx: 13, fill: 'rgba(146,172,164,0.14)' }, svg);
-				el('rect', { x: bx, y: y - 12, width: Math.max(22, r.v * BW), height: 26, rx: 13, fill: r.color, opacity: isMax ? 1 : 0.35 }, svg);
-				if (isMax) {
-					const s = el('text', { x: bx + BW + 12, y: y + 11, 'font-size': 30, 'font-weight': 700, fill: r.color }, svg);
-					s.textContent = 'max';
-				}
+			// Each bar is its ruler's length over the top of that ruler's range in HandTracker3D.cs
+			// (see rulerScores), so it stays proportional to the marker above; the brightest is the max.
+			const m = rulerScores(points);
+			const BW = 250;
+			const bx = cx - BW / 2;
+			let winner = rulers[0];
+			rulers.forEach((r, k) => {
+				const y = 432 + k * 50;
+				const isMax = m[r.key] === m.max;
+				if (isMax) winner = r;
+				const w = m[r.key] * BW;
+				el('rect', { x: bx, y: y - 15, width: BW, height: 32, rx: 16, fill: 'rgba(146,172,164,0.14)' }, svg);
+				el('rect', { x: bx, y: y - 15, width: w, height: 32, rx: Math.min(16, w / 2), fill: r.color, opacity: isMax ? 1 : 0.4 }, svg);
 			});
-			const verdicts = ['Width alone: correct', 'Width alone: “moved back”', 'Width alone: “far away”'];
-			const reading = el('text', { x: cx, y: 650, 'font-size': 32, 'text-anchor': 'middle', fill: i === 0 ? MUTED : PINK }, svg);
-			reading.textContent = verdicts[i];
+			const verdict = el('text', { x: cx, y: 606, 'font-size': 42, 'font-weight': 600, 'text-anchor': 'middle', fill: winner.color }, svg);
+			verdict.textContent = `${winner.name} wins`;
 		});
 		document.body.dataset.ready = '1';
 	</script>
