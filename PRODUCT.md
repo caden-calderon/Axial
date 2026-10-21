@@ -1,9 +1,5 @@
 # Product
 
-## Register
-
-product
-
 ## Users
 
 Axial serves new and returning strategy-game players on desktop and mobile, including friends playing private online matches, solo players facing the AI, and experienced players exploring deeper board and rule variants. They may arrive with no knowledge of the original project or of three-dimensional gravity games. Their primary job is to understand the board quickly, choose a match with minimal friction, place pieces confidently, read threats and completed lines, and recover or rematch without losing context.

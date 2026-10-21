@@ -56,6 +56,14 @@ venv/
 # Local-only notes and drafts kept out of the public repository
 /private/
 
+# Coding-agent configuration stays local
+AGENTS.md
+CLAUDE.md
+.claude/
+.codex/
+.cursor/
+.impeccable/
+
 # Generated and recovered local publication outputs. Selected papers live in docs/papers/.
 /output/
 
