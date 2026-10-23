@@ -18,6 +18,7 @@ import {
 	replayMoves,
 	type BoardDimensions,
 	type GameSnapshot,
+	type GameStatus,
 	type MatchMode,
 	type Move,
 	type Player,
@@ -42,7 +43,12 @@ import {
 	PIECE_IMPACT_DURATION_SECONDS
 } from '../animation';
 import { createClassicAiClient, type ClassicAiClient } from './classicAiClient';
-import { createSessionRecord, recordCompletedGame, type SessionRecord } from './sessionRecord';
+import {
+	createSessionRecord,
+	recordCompletedGame,
+	withdrawCompletedGame,
+	type SessionRecord
+} from './sessionRecord';
 
 const STORAGE_KEYS = {
 	uiTheme: 'axial-theme',
@@ -187,6 +193,7 @@ export function createGameController() {
 	let aiSeriesActive = false;
 	let matchId = 0;
 	let recordedMatchId: number | null = null;
+	let recordedOutcome: GameStatus | null = null;
 	let matchStartedAt = $state<number | null>(null);
 	let matchEndedAt = $state<number | null>(null);
 	let aiPlacementTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -201,7 +208,7 @@ export function createGameController() {
 
 	const setupLocked = $derived(game.moveHistory.length > 0 || redoMoves.length > 0);
 	const appearanceLocked = $derived(setupLocked);
-	const canUndo = $derived(game.moveHistory.length > 0);
+	const canUndo = $derived(undoDecisionMoveCount(game, opponentMode) > 0);
 	const canRedo = $derived(redoMoves.length > 0);
 	const previewMove = $derived(lockedMove ?? hoveredMove);
 	const showGameOverModal = $derived(
@@ -327,7 +334,8 @@ export function createGameController() {
 			aiSeriesActive = savedOpponentMode === 'ai';
 		}
 		if (savedAiDifficulty) aiDifficulty = savedAiDifficulty;
-		if (savedMatchMode) matchMode = savedMatchMode;
+		// Tactical is switched off in the interface for now; an older saved choice must not revive it.
+		if (savedMatchMode && isMatchModeAvailable(savedMatchMode)) matchMode = savedMatchMode;
 		if (savedBoardDimensions) boardDimensions = savedBoardDimensions;
 		if (savedWinCondition) {
 			winCondition = savedWinCondition;
@@ -357,6 +365,10 @@ export function createGameController() {
 	function restoreActiveMatch(serialized: string | null): boolean {
 		const saved = parsePersistedActiveMatch(serialized);
 		if (!saved) return false;
+		if (!isMatchModeAvailable(saved.matchMode)) {
+			clearSavedActiveMatch();
+			return false;
+		}
 
 		try {
 			const restoredGame = replayMoves(
@@ -551,9 +563,11 @@ export function createGameController() {
 		const lastMove = game.moveHistory.at(-1);
 		if (!lastMove) return;
 
+		const moveCount = undoDecisionMoveCount(game, opponentMode);
+		if (moveCount === 0) return;
+
 		clearQueuedAiMove();
 		clearGameOverModalDelay();
-		const moveCount = undoDecisionMoveCount(game, opponentMode);
 		const splitIndex = game.moveHistory.length - moveCount;
 		const previousMoves = game.moveHistory.slice(0, splitIndex).map(toMove);
 		const undoneMoves = game.moveHistory.slice(splitIndex).map(toMove);
@@ -675,6 +689,12 @@ export function createGameController() {
 
 		clearQueuedAiMove();
 		aiSeriesActive = false;
+	}
+
+	/** Continue the current match after a detour to online play paused its AI turn. */
+	function resumeMatch(): void {
+		aiSeriesActive = opponentMode === 'ai';
+		queueAiMove();
 	}
 
 	function setAiDifficulty(nextDifficulty: AiDifficulty): void {
@@ -867,10 +887,16 @@ export function createGameController() {
 	}
 
 	function recordMatchOutcome(): void {
-		if (game.status.state === 'playing' || recordedMatchId === matchId) return;
+		if (game.status.state === 'playing') return;
+		if (recordedMatchId === matchId && recordedOutcome) {
+			// Redo back to the same ending counts once; a different ending after undo replaces it.
+			if (sameOutcome(recordedOutcome, game.status)) return;
+			sessionRecord = withdrawCompletedGame(sessionRecord, recordedOutcome);
+		}
 
 		sessionRecord = recordCompletedGame(sessionRecord, game.status);
 		recordedMatchId = matchId;
+		recordedOutcome = game.status;
 	}
 
 	function finishPlacement(source: MoveSource, movingPlayer: Player): void {
@@ -1180,6 +1206,7 @@ export function createGameController() {
 		setBoardDimension,
 		setLinesToWin,
 		leaveAiSeries,
+		resumeMatch,
 		setMatchMode,
 		setOpponentMode,
 		setPieceColor,
@@ -1398,6 +1425,14 @@ function parseBoardDimensions(
 	}
 }
 
+function sameOutcome(a: GameStatus, b: GameStatus): boolean {
+	return a.state === b.state && (a.state !== 'won' || (b.state === 'won' && a.winner === b.winner));
+}
+
+function isMatchModeAvailable(mode: MatchMode): boolean {
+	return mode === 'classic';
+}
+
 function undoDecisionMoveCount(game: GameSnapshot, opponentMode: OpponentMode): number {
 	const history = game.moveHistory;
 	const lastMove = history.at(-1);
@@ -1406,7 +1441,10 @@ function undoDecisionMoveCount(game: GameSnapshot, opponentMode: OpponentMode): 
 	if (lastMove.player === 2) {
 		let count = trailingMovesForPlayer(history, history.length - 1, 2);
 		const precedingIndex = history.length - count - 1;
-		if (precedingIndex >= 0 && history[precedingIndex]?.player === 1) {
+		// The AI's opening move has no player move before it to take back. Undoing it alone would
+		// hand the empty board back to an AI that waits while redo moves exist.
+		if (precedingIndex < 0) return 0;
+		if (history[precedingIndex]?.player === 1) {
 			count += trailingMovesForPlayer(history, precedingIndex, 1);
 		}
 		return count;

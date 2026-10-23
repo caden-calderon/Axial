@@ -99,6 +99,9 @@ describe("Axial multiplayer room service", () => {
     });
     expect(afterRules.players.every((player) => !player.ready)).toBe(true);
 
+    // A match only starts with both players present.
+    await stub.syncPlayer(created.player, created.inviteUrl);
+    await stub.syncPlayer(joined.player, joined.inviteUrl);
     const hostReady = await stub.submitCommand(
       created.player,
       command("room:ready", { ready: true }),
@@ -422,8 +425,12 @@ describe("Axial multiplayer room service", () => {
     vi.spyOn(Date, "now").mockReturnValue((started.match.playableAt ?? 0) + 1);
 
     const hostView = await syncRoom(created.player);
-    // The guest's reconnect bumps the revision after the host's last poll.
-    const guestView = await syncRoom(joined.player);
+    // A rename, like a reconnect, bumps the revision but not the game after the host's last
+    // poll. (Both players are already present: a match only starts when they are.)
+    const guestView = await sendHttpCommand(
+      joined.player,
+      command("room:set-name", { displayName: "Friend 2" }),
+    );
     expect(guestView.snapshot.revision).toBeGreaterThan(
       hostView.snapshot.revision,
     );
@@ -797,6 +804,8 @@ async function readyBoth(
   friend: PlayerCredentials,
   inviteUrl: string,
 ): Promise<PrivateRoomSnapshot> {
+  await stub.syncPlayer(host, inviteUrl);
+  await stub.syncPlayer(friend, inviteUrl);
   const hostReady = await stub.submitCommand(
     host,
     command("room:ready", { ready: true }),

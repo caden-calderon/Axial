@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
-	import { useThrelte } from '@threlte/core';
+	import { useTask, useThrelte } from '@threlte/core';
 	import { getDropHeight, type GameSnapshot, type Move } from '@axial/core';
 	import { Raycaster, Vector2, Vector3 } from 'three';
 	import {
@@ -39,6 +39,18 @@
 	let hoverKey = '';
 	// Where a mouse last rested over the board; cleared when it leaves or the keyboard takes over.
 	let restingPointer: { clientX: number; clientY: number } | null = null;
+	// Frames left to re-pick under a resting mouse while the camera settles after a wheel zoom or
+	// an orbit drag; otherwise the preview stays on a cell that is no longer under the cursor.
+	const CAMERA_SETTLE_FRAMES = 45;
+	let repickFrames = $state(0);
+
+	useTask(
+		() => {
+			repickFrames = Math.max(0, repickFrames - 1);
+			if (enabled && restingPointer) setHover(pickMove(restingPointer));
+		},
+		{ running: () => repickFrames > 0, autoInvalidate: false }
+	);
 
 	// Every new position (a drop, undo, the opponent's reply) clears the hover upstream, and the
 	// cached key used to swallow the next hover over the same cell, so the preview only returned
@@ -60,10 +72,12 @@
 		dom.addEventListener('pointerleave', cancelPointer);
 		dom.addEventListener('pointercancel', cancelPointer);
 		dom.addEventListener('pointerup', handlePointerUp);
+		dom.addEventListener('wheel', followCamera, { passive: true });
 		window.addEventListener('keydown', forgetRestingPointer);
 
 		return () => {
 			window.removeEventListener('keydown', forgetRestingPointer);
+			dom.removeEventListener('wheel', followCamera);
 			dom.removeEventListener('pointerdown', handlePointerDown);
 			dom.removeEventListener('pointermove', handlePointerMove);
 			dom.removeEventListener('pointerleave', cancelPointer);
@@ -148,15 +162,28 @@
 	}
 
 	function handlePointerUp(event: PointerEvent): void {
-		if (!placementGesture.up(event, performance.now())) return;
+		if (!placementGesture.up(event, performance.now())) {
+			if (event.pointerType === 'mouse') {
+				restingPointer = { clientX: event.clientX, clientY: event.clientY };
+				followCamera();
+			}
+			return;
+		}
 		if (!enabled) return;
 
 		const move = pickMove(event);
 		if (move) onPlay(move);
 	}
 
+	function followCamera(): void {
+		repickFrames = CAMERA_SETTLE_FRAMES;
+	}
+
 	function forgetRestingPointer(): void {
 		restingPointer = null;
+		// The keyboard moves the preview upstream; forget the mouse cell so the next mouse move over
+		// that same cell takes the preview back instead of being skipped as unchanged.
+		hoverKey = '';
 	}
 
 	function pickMove(pointer: { clientX: number; clientY: number }): Move | null {

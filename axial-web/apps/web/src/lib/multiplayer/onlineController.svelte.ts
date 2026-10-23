@@ -37,6 +37,7 @@ import {
 	saveCredentials,
 	saveRoomSnapshot,
 	sendRoomCommand,
+	sendRoomPing,
 	submitRoomCommand,
 	syncRoom,
 	type MultiplayerCredentials
@@ -51,6 +52,19 @@ const FALLBACK_SYNC_INTERVAL_MS = 2500;
 const SOCKET_RETRY_WITH_FALLBACK_MS = 30000;
 const TRANSPORT_HEALTH_GRACE_MS = 7000;
 const ONLINE_TICK_MS = 200;
+// A phone that sleeps or changes networks can leave a socket that looks open but delivers
+// nothing, without ever firing close. A ping that goes unanswered exposes it.
+const HEARTBEAT_INTERVAL_MS = 15000;
+const HEARTBEAT_TIMEOUT_MS = 6000;
+const RESYNC_TIMEOUT_MS = 6000;
+// Tabs of one browser share saved room credentials. Before a new tab reconnects with them, it
+// asks whether another tab is already playing that seat; reconnecting would knock that tab out.
+const SEAT_CHANNEL_NAME = 'axial-room-seats';
+const SEAT_QUERY_WAIT_MS = 200;
+
+type SeatMessage =
+	| { type: 'seat-query'; queryId: string; roomCode: string; playerId: string }
+	| { type: 'seat-claimed'; queryId: string };
 
 export type BoardDimensionKey = keyof BoardDimensions;
 export type OnlineController = ReturnType<typeof createOnlineController>;
@@ -61,7 +75,7 @@ type RoomSearchParams = {
 export function createOnlineController() {
 	let credentials = $state<MultiplayerCredentials | null>(null);
 	let snapshot = $state<PrivateRoomSnapshot | null>(null);
-	let displayName = $state('Caden');
+	let displayName = $state('');
 	let joinCodeDraft = $state('');
 	let error = $state('');
 	let connectionState = $state<ConnectionState>('idle');
@@ -74,6 +88,9 @@ export function createOnlineController() {
 	let rulesDraft = $state<MultiplayerRules>(defaultRules());
 	let socket: WebSocket | null = null;
 	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+	let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+	let heartbeatDeadline: ReturnType<typeof setTimeout> | null = null;
+	let resyncTimer: ReturnType<typeof setTimeout> | null = null;
 	let fallbackTimer: ReturnType<typeof setInterval> | null = null;
 	let ticker: ReturnType<typeof setInterval> | null = browser
 		? setInterval(() => {
@@ -84,6 +101,17 @@ export function createOnlineController() {
 	let lastHealthyAt = 0;
 	let sessionEpoch = 0;
 	let fallbackSyncToken: symbol | null = null;
+	// Set when a newer tab took this seat over. The credentials now belong to that tab.
+	let displacedByNewerTab = false;
+	let resumeListenersAttached = false;
+	let seatChannel: BroadcastChannel | null = null;
+	// While a saved seat is being checked against other tabs, the room is already this tab's
+	// business: mode switches stay locked as they will be once it reconnects.
+	let seatCheckPending = $state(false);
+	let connectStartedAt = 0;
+	// One create or join at a time: a second tap would discard the first response, and with it the
+	// only credentials for the seat the server has already given out.
+	let roomRequestPending = $state(false);
 
 	const self = $derived(
 		snapshot?.players.find((player) => player.playerId === snapshot?.you.playerId) ?? null
@@ -131,6 +159,8 @@ export function createOnlineController() {
 		)
 	);
 	const setupLocked = $derived(Boolean(snapshot && !canEditRules));
+	// Piece style stays fixed from the countdown to the result, as it does once a local game starts.
+	const appearanceLocked = $derived(Boolean(!sessionEnded && snapshot?.phase === 'playing'));
 	const previewMove = $derived(lockedMove ?? hoveredMove);
 	const statusTitle = $derived(roomStatusLabel(snapshot, connectionState, opponent, isStarting));
 	const currentLabel = $derived(statusTitle);
@@ -155,6 +185,12 @@ export function createOnlineController() {
 
 	function hydrateFromBrowser(searchParams?: RoomSearchParams): boolean {
 		if (!browser) return false;
+		if (!resumeListenersAttached) {
+			document.addEventListener('visibilitychange', handleVisibilityChange);
+			window.addEventListener('pageshow', handlePageShow);
+			window.addEventListener('online', checkConnectionOnResume);
+			resumeListenersAttached = true;
+		}
 
 		const savedName = readStorage('localStorage', STORAGE_KEYS.displayName);
 		if (savedName) displayName = savedName;
@@ -169,12 +205,78 @@ export function createOnlineController() {
 		const savedCredentials = loadCredentials(roomCode);
 		if (!savedCredentials) return true;
 
+		const hydrateEpoch = sessionEpoch;
+		seatCheckPending = true;
+		void seatHeldByAnotherTab(savedCredentials).then((heldElsewhere) => {
+			seatCheckPending = false;
+			if (hydrateEpoch !== sessionEpoch || credentials) return;
+			if (heldElsewhere) {
+				error =
+					'This room is open in another tab. Join with a different name to play the other seat.';
+				return;
+			}
+			resumeSavedSeat(savedCredentials);
+		});
+		return true;
+	}
+
+	function resumeSavedSeat(savedCredentials: MultiplayerCredentials): void {
 		credentials = savedCredentials;
 		displayName = savedCredentials.displayName;
-		const storedSnapshot = loadRoomSnapshot(roomCode, savedCredentials);
+		const storedSnapshot = loadRoomSnapshot(savedCredentials.roomCode, savedCredentials);
 		if (storedSnapshot) applySnapshot(storedSnapshot, { networkHealthy: false });
 		connect('connecting');
-		return true;
+	}
+
+	function openSeatChannel(): BroadcastChannel | null {
+		if (seatChannel || typeof BroadcastChannel === 'undefined') return seatChannel;
+		seatChannel = new BroadcastChannel(SEAT_CHANNEL_NAME);
+		seatChannel.addEventListener('message', (event: MessageEvent<SeatMessage>) => {
+			const message = event.data;
+			if (
+				message?.type === 'seat-query' &&
+				credentials &&
+				!manualClose &&
+				!sessionEnded &&
+				!displacedByNewerTab &&
+				credentials.roomCode === message.roomCode &&
+				credentials.playerId === message.playerId
+			) {
+				seatChannel?.postMessage({
+					type: 'seat-claimed',
+					queryId: message.queryId
+				} satisfies SeatMessage);
+			}
+		});
+		return seatChannel;
+	}
+
+	function seatHeldByAnotherTab(seat: MultiplayerCredentials): Promise<boolean> {
+		const channel = openSeatChannel();
+		if (!channel) return Promise.resolve(false);
+		// randomUUID only exists on secure origins; a LAN test over plain http must still load.
+		const queryId =
+			typeof crypto.randomUUID === 'function'
+				? crypto.randomUUID()
+				: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+		return new Promise((resolve) => {
+			const settle = (held: boolean) => {
+				clearTimeout(timer);
+				channel.removeEventListener('message', onMessage);
+				resolve(held);
+			};
+			const onMessage = (event: MessageEvent<SeatMessage>) => {
+				if (event.data?.type === 'seat-claimed' && event.data.queryId === queryId) settle(true);
+			};
+			const timer = setTimeout(() => settle(false), SEAT_QUERY_WAIT_MS);
+			channel.addEventListener('message', onMessage);
+			channel.postMessage({
+				type: 'seat-query',
+				queryId,
+				roomCode: seat.roomCode,
+				playerId: seat.playerId
+			} satisfies SeatMessage);
+		});
 	}
 
 	function useRules(nextRules: MultiplayerRules): void {
@@ -183,12 +285,15 @@ export function createOnlineController() {
 	}
 
 	async function createPrivateRoom(): Promise<void> {
+		if (roomRequestPending) return;
+		openSeatChannel();
 		const name = normalizedDisplayName();
 		if (!name) return;
 
 		const requestEpoch = beginRoomRequest();
 		error = '';
 		connectionState = 'creating';
+		roomRequestPending = true;
 		try {
 			const room = await createRoom(name, rulesDraft);
 			if (requestEpoch !== sessionEpoch) return;
@@ -201,10 +306,14 @@ export function createOnlineController() {
 		} catch (reason) {
 			if (requestEpoch !== sessionEpoch) return;
 			failRequest(reason, 'Could not create a room.');
+		} finally {
+			roomRequestPending = false;
 		}
 	}
 
 	async function joinPrivateRoom(): Promise<void> {
+		if (roomRequestPending) return;
+		openSeatChannel();
 		const roomCode = normalizeRoomCode(joinCodeDraft);
 		const name = normalizedDisplayName();
 		if (!roomCode || !name) return;
@@ -212,6 +321,7 @@ export function createOnlineController() {
 		const requestEpoch = beginRoomRequest();
 		error = '';
 		connectionState = 'joining';
+		roomRequestPending = true;
 		try {
 			const joined = await joinRoom(roomCode, name);
 			if (requestEpoch !== sessionEpoch) return;
@@ -224,6 +334,8 @@ export function createOnlineController() {
 		} catch (reason) {
 			if (requestEpoch !== sessionEpoch) return;
 			failRequest(reason, 'Could not join this room.');
+		} finally {
+			roomRequestPending = false;
 		}
 	}
 
@@ -231,11 +343,13 @@ export function createOnlineController() {
 		const activeCredentials = credentials;
 		if (!activeCredentials) return;
 		const connectionEpoch = advanceSessionEpoch();
+		connectStartedAt = Date.now();
 		if (reconnectTimer) clearTimeout(reconnectTimer);
 		setTransportState(nextState);
 		manualClose = false;
 		const previousSocket = socket;
 		socket = null;
+		stopHeartbeat();
 		previousSocket?.close();
 		const nextSocket = openRoomSocket({
 			credentials: activeCredentials,
@@ -244,15 +358,23 @@ export function createOnlineController() {
 				if (!isCurrentConnection(connectionEpoch, activeCredentials, nextSocket)) return;
 				markHealthy();
 				stopHttpFallback();
+				startHeartbeat(nextSocket);
 				connectionState = snapshot ? derivedConnectionState(snapshot, opponent) : 'connected';
 			},
 			onEvent: (event) => {
 				if (!isCurrentConnection(connectionEpoch, activeCredentials, nextSocket)) return;
+				clearHeartbeatDeadline();
 				handleEvent(event);
+			},
+			onPong: () => {
+				if (!isCurrentConnection(connectionEpoch, activeCredentials, nextSocket)) return;
+				clearHeartbeatDeadline();
+				markHealthy();
 			},
 			onClose: () => {
 				if (!isCurrentConnection(connectionEpoch, activeCredentials, nextSocket)) return;
 				socket = null;
+				stopHeartbeat();
 				if (manualClose || connectionState === 'fatal-error' || connectionState === 'expired')
 					return;
 				startHttpFallback();
@@ -267,6 +389,87 @@ export function createOnlineController() {
 			}
 		});
 		socket = nextSocket;
+	}
+
+	function startHeartbeat(activeSocket: WebSocket): void {
+		stopHeartbeat();
+		heartbeatTimer = setInterval(() => pingSocket(activeSocket), HEARTBEAT_INTERVAL_MS);
+	}
+
+	function pingSocket(activeSocket: WebSocket): void {
+		if (socket !== activeSocket || heartbeatDeadline) return;
+		if (!sendRoomPing(activeSocket)) return;
+		heartbeatDeadline = setTimeout(() => {
+			heartbeatDeadline = null;
+			if (socket === activeSocket) dropDeadSocket();
+		}, HEARTBEAT_TIMEOUT_MS);
+	}
+
+	function clearHeartbeatDeadline(): void {
+		if (!heartbeatDeadline) return;
+		clearTimeout(heartbeatDeadline);
+		heartbeatDeadline = null;
+	}
+
+	function stopHeartbeat(): void {
+		if (heartbeatTimer) clearInterval(heartbeatTimer);
+		heartbeatTimer = null;
+		clearHeartbeatDeadline();
+	}
+
+	/** Abandon a socket that stopped answering: its close event may not come for minutes. */
+	function dropDeadSocket(): void {
+		const deadSocket = socket;
+		socket = null;
+		stopHeartbeat();
+		deadSocket?.close();
+		if (manualClose || sessionEnded) return;
+		lastHealthyAt = 0;
+		startHttpFallback();
+		surfaceTransportIssue();
+		scheduleReconnect(0);
+	}
+
+	/** Back from the background, or back online: confirm the room is still reachable. */
+	function checkConnectionOnResume(): void {
+		const resumingCredentials = credentials;
+		if (!resumingCredentials || manualClose || sessionEnded) return;
+		// A handshake started just before the phone slept can hang until the browser gives up.
+		if (
+			socket &&
+			socket.readyState === WebSocket.CONNECTING &&
+			Date.now() - connectStartedAt < HEARTBEAT_TIMEOUT_MS
+		) {
+			return;
+		}
+		if (socket?.readyState === WebSocket.OPEN) {
+			pingSocket(socket);
+			void syncFallback();
+			return;
+		}
+		// A page restored from the back/forward cache could not answer seat checks while it was
+		// away, so another tab may have taken the seat since. Ask before knocking it out.
+		const resumeEpoch = sessionEpoch;
+		void seatHeldByAnotherTab(resumingCredentials).then((heldElsewhere) => {
+			if (resumeEpoch !== sessionEpoch || credentials !== resumingCredentials) return;
+			if (heldElsewhere) {
+				displacedByNewerTab = true;
+				error = 'This room is open in another tab.';
+				endRoomTransport('fatal-error', false);
+				return;
+			}
+			connect('reconnecting');
+			startHttpFallback();
+		});
+	}
+
+	function handleVisibilityChange(): void {
+		if (document.visibilityState === 'visible') checkConnectionOnResume();
+	}
+
+	function handlePageShow(event: PageTransitionEvent): void {
+		// Only a page restored from the back/forward cache has a stale connection to check.
+		if (event.persisted) checkConnectionOnResume();
 	}
 
 	function startHttpFallback(): void {
@@ -343,6 +546,7 @@ export function createOnlineController() {
 			endRoomTransport('expired', true);
 			return true;
 		}
+		if (roomError.code === 'duplicate-connection') displacedByNewerTab = true;
 		if (
 			roomError.code === 'auth-failed' ||
 			roomError.code === 'duplicate-connection' ||
@@ -355,6 +559,13 @@ export function createOnlineController() {
 			resync();
 			return true;
 		}
+		if (roomError.code === 'rules-changed') {
+			resync();
+			// resync() sends a command, which clears the error; the player needs to know why their
+			// Ready didn't count.
+			error = roomError.message;
+			return true;
+		}
 		return false;
 	}
 
@@ -364,6 +575,7 @@ export function createOnlineController() {
 		if (reconnectTimer) clearTimeout(reconnectTimer);
 		reconnectTimer = null;
 		stopHttpFallback();
+		stopTransportWatchers();
 		const previousSocket = socket;
 		socket = null;
 		previousSocket?.close();
@@ -423,7 +635,7 @@ export function createOnlineController() {
 	function updateDisplayName(): void {
 		if (sessionEnded) return;
 		const name = normalizedDisplayName();
-		if (!name || !snapshot) return;
+		if (!name || !snapshot || name === self?.displayName) return;
 		send(command('room:set-name', { displayName: name }));
 	}
 
@@ -492,7 +704,7 @@ export function createOnlineController() {
 
 	function toggleReady(): void {
 		if (!snapshot || sessionEnded) return;
-		send(command('room:ready', { ready: !self?.ready }));
+		send(command('room:ready', { ready: !self?.ready, rules: snapshot.rules }));
 	}
 
 	function startGame(): void {
@@ -582,6 +794,7 @@ export function createOnlineController() {
 
 	function resync(): void {
 		if (!credentials || sessionEnded) return;
+		watchResync();
 		if (socket?.readyState === WebSocket.OPEN && snapshot) {
 			send(command('room:resync', { lastSeenRevision: snapshot.revision }));
 			connectionState = 'resyncing';
@@ -593,11 +806,23 @@ export function createOnlineController() {
 		void syncFallback();
 	}
 
+	/** Input stays off while resyncing, so never leave a player there: reconnect if no answer. */
+	function watchResync(): void {
+		if (resyncTimer) clearTimeout(resyncTimer);
+		resyncTimer = setTimeout(() => {
+			resyncTimer = null;
+			if (connectionState !== 'resyncing' || manualClose || sessionEnded) return;
+			dropDeadSocket();
+		}, RESYNC_TIMEOUT_MS);
+	}
+
 	function leaveRoom(): void {
 		manualClose = true;
 		const departingCredentials = credentials;
 		advanceSessionEpoch();
-		if (departingCredentials) {
+		// A displaced tab only closes its own view: leaving would end the room the newer tab is
+		// playing in, and clearing storage would sign that tab out.
+		if (departingCredentials && !displacedByNewerTab) {
 			void submitRoomCommand(departingCredentials, command('room:leave', {})).catch(
 				() => undefined
 			);
@@ -606,6 +831,7 @@ export function createOnlineController() {
 		}
 		if (reconnectTimer) clearTimeout(reconnectTimer);
 		stopHttpFallback();
+		stopTransportWatchers();
 		socket?.close();
 		socket = null;
 		credentials = null;
@@ -617,13 +843,20 @@ export function createOnlineController() {
 		resultOverlayDismissed = false;
 		lockedMove = null;
 		hoveredMove = null;
+		displacedByNewerTab = false;
 		clearRoomUrl();
 	}
 
 	async function copyInvite(): Promise<void> {
 		const value = snapshot?.inviteUrl;
 		if (!value) return;
-		await navigator.clipboard.writeText(value);
+		try {
+			await navigator.clipboard.writeText(value);
+		} catch {
+			// Embedded frames and insecure origins can deny clipboard access.
+			error = 'Could not copy. Share the room code instead.';
+			return;
+		}
 		copied = true;
 		setTimeout(() => {
 			copied = false;
@@ -639,6 +872,15 @@ export function createOnlineController() {
 		advanceSessionEpoch();
 		if (reconnectTimer) clearTimeout(reconnectTimer);
 		stopHttpFallback();
+		stopTransportWatchers();
+		seatChannel?.close();
+		seatChannel = null;
+		if (resumeListenersAttached) {
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+			window.removeEventListener('pageshow', handlePageShow);
+			window.removeEventListener('online', checkConnectionOnResume);
+			resumeListenersAttached = false;
+		}
 		if (ticker) clearInterval(ticker);
 		ticker = null;
 		socket?.close();
@@ -698,6 +940,12 @@ export function createOnlineController() {
 		connectionState = 'fatal-error';
 	}
 
+	function stopTransportWatchers(): void {
+		stopHeartbeat();
+		if (resyncTimer) clearTimeout(resyncTimer);
+		resyncTimer = null;
+	}
+
 	function scheduleReconnect(delayMs: number): void {
 		if (reconnectTimer) clearTimeout(reconnectTimer);
 		reconnectTimer = setTimeout(() => {
@@ -729,10 +977,12 @@ export function createOnlineController() {
 		if (reconnectTimer) clearTimeout(reconnectTimer);
 		reconnectTimer = null;
 		stopHttpFallback();
+		stopTransportWatchers();
 		const previousSocket = socket;
 		socket = null;
 		previousSocket?.close();
 		manualClose = false;
+		displacedByNewerTab = false;
 		return requestEpoch;
 	}
 
@@ -778,6 +1028,9 @@ export function createOnlineController() {
 		get boardDimensions() {
 			return rules.board;
 		},
+		get roomRequestPending() {
+			return roomRequestPending;
+		},
 		get canEditRules() {
 			return canEditRules;
 		},
@@ -820,7 +1073,7 @@ export function createOnlineController() {
 			return game;
 		},
 		get hasRoom() {
-			return Boolean(snapshot || credentials);
+			return Boolean(snapshot || credentials || seatCheckPending);
 		},
 		get inviteUrl() {
 			return snapshot?.inviteUrl ?? '';
@@ -866,6 +1119,9 @@ export function createOnlineController() {
 		},
 		get showStartOverlay() {
 			return showStartOverlay;
+		},
+		get appearanceLocked() {
+			return appearanceLocked;
 		},
 		get setupLocked() {
 			return setupLocked;
@@ -1038,7 +1294,13 @@ function roomStatusLabel(
 	nextOpponent: PrivateRoomSnapshot['players'][number] | null,
 	isMatchStarting: boolean
 ): string {
-	if (state === 'expired' || nextSnapshot?.phase === 'expired') return 'Room expired';
+	if (state === 'expired' || nextSnapshot?.phase === 'expired') {
+		const leftBy = nextSnapshot?.leftByPlayerId;
+		if (leftBy && leftBy !== nextSnapshot.you.playerId) {
+			return `${nextOpponent?.displayName ?? 'Your opponent'} left the room`;
+		}
+		return 'Room expired';
+	}
 	if (state === 'fatal-error') return 'Connection failed';
 	if (!nextSnapshot) {
 		if (state === 'creating') return 'Creating room';

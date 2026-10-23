@@ -76,6 +76,7 @@ export type StoredRoomState = {
   matchStartedAt: number | null;
   matchPlayableAt: number | null;
   rematchDeadlineAt: number | null;
+  leftByPlayerId?: string | null;
 };
 
 export type RoomEventRecord = {
@@ -385,12 +386,20 @@ export function setReadyState(
   ready: boolean,
   now: number,
   commandId?: string,
+  seenRules?: MultiplayerRules,
 ): RoomCommandOutcome {
   assertUsableRoom(state);
   if (state.phase !== "waiting") {
     throw new RoomServiceError(
       "invalid-message",
       "Ready state only applies before the match starts.",
+      409,
+    );
+  }
+  if (ready && seenRules && !sameRules(seenRules, state.rules)) {
+    throw new RoomServiceError(
+      "rules-changed",
+      "The host changed the rules. Check them and ready up again.",
       409,
     );
   }
@@ -439,6 +448,13 @@ export function startMatch(
     throw new RoomServiceError(
       "invalid-message",
       "Both players need to ready up first.",
+      409,
+    );
+  }
+  if (!state.players.every((roomPlayer) => roomPlayer.connected)) {
+    throw new RoomServiceError(
+      "invalid-message",
+      "Your friend is offline. Wait for them to reconnect.",
       409,
     );
   }
@@ -600,11 +616,13 @@ export function expireRoom(
   state: StoredRoomState,
   now: number,
   commandId?: string,
+  leftByPlayerId?: string,
 ): RoomCommandOutcome {
   if (state.phase === "expired") return { state, events: [] };
 
   const next = cloneState(state);
   next.phase = "expired";
+  next.leftByPlayerId = leftByPlayerId ?? null;
   for (const player of next.players) {
     player.connected = false;
     player.activeConnectionId = null;
@@ -687,6 +705,7 @@ export function toPublicSnapshot(state: StoredRoomState): RoomSnapshot {
         .map((player) => player.playerId),
       deadlineAt: state.rematchDeadlineAt,
     },
+    leftByPlayerId: state.leftByPlayerId ?? null,
   };
 }
 

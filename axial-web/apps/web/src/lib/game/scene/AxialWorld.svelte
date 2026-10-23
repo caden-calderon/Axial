@@ -53,6 +53,7 @@
 		onHover,
 		onPlay,
 		inputEnabled = true,
+		embedded = false,
 		onViewQuarterTurns
 	}: {
 		game: GameSnapshot;
@@ -74,6 +75,7 @@
 		onHover: (move: Move | null) => void;
 		onPlay: (move: Move) => void;
 		inputEnabled?: boolean;
+		embedded?: boolean;
 		/** Quarter turns the camera has orbited from the reset view, so arrow keys can follow it. */
 		onViewQuarterTurns?: (turns: number) => void;
 	} = $props();
@@ -268,6 +270,7 @@
 			maxDistance={cameraFit.maxDistance}
 			target={cameraFit.target}
 			maxPolarAngle={Math.PI * 0.72}
+			wheelZoomNeedsModifier={embedded}
 		/>
 	</T.PerspectiveCamera>
 {/key}

@@ -18,8 +18,11 @@ for (const viewport of [
 		await expect(onlineButton).toBeVisible();
 		// Finish the opening transition before recording the position on mobile.
 		await page.locator('.control-panel').evaluate(async (panel) => {
+			// A cancelled animation rejects `finished` with AbortError; it is done either way.
 			await Promise.all(
-				panel.getAnimations({ subtree: true }).map((animation) => animation.finished)
+				panel
+					.getAnimations({ subtree: true })
+					.map((animation) => animation.finished.catch(() => undefined))
 			);
 		});
 		const before = await modes.boundingBox();

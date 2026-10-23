@@ -516,6 +516,7 @@ export class RoomObject extends DurableObject<Env> {
           command.payload.ready,
           now,
           command.id,
+          command.payload.rules,
         );
       case "room:start":
         return startMatch(
@@ -540,7 +541,7 @@ export class RoomObject extends DurableObject<Env> {
           events: [],
         };
       case "room:leave":
-        return expireRoom(state, now, command.id);
+        return expireRoom(state, now, command.id, playerId);
       case "room:rematch-vote":
         return setRematchVote(
           state,

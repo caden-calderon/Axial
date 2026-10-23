@@ -256,15 +256,13 @@ describe('optional game audio', () => {
 	it('discards sounds while resuming and does not allow a late unlock to bypass mute', async () => {
 		const { audio, context, createContext } = setup('true');
 		let resolveResume!: () => void;
-		context.resume.mockImplementation(
-			() =>
-				new Promise<void>((resolve) => {
-					resolveResume = () => {
-						context.state = 'running';
-						resolve();
-					};
-				})
-		);
+		const resumed = new Promise<void>((resolve) => {
+			resolveResume = () => {
+				context.state = 'running';
+				resolve();
+			};
+		});
+		context.resume.mockImplementation(() => resumed);
 		audio.hydrate();
 		const first = audio.unlock();
 		const second = audio.unlock();
@@ -274,11 +272,24 @@ describe('optional game audio', () => {
 		resolveResume();
 		expect(await first).toBe(false);
 		expect(await second).toBe(false);
-		expect(context.resume).toHaveBeenCalledOnce();
+		expect(context.resume).toHaveBeenCalledTimes(2);
 		expect(createContext).toHaveBeenCalledOnce();
 		audio.playWin(1);
 		expect(context.oscillators).toHaveLength(0);
 		expect(await audio.unlock()).toBe(true);
+		audio.destroy();
+	});
+
+	it('asks again on a later gesture when an earlier resume never settles', async () => {
+		const { audio, context } = setup('true');
+		context.resume.mockImplementationOnce(() => new Promise<void>(() => {}));
+		audio.hydrate();
+		void audio.unlock();
+
+		expect(await audio.unlock()).toBe(true);
+		expect(context.resume).toHaveBeenCalledTimes(2);
+		audio.playImpact(1, 0);
+		expect(context.oscillators.length).toBeGreaterThan(0);
 		audio.destroy();
 	});
 

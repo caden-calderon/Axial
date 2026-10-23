@@ -175,61 +175,69 @@
 		</T.Mesh>
 	{/if}
 
+	<!-- Each shape gets its own mesh: Threlte puts back a mesh's previous geometry when a child
+	     geometry unmounts, so swapping geometries inside one mesh left pieces without a body. -->
 	{#if highlighted}
-		<T.Mesh scale={highlightScale}>
-			{#if renderShape === 'cube'}
-				<T
-					is={RoundedBoxGeometry}
-					args={[PIECE_SIZE * 1.02, PIECE_SIZE * 1.02, PIECE_SIZE * 1.02, 4, 0.085]}
+		{#key renderShape}
+			<T.Mesh scale={highlightScale}>
+				{#if renderShape === 'cube'}
+					<T
+						is={RoundedBoxGeometry}
+						args={[PIECE_SIZE * 1.02, PIECE_SIZE * 1.02, PIECE_SIZE * 1.02, 4, 0.085]}
+					/>
+				{:else}
+					<T.SphereGeometry args={[PIECE_SIZE * 0.61, 32, 18]} />
+				{/if}
+				<T.MeshBasicMaterial
+					color={glow}
+					transparent
+					opacity={highlightOpacity}
+					depthWrite={false}
+					blending={AdditiveBlending}
 				/>
+			</T.Mesh>
+		{/key}
+	{/if}
+
+	{#key renderShape}
+		<T.Mesh>
+			{#if renderShape === 'cube'}
+				<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 4, 0.07]} />
 			{:else}
-				<T.SphereGeometry args={[PIECE_SIZE * 0.61, 32, 18]} />
+				<T.SphereGeometry args={[PIECE_SIZE * 0.58, 36, 22]} />
+			{/if}
+			<T.MeshPhysicalMaterial
+				{color}
+				emissive={glow}
+				emissiveIntensity={isBlocker ? (settled ? 0.08 : 0.2) : settled ? 0.18 : 0.4}
+				roughness={isBlocker ? 0.24 : 0.08}
+				metalness={isBlocker ? 0.12 : 0.06}
+				clearcoat={isBlocker ? 0.72 : 1}
+				clearcoatRoughness={isBlocker ? 0.18 : 0.035}
+				ior={isBlocker ? 1.42 : 1.55}
+				specularIntensity={1}
+				transparent
+				opacity={opacity * materialOpacity}
+			/>
+		</T.Mesh>
+	{/key}
+
+	{#key renderShape}
+		<T.Mesh scale={0.58}>
+			{#if renderShape === 'cube'}
+				<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 2, 0.04]} />
+			{:else}
+				<T.SphereGeometry args={[PIECE_SIZE * 0.58, 24, 16]} />
 			{/if}
 			<T.MeshBasicMaterial
 				color={glow}
 				transparent
-				opacity={highlightOpacity}
+				opacity={opacity * glowOpacity}
 				depthWrite={false}
 				blending={AdditiveBlending}
 			/>
 		</T.Mesh>
-	{/if}
-
-	<T.Mesh>
-		{#if renderShape === 'cube'}
-			<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 4, 0.07]} />
-		{:else}
-			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 36, 22]} />
-		{/if}
-		<T.MeshPhysicalMaterial
-			{color}
-			emissive={glow}
-			emissiveIntensity={isBlocker ? (settled ? 0.08 : 0.2) : settled ? 0.18 : 0.4}
-			roughness={isBlocker ? 0.24 : 0.08}
-			metalness={isBlocker ? 0.12 : 0.06}
-			clearcoat={isBlocker ? 0.72 : 1}
-			clearcoatRoughness={isBlocker ? 0.18 : 0.035}
-			ior={isBlocker ? 1.42 : 1.55}
-			specularIntensity={1}
-			transparent
-			opacity={opacity * materialOpacity}
-		/>
-	</T.Mesh>
-
-	<T.Mesh scale={0.58}>
-		{#if renderShape === 'cube'}
-			<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 2, 0.04]} />
-		{:else}
-			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 24, 16]} />
-		{/if}
-		<T.MeshBasicMaterial
-			color={glow}
-			transparent
-			opacity={opacity * glowOpacity}
-			depthWrite={false}
-			blending={AdditiveBlending}
-		/>
-	</T.Mesh>
+	{/key}
 
 	<T.Mesh
 		position={[-PIECE_SIZE * 0.13, PIECE_SIZE * 0.29, PIECE_SIZE * 0.24]}

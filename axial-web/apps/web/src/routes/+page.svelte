@@ -39,7 +39,10 @@
 	const controller = createGameController();
 	const online = createOnlineController();
 	const bridge = createAxialBridgeController(controller);
-	let playMode = $state<PlayMode>('local');
+	// Local and AI play follow the controller, so a mode set elsewhere (the embed bridge, a
+	// restored match) can never disagree with the page.
+	let onlineSelected = $state(false);
+	const playMode = $derived<PlayMode>(onlineSelected ? 'online' : controller.opponentMode);
 	let hydrated = $state(false);
 	let presentationPending = $state(false);
 	let presentationTimer: ReturnType<typeof setTimeout> | null = null;
@@ -130,6 +133,11 @@
 	const activeSetupLocked = $derived(
 		playMode === 'online' ? online.setupLocked : controller.setupLocked
 	);
+	// Piece style is one preference for every mode, so an unfinished local match keeps it locked
+	// in the online lobby too (the controller would refuse the change anyway).
+	const activeAppearanceLocked = $derived(
+		controller.appearanceLocked || (playMode === 'online' && online.appearanceLocked)
+	);
 	const activeMoveError = $derived(playMode === 'online' ? online.moveError : controller.moveError);
 	const activePreviewMove = $derived(
 		welcomePracticeActive
@@ -173,9 +181,7 @@
 				board: controller.boardDimensions,
 				winCondition: controller.winCondition
 			});
-			playMode = 'online';
-		} else {
-			playMode = controller.opponentMode;
+			onlineSelected = true;
 		}
 		if (searchParams.get('tour')?.toLowerCase() === 'reset') {
 			clearWelcomeTourSeen(getBrowserStorage('localStorage'));
@@ -338,8 +344,12 @@
 		}, 4200);
 	}
 
+	// Only a thrown Error can come from the render loop. A null error ("Script error." from another
+	// origin, the ResizeObserver loop notice) or a browser API refusal (DOMException: pointer
+	// capture, clipboard, autoplay) says nothing about the board, and remounting it would reset
+	// the camera for no reason.
 	function isIgnoredRuntimeError(error: unknown): boolean {
-		return error instanceof Error && error.name === 'AbortError';
+		return !(error instanceof Error) || error instanceof DOMException;
 	}
 
 	function recoveryErrorLabel(error: unknown): string {
@@ -362,12 +372,19 @@
 				board: controller.boardDimensions,
 				winCondition: controller.winCondition
 			});
-			playMode = 'online';
+			onlineSelected = true;
 			return;
 		}
 
-		playMode = nextMode;
-		controller.setOpponentMode(nextMode);
+		onlineSelected = false;
+		if (controller.setupLocked) {
+			// A match is still in progress: a different mode is refused with a message, and either
+			// way the match picks up where the trip to online play paused it.
+			if (nextMode !== controller.opponentMode) controller.setOpponentMode(nextMode);
+			controller.resumeMatch();
+		} else {
+			controller.setOpponentMode(nextMode);
+		}
 	}
 
 	function setSceneHover(move: Move | null): void {
@@ -535,7 +552,13 @@
 	};
 </script>
 
-<svelte:window onpointerdown={unlockSound} onkeydown={unlockSound} />
+<!-- On touch screens only the end of a tap counts as a user gesture that may start audio. -->
+<svelte:window
+	onpointerdown={unlockSound}
+	onpointerup={unlockSound}
+	ontouchend={unlockSound}
+	onkeydown={unlockSound}
+/>
 
 <main
 	class="game-shell"
@@ -570,6 +593,7 @@
 							? null
 							: controller.pendingDoubleAdjacentOrigin}
 						{viewResetKey}
+						embedded={embedMode}
 						onHover={setSceneHover}
 						onPlay={playSceneMove}
 						onCancelSelection={cancelSceneMove}
@@ -656,7 +680,7 @@
 			setupLocked={activeSetupLocked}
 			playModeLocked={(playMode !== 'online' && controller.setupLocked) ||
 				(playMode === 'online' && online.hasRoom)}
-			appearanceLocked={controller.appearanceLocked}
+			appearanceLocked={activeAppearanceLocked}
 			activeSpecialCharges={controller.activeSpecialCharges}
 			activeSpecialCounts={controller.activeSpecialCounts}
 			specialLoadoutSlots={controller.specialLoadoutSlots}
@@ -684,8 +708,12 @@
 			onLinesToWinChange={setActiveLinesToWin}
 			onToggleBlockerCombo={controller.toggleBlockerCombo}
 			onToggleDoubleAdjacent={controller.toggleDoubleAdjacent}
-			onPieceShapeChange={controller.setPieceShape}
-			onPieceColorChange={controller.setPieceColor}
+			onPieceShapeChange={(shape) => {
+				if (!activeAppearanceLocked) controller.setPieceShape(shape);
+			}}
+			onPieceColorChange={(player, color) => {
+				if (!activeAppearanceLocked) controller.setPieceColor(player, color);
+			}}
 			onBoardColorChange={controller.setBoardColor}
 			onToggleConfirmDrop={controller.toggleConfirmDrop}
 			onToggleGridLayers={controller.toggleGridLayers}
@@ -694,6 +722,7 @@
 			onExpandedChange={(expanded) => (controlsExpanded = expanded)}
 			onResetView={resetView}
 			onShowHelp={startWelcomeTour}
+			helpLocked={playMode === 'online' && online.snapshot?.phase === 'playing'}
 		/>
 	</div>
 

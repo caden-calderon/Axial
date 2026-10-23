@@ -13,7 +13,8 @@
 		minDistance = 0,
 		maxDistance = Infinity,
 		target = [0, 0, 0],
-		maxPolarAngle = Math.PI
+		maxPolarAngle = Math.PI,
+		wheelZoomNeedsModifier = false
 	}: {
 		enableDamping?: boolean;
 		dampingFactor?: number;
@@ -24,12 +25,22 @@
 		maxDistance?: number;
 		target?: Vec3;
 		maxPolarAngle?: number;
+		/** Embedded in another page, a plain wheel scrolls that page; Ctrl/⌘ (or a pinch) zooms. */
+		wheelZoomNeedsModifier?: boolean;
 	} = $props();
 
 	const { camera, dom, invalidate } = useThrelte();
 	let controls = $state.raw<OrbitControls | null>(null);
 
 	onMount(() => {
+		// Capture listeners on the target run before OrbitControls' own wheel listener, which
+		// would otherwise cancel the event and trap the host page's scroll.
+		const passWheelToPage = (event: WheelEvent) => {
+			if (wheelZoomNeedsModifier && !event.ctrlKey && !event.metaKey) {
+				event.stopImmediatePropagation();
+			}
+		};
+		dom.addEventListener('wheel', passWheelToPage, { capture: true });
 		const nextControls = new OrbitControls(camera.current, dom);
 		nextControls.addEventListener('change', invalidate);
 		controls = nextControls;
@@ -37,6 +48,7 @@
 		nextControls.update();
 
 		return () => {
+			dom.removeEventListener('wheel', passWheelToPage, { capture: true });
 			nextControls.removeEventListener('change', invalidate);
 			nextControls.dispose();
 			controls = null;

@@ -307,7 +307,12 @@ export function parseClientCommand(value: unknown): ClientCommand {
       return {
         ...base(value),
         type: value.type,
-        payload: { ready: payload.ready },
+        payload: {
+          ready: payload.ready,
+          ...(payload.rules === undefined
+            ? {}
+            : { rules: parseRules(payload.rules) }),
+        },
       };
     case "room:start":
       return {

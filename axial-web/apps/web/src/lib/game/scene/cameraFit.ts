@@ -36,7 +36,9 @@ export function resolveCameraFit(viewport: SceneViewport, dimensions: BoardDimen
 	const width = Math.max(320, viewport.width);
 	const height = Math.max(320, viewport.height);
 	const compact = width < 720 || viewport.coarsePointer;
-	const portrait = compact && height >= width;
+	// A tall desktop window needs the portrait framing too: the desktop camera's vertical field
+	// of view leaves too little width once the window is narrower than it is tall.
+	const portrait = compact ? height >= width : height > width;
 	const largestDimension = Math.max(dimensions.height, dimensions.rows, dimensions.columns);
 	const dimensionScale = Math.min(1, 7 / largestDimension);
 

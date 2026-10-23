@@ -15,6 +15,22 @@
 	let { online }: { online: OnlineController } = $props();
 
 	let qrDataUrl = $state('');
+	let confirmingLeave = $state(false);
+	// Leaving mid-match ends the room for both players, so it takes a second tap.
+	const leaveNeedsConfirm = $derived(online.snapshot?.phase === 'playing');
+
+	$effect(() => {
+		if (!leaveNeedsConfirm) confirmingLeave = false;
+	});
+
+	function requestLeave(): void {
+		if (leaveNeedsConfirm && !confirmingLeave) {
+			confirmingLeave = true;
+			return;
+		}
+		confirmingLeave = false;
+		online.leaveRoom();
+	}
 
 	$effect(() => {
 		const payload = online.qrPayload;
@@ -114,6 +130,7 @@
 				bind:value={online.displayName}
 				maxlength="24"
 				autocomplete="nickname"
+				placeholder="Your name"
 				onblur={online.updateDisplayName}
 			/>
 		</label>
@@ -141,18 +158,36 @@
 				<RefreshCcw size={15} strokeWidth={2.1} />
 				<span>Resync</span>
 			</button>
-			<button type="button" onclick={online.leaveRoom}>
+			<button type="button" onclick={requestLeave}>
 				<LogOut size={15} strokeWidth={2.1} />
-				<span>Leave</span>
+				<span>{confirmingLeave ? 'Confirm leave' : 'Leave'}</span>
 			</button>
 		</div>
+		{#if confirmingLeave}
+			<p class="move-error" role="alert">
+				Leaving ends this match for both players.
+				<button type="button" class="leave-cancel" onclick={() => (confirmingLeave = false)}>
+					Stay
+				</button>
+			</p>
+		{/if}
 	{:else}
 		<label class="online-field">
 			<span>Your name</span>
-			<input bind:value={online.displayName} maxlength="24" autocomplete="nickname" />
+			<input
+				bind:value={online.displayName}
+				maxlength="24"
+				autocomplete="nickname"
+				placeholder="Your name"
+			/>
 		</label>
 
-		<button type="button" class="primary-action" onclick={online.createPrivateRoom}>
+		<button
+			type="button"
+			class="primary-action"
+			disabled={online.roomRequestPending}
+			onclick={online.createPrivateRoom}
+		>
 			<QrCode size={15} strokeWidth={2.1} />
 			<span>Create room</span>
 		</button>
@@ -168,7 +203,12 @@
 					placeholder="ABCD-EFGH"
 				/>
 			</label>
-			<button type="button" data-tooltip="Join room" onclick={online.joinPrivateRoom}>
+			<button
+				type="button"
+				data-tooltip="Join room"
+				disabled={online.roomRequestPending}
+				onclick={online.joinPrivateRoom}
+			>
 				<DoorOpen size={15} strokeWidth={2.1} />
 				<span>Join</span>
 			</button>
@@ -184,5 +224,12 @@
 	.online-section {
 		display: grid;
 		padding-block: 0.25rem;
+	}
+
+	.leave-cancel {
+		margin-left: 0.4rem;
+		text-decoration: underline;
+		color: inherit;
+		font: inherit;
 	}
 </style>

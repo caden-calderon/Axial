@@ -85,6 +85,8 @@ export type RoomSnapshot = {
     readyPlayerIds: string[];
     deadlineAt: number | null;
   };
+  /** The player whose Leave ended the room, so the other player is told why. */
+  leftByPlayerId?: string | null;
 };
 
 export type PrivateRoomSnapshot = RoomSnapshot & {
@@ -163,6 +165,7 @@ export type RoomErrorCode =
   | "illegal-move"
   | "match-not-playable"
   | "stale-revision"
+  | "rules-changed"
   | "rematch-expired"
   | "auth-failed"
   | "room-expired"
@@ -193,7 +196,12 @@ export type SetRulesCommand = ClientCommandBase<
   "room:set-rules",
   { rules: MultiplayerRules; expectedRevision?: number }
 >;
-export type ReadyCommand = ClientCommandBase<"room:ready", { ready: boolean }>;
+export type ReadyCommand = ClientCommandBase<
+  "room:ready",
+  // The rules the player saw when readying. A Ready that crosses a rules change in flight is
+  // refused, so nobody is started into rules they never agreed to.
+  { ready: boolean; rules?: MultiplayerRules }
+>;
 export type StartCommand = ClientCommandBase<
   "room:start",
   { expectedRevision?: number }

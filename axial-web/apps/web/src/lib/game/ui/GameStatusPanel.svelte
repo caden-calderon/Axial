@@ -104,7 +104,8 @@
 		onToggleTheme,
 		onExpandedChange,
 		onResetView,
-		onShowHelp
+		onShowHelp,
+		helpLocked = false
 	}: {
 		game: GameSnapshot;
 		soundEnabled: boolean;
@@ -168,6 +169,8 @@
 		onExpandedChange?: (expanded: boolean) => void;
 		onResetView: () => void;
 		onShowHelp: () => void;
+		/** The tour replaces the board, so it waits until a live online match is over. */
+		helpLocked?: boolean;
 	} = $props();
 
 	let expanded = $state(true);
@@ -322,8 +325,8 @@
 				<button
 					class="icon-button toolbar-reset-action"
 					type="button"
-					aria-label="Reset game"
-					data-tooltip="Reset game"
+					aria-label={playMode === 'online' ? 'Resync room' : 'Reset game'}
+					data-tooltip={playMode === 'online' ? 'Resync room' : 'Reset game'}
 					onclick={onReset}
 				>
 					<RotateCcw size={18} strokeWidth={1.9} />
@@ -385,7 +388,12 @@
 						{/if}
 
 						<div class="panel-quick-actions" aria-label="Board help">
-							<button type="button" onclick={onShowHelp}>
+							<button
+								type="button"
+								disabled={helpLocked}
+								data-tooltip={helpLocked ? 'Available after this match' : undefined}
+								onclick={onShowHelp}
+							>
 								<HelpCircle size={15} strokeWidth={2} />
 								<span>How to play</span>
 							</button>

@@ -106,12 +106,16 @@ test('two players can start, enforce countdown, reconnect, and leave cleanly', a
 			.toBe(1);
 		await expect(guestPage.getByText('Room', { exact: true })).toBeVisible();
 
+		// Leaving mid-match ends it for both players, so it asks for a second tap.
 		await guestPage.getByRole('button', { name: 'Leave', exact: true }).click();
+		await expect(guestPage.getByText('Leaving ends this match for both players.')).toBeVisible();
+		await guestPage.getByRole('button', { name: 'Confirm leave', exact: true }).click();
 		await expect(guestPage).not.toHaveURL(/[?&]room=/);
 		await expect
 			.poll(async () => (await storedSnapshot(hostPage, roomCode))?.phase)
 			.toBe('expired');
 		await expect(hostPage.getByText('Expired', { exact: true }).first()).toBeVisible();
+		await expect(hostPage.getByText('Friend left the room').first()).toBeVisible();
 
 		await hostPage.getByRole('button', { name: 'Leave', exact: true }).click();
 		await expect(hostPage).not.toHaveURL(/[?&]room=/);

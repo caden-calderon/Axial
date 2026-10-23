@@ -407,6 +407,62 @@ describe("derived game cache", () => {
   });
 });
 
+describe("match setup safeguards", () => {
+  it("does not start a match while a player is offline", () => {
+    let state = readyBoth(waitingRoom());
+    state = markDisconnected(state, "guest", "guest-socket", T0 + 1).state;
+
+    expect(
+      roomErrorCode(() => startMatch(state, "host", state.revision, T0 + 2)),
+    ).toBe("invalid-message");
+    state = markConnected(state, "guest", "guest-socket-2", T0 + 3).state;
+    expect(startMatch(state, "host", state.revision, T0 + 4).state.phase).toBe(
+      "playing",
+    );
+  });
+
+  it("refuses a Ready sent for rules the host has since changed", () => {
+    const seen = waitingRoom().rules;
+    const changed = setRoomRules(
+      waitingRoom(),
+      "host",
+      FIVE_IN_A_ROW,
+      undefined,
+      T0 + 1,
+    ).state;
+
+    expect(
+      roomErrorCode(() =>
+        setReadyState(changed, "guest", true, T0 + 2, undefined, seen),
+      ),
+    ).toBe("rules-changed");
+    const ready = setReadyState(
+      changed,
+      "guest",
+      true,
+      T0 + 2,
+      undefined,
+      FIVE_IN_A_ROW,
+    ).state;
+    expect(
+      ready.players.find((player) => player.playerId === "guest")?.ready,
+    ).toBe(true);
+    // Unready never needs the rules to match.
+    expect(() =>
+      setReadyState(ready, "guest", false, T0 + 3, undefined, seen),
+    ).not.toThrow();
+  });
+
+  it("records who left so the other player can be told", () => {
+    const left = expireRoom(startedRoom(), T0 + 5, undefined, "guest").state;
+
+    expect(toPublicSnapshot(left).leftByPlayerId).toBe("guest");
+    expect(
+      toPublicSnapshot(expireRoom(startedRoom(), T0 + 5).state).leftByPlayerId,
+    ).toBeNull();
+  });
+});
+
 function waitingRoom(): StoredRoomState {
   let state = createInitialRoomState({
     roomCode: "ABCDEFGH",

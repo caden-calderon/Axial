@@ -31,6 +31,19 @@
 	let pulse = $state(1);
 	let lockPulse = $state(0);
 	let phase = 0;
+	// The pulse draws attention to a new preview, then fades to rest so a cursor left over the
+	// board (or a held selection on a phone) stops re-rendering the scene every frame.
+	const PULSE_SECONDS = 6;
+	const PULSE_FADE_SECONDS = 1.5;
+	let pulseElapsed = $state(0);
+
+	$effect(() => {
+		void move.row;
+		void move.col;
+		void height;
+		void locked;
+		pulseElapsed = 0;
+	});
 
 	const fillOpacity = $derived((kind === 'blocker' ? 0.22 : 0.16) + (locked ? 0.08 : 0));
 	const floorPlateOpacity = $derived(locked ? 0.24 + lockPulse * 0.2 : 0.1 + lockPulse * 0.06);
@@ -52,13 +65,16 @@
 
 	useTask(
 		(delta) => {
-			phase += Math.min(delta, 0.1) * 3;
-			const pulseWave = Math.sin(phase);
+			const step = Math.min(delta, 0.1);
+			phase += step * 3;
+			pulseElapsed = Math.min(PULSE_SECONDS, pulseElapsed + step);
+			const fade = Math.min(1, (PULSE_SECONDS - pulseElapsed) / PULSE_FADE_SECONDS);
+			const pulseWave = Math.sin(phase) * fade;
 
 			pulse = 1 + pulseWave * 0.08;
 			lockPulse = 0.5 + pulseWave * 0.5;
 		},
-		{ running: () => !prefersReducedMotion.current }
+		{ running: () => !prefersReducedMotion.current && pulseElapsed < PULSE_SECONDS }
 	);
 </script>
 
@@ -92,47 +108,55 @@
 		/>
 	</T.Mesh>
 
-	<T.Mesh scale={pulse * 0.98} renderOrder={9}>
-		{#if previewShape === 'cube'}
-			<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 4, 0.07]} />
-		{:else}
-			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 28, 18]} />
-		{/if}
-		<T.MeshBasicMaterial
-			color="#020807"
-			transparent
-			opacity={locked ? 0.24 : 0.18}
-			depthWrite={false}
-			blending={NormalBlending}
-		/>
-	</T.Mesh>
-	<T.Mesh scale={pulse} renderOrder={10}>
-		{#if previewShape === 'cube'}
-			<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 4, 0.07]} />
-		{:else}
-			<T.SphereGeometry args={[PIECE_SIZE * 0.58, 28, 18]} />
-		{/if}
-		<T.MeshBasicMaterial
-			{color}
-			transparent
-			opacity={fillOpacity}
-			depthWrite={false}
-			blending={AdditiveBlending}
-		/>
-	</T.Mesh>
-	<T.Mesh scale={pulse * 1.02} renderOrder={11}>
-		{#if previewShape === 'cube'}
-			<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 4, 0.07]} />
-		{:else}
-			<T.SphereGeometry args={[PIECE_SIZE * 0.59, 28, 18]} />
-		{/if}
-		<T.MeshBasicMaterial
-			color="#ffffff"
-			transparent
-			opacity={0.11}
-			depthWrite={false}
-			wireframe
-			blending={AdditiveBlending}
-		/>
-	</T.Mesh>
+	<!-- Each shape gets its own mesh: Threlte puts back a mesh's previous geometry when a child
+	     geometry unmounts, so swapping geometries inside one mesh left pieces without a body. -->
+	{#key previewShape}
+		<T.Mesh scale={pulse * 0.98} renderOrder={9}>
+			{#if previewShape === 'cube'}
+				<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 4, 0.07]} />
+			{:else}
+				<T.SphereGeometry args={[PIECE_SIZE * 0.58, 28, 18]} />
+			{/if}
+			<T.MeshBasicMaterial
+				color="#020807"
+				transparent
+				opacity={locked ? 0.24 : 0.18}
+				depthWrite={false}
+				blending={NormalBlending}
+			/>
+		</T.Mesh>
+	{/key}
+	{#key previewShape}
+		<T.Mesh scale={pulse} renderOrder={10}>
+			{#if previewShape === 'cube'}
+				<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 4, 0.07]} />
+			{:else}
+				<T.SphereGeometry args={[PIECE_SIZE * 0.58, 28, 18]} />
+			{/if}
+			<T.MeshBasicMaterial
+				{color}
+				transparent
+				opacity={fillOpacity}
+				depthWrite={false}
+				blending={AdditiveBlending}
+			/>
+		</T.Mesh>
+	{/key}
+	{#key previewShape}
+		<T.Mesh scale={pulse * 1.02} renderOrder={11}>
+			{#if previewShape === 'cube'}
+				<T is={RoundedBoxGeometry} args={[PIECE_SIZE, PIECE_SIZE, PIECE_SIZE, 4, 0.07]} />
+			{:else}
+				<T.SphereGeometry args={[PIECE_SIZE * 0.59, 28, 18]} />
+			{/if}
+			<T.MeshBasicMaterial
+				color="#ffffff"
+				transparent
+				opacity={0.11}
+				depthWrite={false}
+				wireframe
+				blending={AdditiveBlending}
+			/>
+		</T.Mesh>
+	{/key}
 </T.Group>

@@ -69,7 +69,6 @@ export function createGameAudio(options: GameAudioOptions = {}): GameAudio {
 	let activation = 0;
 	let warned = false;
 	let context: AudioContext | null = null;
-	let pendingUnlock: Promise<boolean> | null = null;
 	let lastInvalidTime = -Infinity;
 
 	function report(error: unknown) {
@@ -130,7 +129,6 @@ export function createGameAudio(options: GameAudioOptions = {}): GameAudio {
 
 	async function unlock(): Promise<boolean> {
 		if (destroyed || !enabled || visibility?.hidden) return false;
-		if (pendingUnlock) return pendingUnlock;
 		try {
 			if (!context || context.state === 'closed') context = createContext();
 			if (!context) return false;
@@ -140,8 +138,10 @@ export function createGameAudio(options: GameAudioOptions = {}): GameAudio {
 				unlocked = true;
 				return true;
 			}
-			// Invoke resume synchronously within the originating gesture, before yielding.
-			pendingUnlock = activeContext
+			// Invoke resume synchronously within the originating gesture, before yielding. Every
+			// gesture asks afresh: a resume() requested outside a real gesture (a touch pointerdown,
+			// say) can stay pending forever, so waiting on an earlier request could mute the session.
+			const request: Promise<boolean> = activeContext
 				.resume()
 				.then(() => {
 					unlocked =
@@ -154,14 +154,12 @@ export function createGameAudio(options: GameAudioOptions = {}): GameAudio {
 					return unlocked;
 				})
 				.catch((error: unknown) => {
-					unlocked = false;
+					// A refused early request must not undo a later gesture's successful resume.
+					if (activeContext.state !== 'running') unlocked = false;
 					report(error);
 					return false;
-				})
-				.finally(() => {
-					pendingUnlock = null;
 				});
-			return pendingUnlock;
+			return request;
 		} catch (error) {
 			unlocked = false;
 			report(error);

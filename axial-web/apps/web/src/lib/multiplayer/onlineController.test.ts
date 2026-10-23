@@ -11,12 +11,15 @@ vi.mock('./client', async (importOriginal) => ({
 	joinRoom: vi.fn(),
 	openRoomSocket: vi.fn(),
 	sendRoomCommand: vi.fn(() => true),
+	sendRoomPing: vi.fn(() => true),
 	submitRoomCommand: vi.fn(),
 	syncRoom: vi.fn(),
 	saveCredentials: vi.fn(),
 	saveRoomSnapshot: vi.fn(),
 	clearCredentials: vi.fn(),
-	clearRoomSnapshot: vi.fn()
+	clearRoomSnapshot: vi.fn(),
+	loadCredentials: vi.fn(() => null),
+	loadRoomSnapshot: vi.fn(() => null)
 }));
 
 const roomCode = 'ABCD2345';
@@ -37,7 +40,7 @@ let controller: OnlineController;
 beforeEach(() => {
 	vi.useFakeTimers();
 	vi.clearAllMocks();
-	vi.stubGlobal('WebSocket', { OPEN: 1 });
+	vi.stubGlobal('WebSocket', { CONNECTING: 0, OPEN: 1 });
 	vi.stubGlobal('localStorage', { setItem: vi.fn(), getItem: vi.fn(() => null) });
 	vi.stubGlobal('window', {
 		location: { href: 'https://axial.test/', origin: 'https://axial.test' },
@@ -56,8 +59,11 @@ beforeEach(() => {
 		snapshot: snapshot()
 	});
 	vi.mocked(client.sendRoomCommand).mockReturnValue(true);
+	vi.mocked(client.sendRoomPing).mockReturnValue(true);
+	vi.mocked(client.loadCredentials).mockReturnValue(null);
 	vi.mocked(client.syncRoom).mockResolvedValue({ snapshot: snapshot() });
 	controller = createOnlineController();
+	controller.displayName = 'Host';
 });
 
 afterEach(() => {
@@ -124,6 +130,79 @@ describe('online room recovery', () => {
 		expect(socket.close).toHaveBeenCalledOnce();
 	});
 
+	it('leaves a displaced tab without ending the room the newer tab is playing in', async () => {
+		await connect();
+		handlers.onEvent(errorEvent('duplicate-connection'));
+		controller.leaveRoom();
+
+		expect(client.submitRoomCommand).not.toHaveBeenCalled();
+		expect(client.clearCredentials).not.toHaveBeenCalled();
+		expect(controller.hasRoom).toBe(false);
+		expect(controller.connectionState).toBe('idle');
+	});
+
+	it('sends one join request when Join is tapped twice', async () => {
+		let resolveJoin: (value: Awaited<ReturnType<typeof client.joinRoom>>) => void = () => {};
+		vi.mocked(client.joinRoom).mockReturnValue(
+			new Promise((resolve) => {
+				resolveJoin = resolve;
+			})
+		);
+		const guest = { ...credentials, playerId: 'friend', seat: 2 as const, isHost: false };
+		controller.joinCodeDraft = 'ABCD-2345';
+
+		const first = controller.joinPrivateRoom();
+		const second = controller.joinPrivateRoom();
+		expect(controller.roomRequestPending).toBe(true);
+		resolveJoin({
+			roomCode,
+			player: guest,
+			inviteUrl: 'https://axial.test/?room=ABCD2345',
+			qrPayload: 'https://axial.test/?room=ABCD2345',
+			snapshot: snapshot({ you: guest })
+		});
+		await Promise.all([first, second]);
+
+		expect(client.joinRoom).toHaveBeenCalledOnce();
+		expect(client.saveCredentials).toHaveBeenCalledWith(guest);
+		expect(controller.roomRequestPending).toBe(false);
+		expect(controller.snapshot?.you.playerId).toBe('friend');
+	});
+
+	it('replaces a socket that stops answering pings', async () => {
+		await connect();
+		await vi.advanceTimersByTimeAsync(15_000);
+		expect(client.sendRoomPing).toHaveBeenCalledOnce();
+
+		await vi.advanceTimersByTimeAsync(6_100);
+		expect(socket.close).toHaveBeenCalledOnce();
+		expect(client.openRoomSocket).toHaveBeenCalledTimes(2);
+		expect(client.syncRoom).toHaveBeenCalled();
+	});
+
+	it('keeps a socket that answers its ping', async () => {
+		await connect();
+		await vi.advanceTimersByTimeAsync(15_000);
+		handlers.onPong?.();
+		await vi.advanceTimersByTimeAsync(6_000);
+
+		expect(socket.close).not.toHaveBeenCalled();
+		expect(client.openRoomSocket).toHaveBeenCalledOnce();
+	});
+
+	it('reconnects instead of leaving input off when a resync gets no answer', async () => {
+		await connect();
+		controller.resync();
+		expect(controller.connectionState).toBe('resyncing');
+		expect(controller.yourTurn).toBe(false);
+
+		await vi.advanceTimersByTimeAsync(6_100);
+		expect(client.openRoomSocket).toHaveBeenCalledTimes(2);
+		handlers.onOpen?.();
+		expect(controller.connectionState).toBe('connected');
+		expect(controller.yourTurn).toBe(true);
+	});
+
 	it('does not send setup actions or resync after a terminal failure', async () => {
 		await connect();
 		handlers.onEvent(snapshotEvent(snapshot({ phase: 'waiting' })));
@@ -157,6 +236,147 @@ describe('online room recovery', () => {
 		expect(controller.yourTurn).toBe(false);
 		expect(socket.close).toHaveBeenCalledOnce();
 		expect(client.clearCredentials).toHaveBeenCalledWith(roomCode);
+	});
+
+	it('locks piece appearance from the countdown until the match ends', async () => {
+		expect(controller.appearanceLocked).toBe(false);
+		await connect();
+		handlers.onEvent(snapshotEvent(snapshot({ phase: 'waiting', revision: 6 })));
+		expect(controller.appearanceLocked).toBe(false);
+
+		handlers.onEvent(
+			snapshotEvent(
+				snapshot({
+					revision: 7,
+					match: { number: 1, startingPlayer: 1, startedAt: 0, playableAt: Date.now() + 3_000 }
+				})
+			)
+		);
+		expect(controller.appearanceLocked).toBe(true);
+
+		handlers.onEvent(snapshotEvent(snapshot({ phase: 'ended', revision: 8 })));
+		expect(controller.appearanceLocked).toBe(false);
+	});
+
+	it('names the opponent who left instead of reporting a bare expiry', async () => {
+		await connect();
+		handlers.onEvent(
+			snapshotEvent(snapshot({ phase: 'expired', revision: 6, leftByPlayerId: 'friend' }))
+		);
+
+		expect(controller.statusTitle).toBe('Friend left the room');
+		expect(controller.connectionState).toBe('expired');
+	});
+
+	it('sends the rules a player saw with their Ready', async () => {
+		await connect();
+		handlers.onEvent(snapshotEvent(snapshot({ phase: 'waiting', revision: 6 })));
+		controller.toggleReady();
+
+		expect(client.sendRoomCommand).toHaveBeenLastCalledWith(
+			socket,
+			expect.objectContaining({
+				type: 'room:ready',
+				payload: { ready: false, rules: controller.snapshot?.rules }
+			})
+		);
+	});
+
+	it('opens the join form instead of taking a seat another tab is playing', async () => {
+		vi.useRealTimers();
+		vi.stubGlobal('document', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+		vi.stubGlobal('window', {
+			location: { href: 'https://axial.test/', origin: 'https://axial.test' },
+			history: { state: {}, replaceState: vi.fn() },
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn()
+		});
+		await connect();
+		const secondTab = createOnlineController();
+		vi.mocked(client.loadCredentials).mockReturnValue(credentials);
+		try {
+			secondTab.hydrateFromBrowser(new URLSearchParams({ room: roomCode }));
+			await new Promise((resolve) => setTimeout(resolve, 300));
+
+			expect(secondTab.hasRoom).toBe(false);
+			expect(secondTab.error).toContain('open in another tab');
+			expect(client.openRoomSocket).toHaveBeenCalledOnce();
+		} finally {
+			secondTab.destroy();
+		}
+	});
+
+	it('resumes a saved seat when no other tab is playing it', async () => {
+		vi.useRealTimers();
+		vi.stubGlobal('document', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+		vi.stubGlobal('window', {
+			location: { href: 'https://axial.test/', origin: 'https://axial.test' },
+			history: { state: {}, replaceState: vi.fn() },
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn()
+		});
+		vi.mocked(client.loadCredentials).mockReturnValue(credentials);
+		controller.hydrateFromBrowser(new URLSearchParams({ room: roomCode }));
+		await new Promise((resolve) => setTimeout(resolve, 300));
+
+		expect(client.openRoomSocket).toHaveBeenCalledOnce();
+		expect(controller.error).toBe('');
+	});
+
+	it('resyncs and explains when the host changed the rules under a Ready', async () => {
+		await connect();
+		handlers.onEvent(
+			errorEvent('rules-changed', 'The host changed the rules. Check them and ready up again.')
+		);
+
+		expect(controller.connectionState).toBe('resyncing');
+		expect(controller.error).toBe('The host changed the rules. Check them and ready up again.');
+	});
+
+	it('does not knock out another tab when a cached page comes back', async () => {
+		vi.useRealTimers();
+		vi.stubGlobal('document', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+		vi.stubGlobal('window', {
+			location: { href: 'https://axial.test/', origin: 'https://axial.test' },
+			history: { state: {}, replaceState: vi.fn() },
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn()
+		});
+		const otherTab = createOnlineController();
+		vi.mocked(client.createRoom).mockResolvedValueOnce({
+			roomCode,
+			player: credentials,
+			inviteUrl: 'https://axial.test/?room=ABCD2345',
+			qrPayload: 'https://axial.test/?room=ABCD2345',
+			snapshot: snapshot()
+		});
+		otherTab.displayName = 'Host';
+		try {
+			await connect();
+			const firstTab = handlers;
+			controller.hydrateFromBrowser(new URLSearchParams());
+			// The first tab goes into the back/forward cache and its socket closes.
+			firstTab.onClose?.({} as CloseEvent);
+			await otherTab.createPrivateRoom();
+			handlers.onOpen?.();
+			const opened = vi.mocked(client.openRoomSocket).mock.calls.length;
+
+			const listeners = vi.mocked(window.addEventListener).mock.calls as unknown as [
+				string,
+				(event: unknown) => void
+			][];
+			const pageShow = listeners.find(([type]) => type === 'pageshow')?.[1];
+			if (!pageShow) throw new Error('pageshow listener was not attached');
+			pageShow({ persisted: true });
+			await new Promise((resolve) => setTimeout(resolve, 300));
+
+			expect(client.openRoomSocket).toHaveBeenCalledTimes(opened);
+			expect(controller.error).toBe('This room is open in another tab.');
+			expect(controller.connectionState).toBe('fatal-error');
+			expect(client.clearCredentials).not.toHaveBeenCalled();
+		} finally {
+			otherTab.destroy();
+		}
 	});
 
 	it('requests a fresh websocket snapshot after a stale move without replaying the move', async () => {
@@ -289,13 +509,13 @@ function snapshotEvent(value: PrivateRoomSnapshot): ServerEvent {
 	};
 }
 
-function errorEvent(code: RoomErrorCode): ServerEvent {
+function errorEvent(code: RoomErrorCode, message: string = code): ServerEvent {
 	return {
 		source: 'axial-room',
 		version: 1,
 		id: 'error',
 		revision: 5,
 		type: 'room:error',
-		payload: { error: { code, message: code } }
+		payload: { error: { code, message } }
 	};
 }

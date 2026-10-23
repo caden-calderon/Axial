@@ -35,7 +35,8 @@
 		onSettle,
 		onWinReveal,
 		interactionLabel,
-		inputEnabled = true
+		inputEnabled = true,
+		embedded = false
 	}: {
 		game: GameSnapshot;
 		hoveredMove: Move | null;
@@ -59,6 +60,8 @@
 		onWinReveal?: () => void;
 		interactionLabel: string;
 		inputEnabled?: boolean;
+		/** Shown inside another page's iframe. */
+		embedded?: boolean;
 	} = $props();
 
 	let sceneShell: HTMLButtonElement | null = null;
@@ -241,6 +244,7 @@
 			{onHover}
 			{onPlay}
 			{inputEnabled}
+			{embedded}
 			onViewQuarterTurns={(turns) => (viewQuarterTurns = turns)}
 		/>
 	</Canvas>
@@ -289,6 +293,8 @@
 	.scene-shell {
 		position: absolute;
 		inset: 0;
+		/* The whole board is one button; without this, phones flash it on every tap. */
+		-webkit-tap-highlight-color: transparent;
 		width: 100%;
 		height: 100%;
 		padding: 0;

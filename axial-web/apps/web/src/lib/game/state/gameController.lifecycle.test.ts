@@ -93,6 +93,28 @@ describe('AI turn pacing', () => {
 		expect(game.game.moveHistory).toHaveLength(1);
 		expect(game.game.lastMove?.player).toBe(2);
 	});
+
+	it("keeps the AI's opening move, so undo cannot strand the board on the AI's turn", async () => {
+		const game = controller();
+		game.setOpponentMode('ai');
+		game.playMove({ row: 0, col: 0 });
+		await vi.advanceTimersByTimeAsync(MIN_AI_TURN_MS);
+		game.resetGame();
+		await vi.advanceTimersByTimeAsync(MIN_AI_TURN_MS);
+		expect(game.game.moveHistory.map((move) => move.player)).toEqual([2]);
+
+		expect(game.canUndo).toBe(false);
+		game.undoMove();
+		expect(game.game.moveHistory).toHaveLength(1);
+		expect(game.canRedo).toBe(false);
+		expect(game.canPlay).toBe(true);
+
+		game.playMove({ row: 0, col: 0 });
+		await vi.advanceTimersByTimeAsync(MIN_AI_TURN_MS);
+		game.undoMove();
+		expect(game.game.moveHistory.map((move) => move.player)).toEqual([2]);
+		expect(game.canPlay).toBe(true);
+	});
 });
 
 describe('match duration', () => {
@@ -102,6 +124,22 @@ describe('match duration', () => {
 			if (col < 3) game.playMove({ row: 1, col });
 		}
 	}
+
+	it('counts a match by its final ending after undo changes the winner', () => {
+		const game = controller();
+		win(game);
+		expect(game.sessionRecord).toMatchObject({ playerOneWins: 1, playerTwoWins: 0 });
+
+		game.undoMove();
+		game.redoMove();
+		expect(game.sessionRecord).toMatchObject({ playerOneWins: 1, playerTwoWins: 0 });
+
+		game.undoMove();
+		game.playMove({ row: 5, col: 5 });
+		game.playMove({ row: 1, col: 3 });
+		expect(game.game.status).toMatchObject({ state: 'won', winner: 2 });
+		expect(game.sessionRecord).toMatchObject({ playerOneWins: 0, playerTwoWins: 1 });
+	});
 
 	it('times first to last move across reload and freezes through review and redo', () => {
 		const game = controller();

@@ -7,6 +7,27 @@ import { CELL_SPACING } from './geometry';
 const defaultBoard: BoardDimensions = { height: 6, rows: 6, columns: 7 };
 
 describe('viewport-only camera framing', () => {
+	it.each([
+		[760, 1000],
+		[720, 1280],
+		[1080, 1920]
+	] as const)('frames a tall %i × %i desktop window in portrait', (width, height) => {
+		const fit = resolveCameraFit({ width, height, coarsePointer: false }, defaultBoard);
+		expect(fit.portrait).toBe(true);
+		expect(fit.compact).toBe(false);
+	});
+
+	it('keeps the desktop framing for square and wide desktop windows', () => {
+		for (const [width, height] of [
+			[900, 900],
+			[1280, 800]
+		] as const) {
+			expect(resolveCameraFit({ width, height, coarsePointer: false }, defaultBoard).portrait).toBe(
+				false
+			);
+		}
+	});
+
 	it('uses a larger, closer fit for phone landscape than portrait', () => {
 		const portrait = resolveCameraFit(
 			{ width: 390, height: 844, coarsePointer: true },

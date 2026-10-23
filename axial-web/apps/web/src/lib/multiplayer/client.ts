@@ -60,6 +60,7 @@ export function openRoomSocket(input: {
 	onOpen?: () => void;
 	onClose?: (event: CloseEvent) => void;
 	onError?: () => void;
+	onPong?: () => void;
 }): WebSocket {
 	const url = new URL(
 		`/api/rooms/${encodeURIComponent(input.credentials.roomCode)}/socket`,
@@ -74,6 +75,11 @@ export function openRoomSocket(input: {
 	socket.addEventListener('close', (event) => input.onClose?.(event));
 	socket.addEventListener('error', () => input.onError?.());
 	socket.addEventListener('message', (event) => {
+		// The room answers a bare "ping" with a bare "pong" (setWebSocketAutoResponse), not JSON.
+		if (event.data === ROOM_PONG) {
+			input.onPong?.();
+			return;
+		}
 		try {
 			input.onEvent(JSON.parse(String(event.data)) as ServerEvent);
 		} catch {
@@ -118,6 +124,15 @@ export async function submitRoomCommand(
 			command
 		}
 	);
+}
+
+const ROOM_PING = 'ping';
+const ROOM_PONG = 'pong';
+
+export function sendRoomPing(socket: WebSocket | null): boolean {
+	if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+	socket.send(ROOM_PING);
+	return true;
 }
 
 export function sendRoomCommand(socket: WebSocket | null, command: ClientCommand): boolean {
@@ -207,12 +222,24 @@ export function eventError(event: ServerEvent): RoomErrorPayload | null {
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
-	const response = await fetch(`${multiplayerHttpBase()}${path}`, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify(body)
-	});
-	const payload = (await response.json()) as T | { error: RoomErrorPayload };
+	let response: Response;
+	try {
+		response = await fetch(`${multiplayerHttpBase()}${path}`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(body)
+		});
+	} catch {
+		// Browsers word this differently ("Failed to fetch", "Load failed"); say what it means.
+		throw new Error('Could not reach the game server. Check your connection and try again.');
+	}
+	let payload: T | { error: RoomErrorPayload };
+	try {
+		payload = (await response.json()) as T | { error: RoomErrorPayload };
+	} catch {
+		// An outage or proxy error page is HTML, not the room's JSON.
+		throw new Error('The game server had a problem. Try again in a moment.');
+	}
 	if (!response.ok) {
 		const error =
 			typeof payload === 'object' && payload !== null && 'error' in payload
