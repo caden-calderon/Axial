@@ -1,0 +1,5 @@
+# Copy to .dev.vars for `wrangler dev`. Production values are Worker secrets.
+# Cloudflare's test secret: every Turnstile token passes.
+TURNSTILE_SECRET=1x0000000000000000000000000000000AA
+# wrangler dev only writes outgoing mail to a local file, so any address works.
+FEEDBACK_RECIPIENT=you@example.com

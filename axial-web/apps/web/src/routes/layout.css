@@ -437,8 +437,8 @@ textarea {
 	outline-offset: 2px;
 }
 
-.sheet-size-button {
-	display: none !important;
+.sheet-handle {
+	display: none;
 }
 
 .locked-match-summary {
@@ -1722,12 +1722,54 @@ textarea {
 		border-radius: 0;
 	}
 
-	.panel-quick-actions {
-		grid-template-columns: repeat(3, minmax(0, 1fr));
+	.control-panel.sheet-dragging {
+		transition: none;
 	}
 
-	.sheet-size-button {
-		display: inline-flex !important;
+	.sheet-handle {
+		display: grid;
+		flex: 0 0 auto;
+		width: 100%;
+		/* A full touch target; the negative margins keep the visible gap as slim as the bar. */
+		height: var(--target-coarse);
+		margin: -0.3rem 0 -0.42rem;
+		padding: 0;
+		place-items: center;
+		border: 0;
+		background: transparent;
+		cursor: grab;
+		/* The handle owns vertical drags; without this the page would scroll instead. */
+		touch-action: none;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.control-panel.sheet-dragging .sheet-handle {
+		cursor: grabbing;
+	}
+
+	.sheet-grabber {
+		width: 2.6rem;
+		height: 0.3rem;
+		border-radius: 999px;
+		background: color-mix(in oklab, var(--text) 24%, transparent);
+		transition:
+			width var(--motion-fast) ease,
+			background var(--motion-fast) ease;
+	}
+
+	.sheet-handle:hover .sheet-grabber,
+	.control-panel.sheet-dragging .sheet-grabber {
+		width: 3.1rem;
+		background: color-mix(in oklab, var(--accent) 62%, transparent);
+	}
+
+	.sheet-handle:focus-visible {
+		outline: none;
+	}
+
+	.sheet-handle:focus-visible .sheet-grabber {
+		outline: 2px solid color-mix(in oklab, var(--accent) 52%, transparent);
+		outline-offset: 3px;
 	}
 }
 

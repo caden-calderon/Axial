@@ -8,6 +8,13 @@ import {
 } from "./roomCodes";
 import { RoomServiceError, fail } from "./errors";
 import {
+  FEEDBACK_SENDER,
+  MAX_FEEDBACK_JSON_BYTES,
+  composeFeedbackEmail,
+  parseFeedbackRequest,
+  verifyTurnstile,
+} from "./feedback";
+import {
   parseCreateRoomRequest,
   parseJoinRoomRequest,
   parseRoomCommandRequest,
@@ -34,6 +41,11 @@ export default {
         response = Response.json({ ok: true, service: "axial-multiplayer" });
       } else if (url.pathname === "/api/rooms" && request.method === "POST") {
         response = await handleCreateRoom(request, env);
+      } else if (
+        url.pathname === "/api/feedback" &&
+        request.method === "POST"
+      ) {
+        response = await handleFeedback(request, env, requestId);
       } else {
         const route = parseRoomRoute(url.pathname);
         if (route?.action === "join" && request.method === "POST") {
@@ -124,6 +136,119 @@ async function handleCreateRoom(request: Request, env: Env): Promise<Response> {
     "Could not reserve a unique room code. Try again.",
     503,
   );
+}
+
+async function handleFeedback(
+  request: Request,
+  env: Env,
+  requestId: string,
+): Promise<Response> {
+  const feedback = parseFeedbackRequest(
+    await readJsonRequest(request, MAX_FEEDBACK_JSON_BYTES),
+  );
+
+  // Answer a filled honeypot like a real send so the bot learns nothing.
+  if (feedback.honeypot) {
+    log("info", "feedback dropped", { requestId, reason: "honeypot" });
+    return Response.json({ ok: true }, { status: 202 });
+  }
+
+  // Per network first, then a site-wide ceiling so a botnet that gets past
+  // Turnstile still cannot flood the inbox. Checked after validation so a
+  // typo the form rejects doesn't use up an attempt.
+  const address = request.headers.get("CF-Connecting-IP") || "unknown";
+  const limits = [
+    () => env.FEEDBACK_LIMITER.limit({ key: `axial:feedback:${address}` }),
+    () => env.FEEDBACK_GLOBAL_LIMITER.limit({ key: "axial:feedback:all" }),
+  ];
+  for (const limit of limits) {
+    const { success } = await limit();
+    if (!success) {
+      const response = errorResponse(
+        {
+          code: "rate-limited",
+          message:
+            "That's a lot of messages at once. Wait a minute and try again.",
+          details: { retryAfterSeconds: 60 },
+        },
+        429,
+      );
+      response.headers.set("Retry-After", "60");
+      return response;
+    }
+  }
+
+  if (!env.TURNSTILE_SECRET || !env.FEEDBACK_RECIPIENT || !env.FEEDBACK_EMAIL) {
+    log("error", "feedback not configured", { requestId });
+    throw new RoomServiceError(
+      "internal-error",
+      "Feedback isn't set up on this server yet.",
+      503,
+    );
+  }
+
+  let verification: Awaited<ReturnType<typeof verifyTurnstile>>;
+  try {
+    verification = await verifyTurnstile({
+      secret: env.TURNSTILE_SECRET,
+      token: feedback.turnstileToken,
+      remoteIp: request.headers.get("CF-Connecting-IP"),
+    });
+  } catch (error) {
+    log("error", "turnstile unreachable", {
+      requestId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw new RoomServiceError(
+      "internal-error",
+      "Couldn't run the spam check right now. Try again in a few minutes.",
+      503,
+    );
+  }
+  if (!verification.ok) {
+    log("info", "feedback dropped", {
+      requestId,
+      reason: "turnstile",
+      detail: verification.reason,
+    });
+    throw new RoomServiceError(
+      "auth-failed",
+      "The spam check didn't pass. Reload the page and try again.",
+      403,
+    );
+  }
+
+  const email = composeFeedbackEmail(feedback, {
+    userAgent: (request.headers.get("User-Agent") ?? "").slice(0, 300),
+    country: String(request.cf?.country ?? ""),
+    receivedAt: new Date(),
+  });
+
+  try {
+    await env.FEEDBACK_EMAIL.send({
+      from: { email: FEEDBACK_SENDER, name: "Axial feedback" },
+      to: env.FEEDBACK_RECIPIENT,
+      subject: email.subject,
+      text: email.text,
+      ...(email.replyTo ? { replyTo: email.replyTo } : {}),
+    });
+  } catch (error) {
+    // Keep the message in the logs so a delivery outage doesn't lose it.
+    log("error", "feedback email failed", {
+      requestId,
+      error: error instanceof Error ? error.message : String(error),
+      subject: email.subject,
+      body: email.text,
+    });
+    throw new RoomServiceError(
+      "internal-error",
+      "Couldn't send that right now. Try again in a few minutes.",
+      503,
+    );
+  }
+
+  log("info", "feedback sent", { requestId, kind: feedback.kind });
+  return Response.json({ ok: true }, { status: 202 });
 }
 
 async function handleRoomSync(

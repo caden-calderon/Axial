@@ -15,6 +15,7 @@
 		shouldStartWelcomeTour
 	} from '$lib/game/onboarding/welcomeTour';
 	import { createGameController, type PlayMode } from '$lib/game/state/gameController.svelte';
+	import FeedbackDialog from '$lib/game/ui/FeedbackDialog.svelte';
 	import GameOverModal from '$lib/game/ui/GameOverModal.svelte';
 	import ControlTooltip from '$lib/game/ui/ControlTooltip.svelte';
 	import GameHud from '$lib/game/ui/GameHud.svelte';
@@ -84,6 +85,7 @@
 	let welcomeTourPanelExpanded = $state<boolean | null>(null);
 	let welcomeTourRestorePanelExpanded = $state(false);
 	let controlsExpanded = $state(true);
+	let feedbackOpen = $state(false);
 	let viewResetKey = $state(0);
 	let sceneEpoch = $state(0);
 	let recoveryMessage = $state('');
@@ -130,6 +132,16 @@
 		playMode === 'online' ? online.winCondition : controller.winCondition
 	);
 	const activeMatchMode = $derived(playMode === 'online' ? online.matchMode : controller.matchMode);
+	/** Attached to feedback so a bug report says which kind of game it came from. */
+	const feedbackMode = $derived(
+		[
+			playMode === 'ai' ? `ai (${controller.aiDifficulty})` : playMode,
+			activeMatchMode,
+			playMode === 'online' && online.snapshot ? `room ${online.snapshot.phase}` : ''
+		]
+			.filter(Boolean)
+			.join(', ')
+	);
 	const activeSetupLocked = $derived(
 		playMode === 'online' ? online.setupLocked : controller.setupLocked
 	);
@@ -516,10 +528,6 @@
 		closeWelcomeTour();
 	}
 
-	function resetView(): void {
-		viewResetKey += 1;
-	}
-
 	function completeWelcomeTour(): void {
 		markWelcomeTourSeen(getBrowserStorage('localStorage'));
 		closeWelcomeTour();
@@ -720,8 +728,8 @@
 			onToggleLabels={controller.toggleLabels}
 			onToggleTheme={controller.toggleTheme}
 			onExpandedChange={(expanded) => (controlsExpanded = expanded)}
-			onResetView={resetView}
 			onShowHelp={startWelcomeTour}
+			onShowFeedback={() => (feedbackOpen = true)}
 			helpLocked={playMode === 'online' && online.snapshot?.phase === 'playing'}
 		/>
 	</div>
@@ -775,6 +783,10 @@
 
 	{#if recoveryMessage}
 		<div class="recovery-toast" role="status" aria-live="polite">{recoveryMessage}</div>
+	{/if}
+
+	{#if feedbackOpen}
+		<FeedbackDialog mode={feedbackMode} onClose={() => (feedbackOpen = false)} />
 	{/if}
 
 	{#if welcomeTourActive}

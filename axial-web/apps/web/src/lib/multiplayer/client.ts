@@ -221,6 +221,22 @@ export function eventError(event: ServerEvent): RoomErrorPayload | null {
 	return null;
 }
 
+export type FeedbackPayload = {
+	kind: 'bug' | 'idea' | 'review';
+	message: string;
+	name: string;
+	contact: string;
+	turnstileToken: string;
+	/** Honeypot: hidden from people, so only bots fill it in. */
+	website: string;
+	context: { mode: string; viewport: string; build: string };
+};
+
+/** Feedback rides the room server: it already has the origin checks, rate limits and mail binding. */
+export async function sendFeedback(payload: FeedbackPayload): Promise<void> {
+	await postJson<{ ok: true }>('/api/feedback', payload);
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
 	let response: Response;
 	try {

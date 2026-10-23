@@ -3,12 +3,10 @@
 	import {
 		Boxes,
 		ChevronUp,
-		ChevronsDownUp,
-		ChevronsUpDown,
 		CopyPlus,
-		Focus,
 		HelpCircle,
 		Maximize2,
+		MessageSquareText,
 		Minimize2,
 		Moon,
 		Redo2,
@@ -103,8 +101,8 @@
 		onToggleLabels,
 		onToggleTheme,
 		onExpandedChange,
-		onResetView,
 		onShowHelp,
+		onShowFeedback,
 		helpLocked = false
 	}: {
 		game: GameSnapshot;
@@ -167,8 +165,8 @@
 		onToggleLabels: () => void;
 		onToggleTheme: () => void;
 		onExpandedChange?: (expanded: boolean) => void;
-		onResetView: () => void;
 		onShowHelp: () => void;
+		onShowFeedback: () => void;
 		/** The tour replaces the board, so it waits until a live online match is over. */
 		helpLocked?: boolean;
 	} = $props();
@@ -176,6 +174,11 @@
 	let expanded = $state(true);
 	let piecesMode = $state(false);
 	let sheetFull = $state(false);
+	let panelElement: HTMLElement | undefined = $state();
+	/** Live height while the phone sheet's handle is dragged; null lets the CSS state decide. */
+	let dragHeight = $state<number | null>(null);
+	let sheetDrag: SheetDrag | null = null;
+	let suppressHandleClick = false;
 	const panelExpanded = $derived(forcedExpanded ?? expanded);
 	const moveLabel = $derived(`${moveCount} ${moveCount === 1 ? 'move' : 'moves'}`);
 	const specialStatus = $derived(
@@ -207,7 +210,105 @@
 	}
 
 	function toggleSheetSize(): void {
+		if (suppressHandleClick) {
+			suppressHandleClick = false;
+			return;
+		}
 		sheetFull = !sheetFull;
+	}
+
+	type SheetDrag = {
+		pointerId: number;
+		startY: number;
+		startHeight: number;
+		startStop: SheetStop;
+		moved: boolean;
+		lastY: number;
+		lastTime: number;
+		/** Pixels per millisecond, positive downward, smoothed over the last few moves. */
+		velocity: number;
+	};
+	type SheetStop = 'collapsed' | 'half' | 'full';
+	const SHEET_STOPS: SheetStop[] = ['collapsed', 'half', 'full'];
+	const SHEET_TAP_SLOP_PX = 6;
+	const SHEET_FLICK_SPEED = 0.45;
+	const SHEET_FLICK_MAX_AGE_MS = 120;
+	const SHEET_MIN_DRAG_HEIGHT = 72;
+
+	function startSheetDrag(event: PointerEvent): void {
+		suppressHandleClick = false;
+		if (forcedExpanded !== null || !panelExpanded || !panelElement) return;
+		if (event.pointerType === 'mouse' && event.button !== 0) return;
+		sheetDrag = {
+			pointerId: event.pointerId,
+			startY: event.clientY,
+			startHeight: panelElement.getBoundingClientRect().height,
+			startStop: sheetFull ? 'full' : 'half',
+			moved: false,
+			lastY: event.clientY,
+			lastTime: event.timeStamp,
+			velocity: 0
+		};
+		// Keep receiving moves once the finger leaves the thin handle. Capture can throw for a
+		// pointer that already ended; the drag still works while the finger stays on the handle.
+		try {
+			(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+		} catch {
+			/* see above */
+		}
+	}
+
+	function moveSheetDrag(event: PointerEvent): void {
+		const drag = sheetDrag;
+		if (!drag || event.pointerId !== drag.pointerId) return;
+		const offset = event.clientY - drag.startY;
+		if (!drag.moved && Math.abs(offset) < SHEET_TAP_SLOP_PX) return;
+		drag.moved = true;
+
+		const elapsed = event.timeStamp - drag.lastTime;
+		if (elapsed > 0) {
+			drag.velocity = 0.7 * ((event.clientY - drag.lastY) / elapsed) + 0.3 * drag.velocity;
+		}
+		drag.lastY = event.clientY;
+		drag.lastTime = event.timeStamp;
+		dragHeight = Math.min(
+			window.innerHeight,
+			Math.max(SHEET_MIN_DRAG_HEIGHT, drag.startHeight + offset)
+		);
+	}
+
+	function endSheetDrag(event: PointerEvent): void {
+		const drag = sheetDrag;
+		if (!drag || event.pointerId !== drag.pointerId) return;
+		sheetDrag = null;
+		const height = dragHeight;
+		dragHeight = null;
+		// A tap falls through to the click handler, which toggles half and full.
+		if (!drag.moved || height === null || event.type === 'pointercancel') return;
+
+		suppressHandleClick = true;
+		const stale = event.timeStamp - drag.lastTime > SHEET_FLICK_MAX_AGE_MS;
+		settleSheet(height, stale ? 0 : drag.velocity, drag.startStop);
+	}
+
+	/** Snap to the nearest stop, or one stop past where the drag began when it ends in a flick. */
+	function settleSheet(height: number, velocity: number, startStop: SheetStop): void {
+		const halfHeight = halfSheetHeight();
+		const fullHeight = window.innerHeight;
+		let index = height < halfHeight * 0.6 ? 0 : height > (halfHeight + fullHeight) / 2 ? 2 : 1;
+		const startIndex = SHEET_STOPS.indexOf(startStop);
+		if (velocity > SHEET_FLICK_SPEED && index <= startIndex) index = Math.min(2, startIndex + 1);
+		if (velocity < -SHEET_FLICK_SPEED && index >= startIndex) index = Math.max(0, startIndex - 1);
+
+		const stop = SHEET_STOPS[index];
+		sheetFull = stop === 'full';
+		if (stop === 'collapsed') expanded = false;
+	}
+
+	/** Mirrors the half sheet's CSS height, min(50dvh, 30rem). */
+	function halfSheetHeight(): number {
+		const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+		return Math.min(window.innerHeight * 0.5, 30 * rem);
 	}
 
 	function togglePiecesMode(): void {
@@ -223,9 +324,12 @@
 </script>
 
 <section
+	bind:this={panelElement}
 	class="control-panel"
 	class:collapsed={!panelExpanded}
 	class:sheet-full={sheetFull}
+	class:sheet-dragging={dragHeight !== null}
+	style:height={dragHeight === null ? undefined : `${dragHeight}px`}
 	class:tactical-panel={matchMode === 'tactical'}
 	class:tour-controlled={forcedExpanded !== null}
 	data-sheet-state={panelExpanded ? (sheetFull ? 'full' : 'half') : 'collapsed'}
@@ -397,23 +501,9 @@
 								<HelpCircle size={15} strokeWidth={2} />
 								<span>How to play</span>
 							</button>
-							<button type="button" onclick={onResetView}>
-								<Focus size={15} strokeWidth={2} />
-								<span>Reset view</span>
-							</button>
-							<button
-								class="sheet-size-button"
-								type="button"
-								aria-pressed={sheetFull}
-								onclick={toggleSheetSize}
-							>
-								{#if sheetFull}
-									<ChevronsDownUp size={15} strokeWidth={2} />
-									<span>Half sheet</span>
-								{:else}
-									<ChevronsUpDown size={15} strokeWidth={2} />
-									<span>Full sheet</span>
-								{/if}
+							<button type="button" onclick={onShowFeedback}>
+								<MessageSquareText size={15} strokeWidth={2} />
+								<span>Feedback</span>
 							</button>
 						</div>
 
@@ -472,4 +562,19 @@
 			</div>
 		</div>
 	</div>
+	{#if panelExpanded && forcedExpanded === null}
+		<!-- Phone portrait only (see layout.css): drag between half and full, or up to tuck away. -->
+		<button
+			class="sheet-handle"
+			type="button"
+			aria-label={sheetFull ? 'Half sheet' : 'Full sheet'}
+			onpointerdown={startSheetDrag}
+			onpointermove={moveSheetDrag}
+			onpointerup={endSheetDrag}
+			onpointercancel={endSheetDrag}
+			onclick={toggleSheetSize}
+		>
+			<span class="sheet-grabber" aria-hidden="true"></span>
+		</button>
+	{/if}
 </section>

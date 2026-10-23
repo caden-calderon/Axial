@@ -25,6 +25,10 @@
       "zone_name": "playaxial.dev",
     },
     {
+      "pattern": "playaxial.dev/api/feedback",
+      "zone_name": "playaxial.dev",
+    },
+    {
       "pattern": "playaxial.dev/health",
       "zone_name": "playaxial.dev",
     },
@@ -42,6 +46,24 @@
       "name": "ROOM_CREATION_LIMITER",
       "namespace_id": "1084783157",
       "simple": { "limit": 10, "period": 60 },
+    },
+    {
+      "name": "FEEDBACK_LIMITER",
+      "namespace_id": "1084783158",
+      "simple": { "limit": 3, "period": 60 },
+    },
+    {
+      "name": "FEEDBACK_GLOBAL_LIMITER",
+      "namespace_id": "1084783159",
+      "simple": { "limit": 10, "period": 60 },
+    },
+  ],
+  // Feedback mail goes to the address in the FEEDBACK_RECIPIENT secret, which
+  // Email Routing only delivers to once it has been verified.
+  "send_email": [
+    {
+      "name": "FEEDBACK_EMAIL",
+      "allowed_sender_addresses": ["feedback@playaxial.dev"],
     },
   ],
   "migrations": [

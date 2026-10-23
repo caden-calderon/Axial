@@ -24,9 +24,12 @@ import { RoomServiceError } from "./errors";
 const MAX_JSON_BYTES = 4096;
 const MAX_DISPLAY_NAME_LENGTH = 24;
 
-export async function readJsonRequest(request: Request): Promise<unknown> {
+export async function readJsonRequest(
+  request: Request,
+  maxBytes = MAX_JSON_BYTES,
+): Promise<unknown> {
   const contentLength = request.headers.get("content-length");
-  if (contentLength && Number(contentLength) > MAX_JSON_BYTES) {
+  if (contentLength && Number(contentLength) > maxBytes) {
     throw new RoomServiceError(
       "invalid-message",
       "Request body is too large.",
@@ -44,7 +47,7 @@ export async function readJsonRequest(request: Request): Promise<unknown> {
       const { done, value } = await reader.read();
       if (done) break;
       bytesRead += value.byteLength;
-      if (bytesRead > MAX_JSON_BYTES) {
+      if (bytesRead > maxBytes) {
         await reader.cancel();
         throw new RoomServiceError(
           "invalid-message",
