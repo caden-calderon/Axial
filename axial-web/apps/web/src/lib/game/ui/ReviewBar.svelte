@@ -22,8 +22,8 @@
 	const positionLabel = $derived(`Move ${moveNumber} of ${totalMoves}`);
 </script>
 
-<!-- Undo and redo live in the collapsed toolbar's hidden half on phones, so reviewing a match
-     (or stepping back after an undo) needs its own controls while the panel is closed. -->
+<!-- Shown throughout "Review match", and after an undo while the panel is closed (the collapsed
+     phone toolbar hides undo and redo). -->
 <aside
 	class="review-bar"
 	class:panel-open={controlsExpanded}

@@ -26,11 +26,11 @@ The frontend uses port `8787` for the room service on localhost. The command-lin
 - Choose a floor square, or point at a stack, to drop a piece into that column. Pieces stack from the bottom.
 - Connect four of your pieces in a straight line across, up, or diagonally through the board. All 13 spatial directions count.
 - Before the first move, choose Connect 4 or 5, a board size, and one, two or three lines needed to win. A longer extension of one straight run remains one scored line; crossing lines count separately.
-- Drag to orbit and scroll/pinch to zoom. Keyboard: arrows select a column (relative to the current camera view), Enter/Space place or confirm, Escape clears the selection. Holding Enter cannot place repeated turns.
+- Drag to orbit and scroll/pinch to zoom. On a trackpad, swiping two fingers sideways orbits, and up/down then tilts until the fingers rest; a straight up/down swipe or a pinch zooms (`wheelGesture.ts`). Keyboard: arrows select a column (relative to the current camera view), Enter/Space place or confirm, Escape clears the selection. Holding Enter cannot place repeated turns.
 - Confirm drop provides a staged preview; it is the default for new touch users. Moving the keyboard cursor clears an older staged selection.
 - Players are distinguished by their piece colors. Grid layers can be enabled to inspect height.
 - How to play includes a safe preview exercise. Sound is optional, off by default, and can be enabled or muted in Appearance. Motion follows the operating system preference.
-- Settings overlay the board without moving or rescaling it. On a phone held upright they open as a half sheet; drag or flick its grab bar to the full sheet, or up to tuck it away, and tap the bar to switch between half and full. Multi-line scores live within the Match section; result screens preserve new-match, review and keep-board actions.
+- Settings overlay the board without moving or rescaling it. On a phone held upright they open as a half sheet; drag or flick its grab bar to the full sheet, or up to tuck it away, and tap the bar to switch between half and full. Multi-line scores live within the Match section; result screens preserve new-match, review and keep-board actions. Review match steps through the finished game with a Back/Next bar and keeps the board read-only until the last move is replayed or a new match starts.
 - Local and AI matches persist on refresh. Undo/redo and review preserve canonical move histories. Rematches alternate the opening player; the human opens a new AI series.
 
 Feedback in the settings panel sends a bug report, idea or review to the developer by email.

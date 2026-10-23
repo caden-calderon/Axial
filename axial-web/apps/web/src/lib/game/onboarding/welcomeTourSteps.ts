@@ -25,7 +25,7 @@ export const WELCOME_TOUR_STEPS = [
 		id: 'board',
 		kicker: 'Your turn',
 		title: 'Take a practice turn',
-		body: 'Drag to rotate the board. Pinch or scroll to zoom. Complete a row of three by dropping the fourth piece. Tap a column, or use the arrow keys and Enter.',
+		body: 'Drag, or swipe two fingers sideways on a trackpad, to rotate the board. Pinch or scroll to zoom. Complete a row of three by dropping the fourth piece. Tap a column, or use the arrow keys and Enter.',
 		panelExpanded: false,
 		placement: 'center',
 		practice: true

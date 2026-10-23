@@ -142,6 +142,8 @@ type PersistedActiveMatch = {
 	moveHistory: ReplayMove[];
 	redoMoves: ReplayMove[];
 	gameOverDismissed: boolean;
+	/** Stepping through a finished match from "Review match"; the board takes no new moves. */
+	reviewing: boolean;
 	matchStartedAt: number | null;
 	matchEndedAt: number | null;
 };
@@ -183,6 +185,8 @@ export function createGameController() {
 	let moveError = $state('');
 	let redoMoves = $state<ReplayMove[]>([]);
 	let gameOverDismissed = $state(false);
+	/** True between "Review match" and replaying the final move (or a new match). */
+	let reviewing = $state(false);
 	let gameOverModalReady = $state(false);
 	let gameOverModalTimeout: ReturnType<typeof setTimeout> | null = null;
 	let selectedSpecial = $state<TacticalSpecialId | null>(null);
@@ -208,7 +212,7 @@ export function createGameController() {
 
 	const setupLocked = $derived(game.moveHistory.length > 0 || redoMoves.length > 0);
 	const appearanceLocked = $derived(setupLocked);
-	const canUndo = $derived(undoDecisionMoveCount(game, opponentMode) > 0);
+	const canUndo = $derived(undoStepSize() > 0);
 	const canRedo = $derived(redoMoves.length > 0);
 	const previewMove = $derived(lockedMove ?? hoveredMove);
 	const showGameOverModal = $derived(
@@ -392,6 +396,7 @@ export function createGameController() {
 			lockedMove = null;
 			selectedSpecial = null;
 			gameOverDismissed = saved.gameOverDismissed;
+			reviewing = saved.reviewing && redoMoves.length > 0;
 			gameOverModalReady = false;
 			matchId += 1;
 			recordedMatchId = null;
@@ -421,6 +426,7 @@ export function createGameController() {
 			moveHistory: game.moveHistory.map(toMove),
 			redoMoves: redoMoves.map((move) => ({ ...move, special: cloneSpecial(move.special) })),
 			gameOverDismissed,
+			reviewing,
 			matchStartedAt,
 			matchEndedAt
 		};
@@ -457,6 +463,8 @@ export function createGameController() {
 
 	function playMove(move: Move, source: MoveSource = 'human'): void {
 		moveError = '';
+		// A move here would branch off and drop the rest of the recorded match.
+		if (source === 'human' && reviewing) return;
 
 		if (
 			source === 'human' &&
@@ -552,6 +560,7 @@ export function createGameController() {
 		lockedMove = null;
 		moveError = '';
 		redoMoves = [];
+		reviewing = false;
 		selectedSpecial = null;
 		gameOverDismissed = false;
 		gameOverModalReady = false;
@@ -563,7 +572,7 @@ export function createGameController() {
 		const lastMove = game.moveHistory.at(-1);
 		if (!lastMove) return;
 
-		const moveCount = undoDecisionMoveCount(game, opponentMode);
+		const moveCount = undoStepSize();
 		if (moveCount === 0) return;
 
 		clearQueuedAiMove();
@@ -583,6 +592,12 @@ export function createGameController() {
 		queueAiMove();
 	}
 
+	/** Moves one Undo takes back: a whole turn in play (against the AI, its reply too), one in review. */
+	function undoStepSize(): number {
+		if (reviewing) return game.moveHistory.length > 0 ? 1 : 0;
+		return undoDecisionMoveCount(game, opponentMode);
+	}
+
 	function redoMove(): void {
 		if (redoMoves.length === 0) return;
 
@@ -591,14 +606,17 @@ export function createGameController() {
 		moveError = '';
 
 		try {
-			const moveCount = redoDecisionMoveCount(
-				game,
-				redoMoves,
-				opponentMode,
-				winCondition,
-				boardDimensions,
-				startingPlayer
-			);
+			// Review steps one move at a time, so each piece drops on its own; play steps by turn.
+			const moveCount = reviewing
+				? 1
+				: redoDecisionMoveCount(
+						game,
+						redoMoves,
+						opponentMode,
+						winCondition,
+						boardDimensions,
+						startingPlayer
+					);
 			const movesToRedo = redoMoves.slice(0, moveCount);
 			game = replayMoves(
 				[...game.moveHistory.map(toMove), ...movesToRedo],
@@ -607,6 +625,7 @@ export function createGameController() {
 				startingPlayer
 			);
 			redoMoves = redoMoves.slice(moveCount);
+			if (redoMoves.length === 0) reviewing = false;
 			hoveredMove = null;
 			lockedMove = null;
 			selectedSpecial = null;
@@ -626,6 +645,7 @@ export function createGameController() {
 		clearQueuedAiMove();
 		clearGameOverModalDelay();
 		redoMoves = [...game.moveHistory.map(toMove), ...redoMoves];
+		reviewing = true;
 		game = createGame(winCondition, boardDimensions, startingPlayer);
 		hoveredMove = null;
 		lockedMove = null;
@@ -649,7 +669,7 @@ export function createGameController() {
 	}
 
 	function canAcceptHumanMove(): boolean {
-		if (game.status.state !== 'playing') return false;
+		if (reviewing || game.status.state !== 'playing') return false;
 
 		return !(opponentMode === 'ai' && game.status.state === 'playing' && game.currentPlayer === 2);
 	}
@@ -674,6 +694,7 @@ export function createGameController() {
 			startingPlayer = 1;
 			game = createGame(winCondition, boardDimensions, startingPlayer);
 			redoMoves = [];
+			reviewing = false;
 			gameOverDismissed = false;
 			gameOverModalReady = false;
 			clearSavedActiveMatch();
@@ -747,6 +768,7 @@ export function createGameController() {
 		hoveredMove = null;
 		lockedMove = null;
 		redoMoves = [];
+		reviewing = false;
 		selectedSpecial = null;
 		gameOverDismissed = false;
 		gameOverModalReady = false;
@@ -784,6 +806,7 @@ export function createGameController() {
 		hoveredMove = null;
 		lockedMove = null;
 		redoMoves = [];
+		reviewing = false;
 		selectedSpecial = null;
 		gameOverDismissed = false;
 		gameOverModalReady = false;
@@ -906,6 +929,7 @@ export function createGameController() {
 		hoveredMove = null;
 		lockedMove = null;
 		redoMoves = [];
+		reviewing = false;
 		gameOverDismissed = false;
 		recordMatchOutcome();
 		queueGameOverModal();
@@ -1086,6 +1110,9 @@ export function createGameController() {
 		get canRedo() {
 			return canRedo;
 		},
+		get reviewing() {
+			return reviewing;
+		},
 		get redoMoveCount() {
 			return redoMoves.length;
 		},
@@ -1250,6 +1277,8 @@ function parsePersistedActiveMatch(serialized: string | null): PersistedActiveMa
 		const redoMoves = parseReplayMoveList(value.redoMoves);
 		const gameOverDismissed =
 			typeof value.gameOverDismissed === 'boolean' && value.gameOverDismissed;
+		// Absent in matches saved before review mode existed.
+		const reviewing = value.reviewing === true;
 		const matchStartedAt = parseMatchTimestamp(value.matchStartedAt);
 		const savedEnd = parseMatchTimestamp(value.matchEndedAt);
 		const matchEndedAt =
@@ -1278,6 +1307,7 @@ function parsePersistedActiveMatch(serialized: string | null): PersistedActiveMa
 			moveHistory,
 			redoMoves,
 			gameOverDismissed,
+			reviewing,
 			matchStartedAt,
 			matchEndedAt
 		};

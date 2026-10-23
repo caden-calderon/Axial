@@ -66,18 +66,24 @@
 		});
 	});
 
+	function followCameraOverBoard(event: WheelEvent): void {
+		if (event.target === dom) followCamera();
+	}
+
 	onMount(() => {
 		dom.addEventListener('pointerdown', handlePointerDown);
 		dom.addEventListener('pointermove', handlePointerMove);
 		dom.addEventListener('pointerleave', cancelPointer);
 		dom.addEventListener('pointercancel', cancelPointer);
 		dom.addEventListener('pointerup', handlePointerUp);
-		dom.addEventListener('wheel', followCamera, { passive: true });
+		// Window capture runs before any listener on the canvas, so this still hears wheels that the
+		// camera controls claim for trackpad orbiting and stop there.
+		window.addEventListener('wheel', followCameraOverBoard, { capture: true, passive: true });
 		window.addEventListener('keydown', forgetRestingPointer);
 
 		return () => {
 			window.removeEventListener('keydown', forgetRestingPointer);
-			dom.removeEventListener('wheel', followCamera);
+			window.removeEventListener('wheel', followCameraOverBoard, { capture: true });
 			dom.removeEventListener('pointerdown', handlePointerDown);
 			dom.removeEventListener('pointermove', handlePointerMove);
 			dom.removeEventListener('pointerleave', cancelPointer);

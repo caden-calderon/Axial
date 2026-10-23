@@ -744,7 +744,7 @@
 		/>
 	{/if}
 
-	{#if !welcomePracticeActive && !welcomeTourActive && playMode !== 'online' && controller.canRedo && !controlsExpanded && !activeLockedMove && !(controller.showGameOverModal && !presentationPending)}
+	{#if !welcomePracticeActive && !welcomeTourActive && playMode !== 'online' && controller.canRedo && (controller.reviewing || !controlsExpanded) && !activeLockedMove && !(controller.showGameOverModal && !presentationPending)}
 		<ReviewBar
 			moveNumber={controller.game.moveHistory.length}
 			totalMoves={controller.game.moveHistory.length + controller.redoMoveCount}

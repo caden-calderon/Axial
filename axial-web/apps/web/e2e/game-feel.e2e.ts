@@ -209,6 +209,41 @@ test('a winning drop lands before its line is drawn and the result is revealed',
 	expect(line.children[1].scale[1]).toBeCloseTo(1, 4);
 });
 
+test('reviewing an AI match drops one piece per step, animated like live play', async ({
+	page
+}) => {
+	const winningMoves: Move[] = [];
+	for (let col = 0; col < 4; col++) {
+		winningMoves.push({ row: 3, col });
+		if (col < 3) winningMoves.push({ row: 5, col });
+	}
+	await seedMatch(page, winningMoves, undefined, 'ai');
+	await openBoard(page);
+	await page
+		.getByRole('dialog')
+		.getByRole('button', { name: /^Review match/ })
+		.click();
+	const reviewBar = page.getByRole('group', { name: 'Review moves' });
+	await expect(reviewBar).toContainText('Move 0 of 7');
+
+	for (const [step, name] of [
+		[1, 'piece-3-0-0'],
+		[2, 'piece-5-0-0']
+	] as const) {
+		await clearFrames(page);
+		await reviewBar.getByRole('button', { name: /Next/ }).click();
+		await expect(reviewBar).toContainText(`Move ${step} of 7`);
+		await expect
+			.poll(async () => objectNamed((await latestFrame(page))!, name)?.position[1])
+			.toBeCloseTo(landingY(0), 4);
+		const frames = await page.evaluate(() => window.__axialSceneProbe.frames);
+		const withPiece = frames.filter((frame) => objectNamed(frame, name));
+		// It fell from above rather than appearing in place.
+		expect(objectNamed(withPiece[0], name)!.position[1]).toBeGreaterThan(landingY(0) + 1);
+		expect(frames.at(-1)!.objects.filter(isPiece)).toHaveLength(step);
+	}
+});
+
 test('rapid drops into one column land in support order', async ({ page }) => {
 	await openBoard(page);
 	await clearFrames(page);
@@ -451,6 +486,70 @@ test('rail toggles and resizing preserve a player-created camera orbit and zoom'
 	await assertCameraPose(page, adjusted);
 	await page.getByRole('button', { name: 'Expand settings' }).click();
 	await assertCameraPose(page, adjusted);
+});
+
+test('a two-finger trackpad swipe orbits the board and a pinch zooms it', async ({ page }) => {
+	await page.emulateMedia({ reducedMotion: 'reduce' });
+	await openBoard(page);
+	// Desktop framing orbits around this target (cameraFit DESKTOP_TARGET).
+	const target = [0, -0.6, 0];
+	const radius = (pose: Awaited<ReturnType<typeof cameraPose>>) => distance(pose.position, target);
+	const initial = await cameraPose(page);
+
+	// A sideways swipe: only trackpads (and tilt wheels) scroll horizontally.
+	await page.mouse.move(640, 360);
+	await page.mouse.wheel(240, 0);
+	await expect
+		.poll(async () => distance((await cameraPose(page)).quaternion, initial.quaternion))
+		.toBeGreaterThan(0.05);
+	const orbited = await cameraPose(page);
+	expect(radius(orbited)).toBeCloseTo(radius(initial), 3);
+
+	// Vertical momentum that follows a diagonal start keeps orbiting (tilts) instead of zooming.
+	await page.locator('canvas').evaluate((canvas) => {
+		const wheel = (init: WheelEventInit) =>
+			canvas.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, ...init }));
+		wheel({ deltaX: 2, deltaY: 1 });
+		for (let step = 0; step < 6; step += 1) wheel({ deltaY: 12 });
+	});
+	await expect
+		.poll(async () => distance((await cameraPose(page)).quaternion, orbited.quaternion))
+		.toBeGreaterThan(0.02);
+	const tilted = await cameraPose(page);
+	expect(radius(tilted)).toBeCloseTo(radius(initial), 3);
+	expect(tilted.position[1]).not.toBeCloseTo(orbited.position[1], 2);
+
+	// A pinch arrives as a ctrl wheel and zooms; wait out the swipe's gesture window first.
+	await page.waitForTimeout(300);
+	await page.locator('canvas').evaluate((canvas) => {
+		canvas.dispatchEvent(
+			new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -30, ctrlKey: true })
+		);
+	});
+	await expect.poll(async () => radius(await cameraPose(page))).toBeLessThan(radius(tilted) - 0.2);
+});
+
+test('an embedded board leaves trackpad swipes and wheels to the host page', async ({ page }) => {
+	await page.emulateMedia({ reducedMotion: 'reduce' });
+	await openBoard(page, '/?embed=1&tour=0');
+	const initial = await cameraPose(page);
+
+	const prevented = await page.locator('canvas').evaluate((canvas) =>
+		[
+			{ deltaX: 40, deltaY: 0 },
+			{ deltaX: 2, deltaY: 30 },
+			{ deltaX: 0, deltaY: 120 }
+		].map((init) => {
+			const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, ...init });
+			canvas.dispatchEvent(event);
+			return event.defaultPrevented;
+		})
+	);
+
+	expect(prevented).toEqual([false, false, false]);
+	await page.waitForTimeout(200);
+	const after = await cameraPose(page);
+	expect(distance(after.position, initial.position)).toBeLessThan(0.00001);
 });
 
 for (const viewport of [
@@ -845,16 +944,17 @@ async function recordOscillators(page: Page) {
 async function seedMatch(
 	page: Page,
 	moves: Move[],
-	winCondition: WinCondition = { lineLength: 4, linesToWin: 1 }
+	winCondition: WinCondition = { lineLength: 4, linesToWin: 1 },
+	opponentMode: 'local' | 'ai' = 'local'
 ) {
 	await page.addInitScript(
-		({ moveHistory, winCondition }) => {
+		({ moveHistory, winCondition, opponentMode }) => {
 			localStorage.setItem(
 				'axial-active-match',
 				JSON.stringify({
 					version: 1,
 					matchMode: 'classic',
-					opponentMode: 'local',
+					opponentMode,
 					aiDifficulty: 'hard',
 					boardDimensions: { height: 6, rows: 6, columns: 7 },
 					winCondition,
@@ -865,7 +965,7 @@ async function seedMatch(
 				})
 			);
 		},
-		{ moveHistory: moves, winCondition }
+		{ moveHistory: moves, winCondition, opponentMode }
 	);
 }
 

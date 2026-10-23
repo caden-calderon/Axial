@@ -210,6 +210,99 @@ describe('match duration', () => {
 	});
 });
 
+describe('match review', () => {
+	function win(game: ReturnType<typeof controller>) {
+		for (let col = 0; col < 4; col++) {
+			game.playMove({ row: 0, col });
+			if (col < 3) game.playMove({ row: 1, col });
+		}
+	}
+
+	it('keeps the board read-only while reviewing, so a click cannot drop the recorded match', () => {
+		const game = controller();
+		win(game);
+		game.rewindGame();
+		expect(game.reviewing).toBe(true);
+		expect(game.canPlay).toBe(false);
+
+		game.redoMove();
+		game.redoMove();
+		game.playMove({ row: 5, col: 5 });
+		game.selectOrPlayMove({ row: 5, col: 5 });
+		expect(game.game.moveHistory).toHaveLength(2);
+		expect(game.redoMoveCount).toBe(5);
+
+		game.undoMove();
+		expect(game.reviewing).toBe(true);
+		expect(game.game.moveHistory).toHaveLength(1);
+	});
+
+	it('ends review when the final move is replayed, bringing the result back', () => {
+		const game = controller();
+		win(game);
+		game.rewindGame();
+		while (game.canRedo) game.redoMove();
+		expect(game.reviewing).toBe(false);
+		expect(game.game.status).toMatchObject({ state: 'won', winner: 1 });
+	});
+
+	it('survives a refresh mid-review and ends with a new match', () => {
+		const game = controller();
+		win(game);
+		game.rewindGame();
+		game.redoMove();
+
+		const restored = controller();
+		restored.hydrateFromStorage();
+		expect(restored.reviewing).toBe(true);
+		expect(restored.canPlay).toBe(false);
+
+		restored.resetGame();
+		expect(restored.reviewing).toBe(false);
+		expect(restored.canPlay).toBe(true);
+	});
+
+	it('steps an AI match one move at a time in review, but a whole turn in play', () => {
+		const game = controller();
+		win(game);
+		const saved = JSON.parse(localStorage.getItem('axial-active-match')!);
+		saved.opponentMode = 'ai';
+		localStorage.setItem('axial-active-match', JSON.stringify(saved));
+		const restored = controller();
+		restored.hydrateFromStorage();
+
+		restored.rewindGame();
+		expect(restored.canUndo).toBe(false);
+		for (let move = 1; move <= 3; move++) {
+			restored.redoMove();
+			expect(restored.game.moveHistory).toHaveLength(move);
+		}
+		expect(restored.canUndo).toBe(true);
+		restored.undoMove();
+		expect(restored.game.moveHistory).toHaveLength(2);
+
+		// Back in play, undo takes the player's move and the AI's reply together.
+		while (restored.canRedo) restored.redoMove();
+		expect(restored.reviewing).toBe(false);
+		restored.undoMove();
+		expect(restored.game.moveHistory).toHaveLength(6);
+		restored.undoMove();
+		expect(restored.game.moveHistory).toHaveLength(4);
+	});
+
+	it('still lets a player undo during play and try a different move', () => {
+		const game = controller();
+		game.playMove({ row: 0, col: 0 });
+		game.playMove({ row: 1, col: 0 });
+		game.undoMove();
+		expect(game.reviewing).toBe(false);
+		expect(game.canPlay).toBe(true);
+		game.playMove({ row: 2, col: 2 });
+		expect(game.game.moveHistory).toHaveLength(2);
+		expect(game.canRedo).toBe(false);
+	});
+});
+
 describe('unavailable browser storage', () => {
 	it('continues the AI turn when a saved-match write exceeds the storage quota', async () => {
 		const game = controller();
