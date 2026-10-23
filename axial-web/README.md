@@ -17,6 +17,8 @@ Open the URL printed by Vite. Local and AI play need no backend or accounts. In 
 pnpm --filter @axial/multiplayer-worker dev --ip 127.0.0.1 --port 8787 --var PUBLIC_WEB_ORIGIN:http://127.0.0.1:5173
 ```
 
+To try the feedback form locally, copy `apps/multiplayer-worker/.dev.vars.example` to `.dev.vars` first: dev builds use Cloudflare's always-pass Turnstile test key, and `wrangler dev` writes outgoing mail to a local file instead of sending it.
+
 The frontend uses port `8787` for the room service on localhost. The command-line origin override makes local invite links point at the dev server; adjust it if Vite selects another port. `PUBLIC_AXIAL_MULTIPLAYER_API` optionally overrides the room endpoint; production defaults to the frontend's own origin. Production deployment configuration and environment requirements are in [deployment.md](../dev/archive/axial-web-rebuild/deployment.md).
 
 ## Playing
@@ -24,12 +26,14 @@ The frontend uses port `8787` for the room service on localhost. The command-lin
 - Choose a floor square, or point at a stack, to drop a piece into that column. Pieces stack from the bottom.
 - Connect four of your pieces in a straight line across, up, or diagonally through the board. All 13 spatial directions count.
 - Before the first move, choose Connect 4 or 5, a board size, and one, two or three lines needed to win. A longer extension of one straight run remains one scored line; crossing lines count separately.
-- Drag to orbit and scroll/pinch to zoom. Reset view restores the initial angle. Keyboard: arrows select a column (relative to the current camera view), Enter/Space place or confirm, Escape clears the selection. Holding Enter cannot place repeated turns.
+- Drag to orbit and scroll/pinch to zoom. Keyboard: arrows select a column (relative to the current camera view), Enter/Space place or confirm, Escape clears the selection. Holding Enter cannot place repeated turns.
 - Confirm drop provides a staged preview; it is the default for new touch users. Moving the keyboard cursor clears an older staged selection.
 - Players are distinguished by their piece colors. Grid layers can be enabled to inspect height.
 - How to play includes a safe preview exercise. Sound is optional, off by default, and can be enabled or muted in Appearance. Motion follows the operating system preference.
-- Settings overlay the board without moving or rescaling it. Multi-line scores live within the Match section; result screens preserve new-match, review and keep-board actions.
+- Settings overlay the board without moving or rescaling it. On a phone held upright they open as a half sheet; drag or flick its grab bar to the full sheet, or up to tuck it away, and tap the bar to switch between half and full. Multi-line scores live within the Match section; result screens preserve new-match, review and keep-board actions.
 - Local and AI matches persist on refresh. Undo/redo and review preserve canonical move histories. Rematches alternate the opening player; the human opens a new AI series.
+
+Feedback in the settings panel sends a bug report, idea or review to the developer by email.
 
 Tactical rules and special-piece code remain preserved internally, but Tactical is intentionally marked Coming soon in setup.
 
@@ -51,6 +55,8 @@ The AI uses no LLM. Easy, Medium, Hard and Max have different tactical/search bu
 Online rooms support invitation links/codes, readiness/countdown, reconnect and rematch. Accepted moves and scores come from the server. Stale revisions request a fresh snapshot without replaying a stale command; terminal room/authentication errors stop retries and disable gameplay while preserving the final board. See [multiplayer architecture](../dev/archive/axial-web-rebuild/multiplayer.md) and [recovery tests](../dev/archive/axial-improvement-pass/multiplayer.md).
 
 Room creation has a Cloudflare limit of 10 attempts per minute per network address. Other room actions are outside that creation limit. Expired rooms retain their data for 24 hours, then an alarm removes it; old links subsequently report room not found. The limit is approximate and per Cloudflare location, and people on a shared network share the allowance. See the [room resource policy](../dev/archive/axial-announcement-readiness/room-resource-policy.md) for behavior, legacy cleanup limits and validation.
+
+Feedback goes through the same Worker at `/api/feedback`. The server verifies an invisible Cloudflare Turnstile token, allows 3 messages per minute per network and 10 per minute across the site, quietly drops anything that fills the hidden honeypot field, and limits length and links. Accepted messages are emailed through Cloudflare Email Routing, with the player's address, if given, as Reply-To. If delivery fails the player sees an error, and the Worker log keeps the full message. See [feedback](../dev/archive/axial-launch-polish/feedback.md).
 
 ## Verification
 

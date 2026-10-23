@@ -22,7 +22,12 @@ Why Cloudflare:
   `RoomObject`.
 - Multiplayer production routes:
   - `https://playaxial.dev/api/rooms*`
+  - `https://playaxial.dev/api/feedback` (added 2026-10-22)
   - `https://playaxial.dev/health`
+- Worker secrets (set with `wrangler secret put`, never committed): `TURNSTILE_SECRET` and
+  `FEEDBACK_RECIPIENT`. Local values live in the ignored `apps/multiplayer-worker/.dev.vars`; copy
+  `.dev.vars.example`. Setup is in the
+  [feedback notes](../axial-launch-polish/feedback.md#cloudflare-setup).
 
 ## Cloudflare Pages Build Settings
 
@@ -257,6 +262,13 @@ Cloudflare setup notes for multiplayer:
   `pnpm deploy:multiplayer:dry-run`. Repeat both commands for Worker changes.
 - Latest Worker deploy for the Online start/result/rematch protocol is
   `b158cd16-5485-4179-8207-1a81891930f0` on 2026-06-19.
+- 2026-10-22: the launch fixes deployed as `0e7fa585-1fe6-49f7-9c0e-782023cf9c59`, then feedback
+  as `630c469b-f363-43cd-a7b5-a6c3104b9009` (commit `c3d55c7`). Feedback adds the `/api/feedback`
+  route, the `FEEDBACK_LIMITER` and `FEEDBACK_GLOBAL_LIMITER` rate limits and the `FEEDBACK_EMAIL`
+  send_email binding.
+- The Pages app excludes `/embed-bridge-smoke` from the SvelteKit worker (`svelte.config.js`).
+  Pages redirects `/embed-bridge-smoke.html` to that path, which previously reached the app and
+  returned 404, failing the bridge production smoke.
 
 ## Primary Sources Checked
 

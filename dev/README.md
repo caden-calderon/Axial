@@ -20,16 +20,17 @@ These are the working notes from each development pass: plans, design decisions,
 
 Newest first.
 
-| Pass                                                                   | Date           | Scope                                                                                                                         |
-| ---------------------------------------------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| [Overview video](archive/axial-cinematic-video/script.md)              | October 2026   | The announcement video: a frame-exact recorder for the real game, the Remotion edit, seven review cuts, and the music conform |
-| [Opus review](archive/axial-opus-review/plan.md)                       | October 2026   | Two parallel audits (experience and engine), triage, 29 implementation commits, and before/after AI evidence                  |
-| [Announcement readiness](archive/axial-announcement-readiness/plan.md) | September 2026 | Code, dependency, and repository reviews before the public announcement                                                       |
-| [Improvement pass](archive/axial-improvement-pass/plan.md)             | September 2026 | Rules and AI correctness, game feel, input, audio, multiplayer recovery, and playtest polish                                  |
-| [Classic AI overhaul](archive/axial-classic-ai-overhaul/context.md)    | July 2026      | Rebuilt search, machine challenge evaluation, and difficulty presets                                                          |
-| [AI and mobile review](archive/axial-ai-mobile-review/context.md)      | July 2026      | Difficulty ladder honesty, custom-rule correctness, and portrait controls                                                     |
-| [UI pass](archive/axial-ui-pass/context.md)                            | July 2026      | Interface redesign and visual decisions                                                                                       |
-| [Web rebuild](archive/axial-web-rebuild/context.md)                    | May–June 2026  | The port from Unity/Python to the browser, the original architecture, and multiplayer foundations                             |
+| Pass                                                                   | Date           | Scope                                                                                                                                         |
+| ---------------------------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Launch polish](archive/axial-launch-polish/plan.md)                   | October 2026   | Launch-eve bug hunt (online appearance lock, piece geometry, reconnect, rules races), in-game feedback by email and the draggable phone sheet |
+| [Overview video](archive/axial-cinematic-video/script.md)              | October 2026   | The announcement video: a frame-exact recorder for the real game, the Remotion edit, seven review cuts, and the music conform                 |
+| [Opus review](archive/axial-opus-review/plan.md)                       | October 2026   | Two parallel audits (experience and engine), triage, 29 implementation commits, and before/after AI evidence                                  |
+| [Announcement readiness](archive/axial-announcement-readiness/plan.md) | September 2026 | Code, dependency, and repository reviews before the public announcement                                                                       |
+| [Improvement pass](archive/axial-improvement-pass/plan.md)             | September 2026 | Rules and AI correctness, game feel, input, audio, multiplayer recovery, and playtest polish                                                  |
+| [Classic AI overhaul](archive/axial-classic-ai-overhaul/context.md)    | July 2026      | Rebuilt search, machine challenge evaluation, and difficulty presets                                                                          |
+| [AI and mobile review](archive/axial-ai-mobile-review/context.md)      | July 2026      | Difficulty ladder honesty, custom-rule correctness, and portrait controls                                                                     |
+| [UI pass](archive/axial-ui-pass/context.md)                            | July 2026      | Interface redesign and visual decisions                                                                                                       |
+| [Web rebuild](archive/axial-web-rebuild/context.md)                    | May–June 2026  | The port from Unity/Python to the browser, the original architecture, and multiplayer foundations                                             |
 
 Within each pass, `plan.md` holds the decisions, `tasks.md` the checklist, and `context.md` the running state. Audit and review files record findings with their disposition.
 
